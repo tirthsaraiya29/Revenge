@@ -1,0 +1,45 @@
+package com.revenge.music.models
+
+import androidx.compose.runtime.Immutable
+import com.revenge.innertube.models.WatchEndpoint.WatchEndpointMusicSupportedConfigs.WatchEndpointMusicConfig.Companion.MUSIC_VIDEO_TYPE_ATV
+import java.io.Serializable
+import java.time.LocalDateTime
+
+enum class QueueItemSource {
+  USER,
+}
+
+/** Everything the player needs to know about a track, independent of how it was obtained. */
+@Immutable
+data class MediaMetadata(
+  val id: String,
+  val title: String,
+  val artists: List<Artist>,
+  val duration: Int,
+  val thumbnailUrl: String? = null,
+  val album: Album? = null,
+  val setVideoId: String? = null,
+  val musicVideoType: String? = null,
+  val explicit: Boolean = false,
+  val liked: Boolean = false,
+  val likedDate: LocalDateTime? = null,
+  val inLibrary: LocalDateTime? = null,
+  val libraryAddToken: String? = null,
+  val libraryRemoveToken: String? = null,
+  val suggestedBy: String? = null,
+  val source: QueueItemSource = QueueItemSource.USER,
+) : Serializable {
+  /** A video is anything but a plain audio track ("ATV"). */
+  val isVideoSong: Boolean
+    get() = musicVideoType != null && musicVideoType != MUSIC_VIDEO_TYPE_ATV
+
+  data class Artist(
+    val id: String?,
+    val name: String,
+  ) : Serializable
+
+  data class Album(
+    val id: String,
+    val title: String,
+  ) : Serializable
+}

@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security report
+    url: https://github.com/tirthsaraiya29/Revenge/security/advisories/new
+    about: Report vulnerabilities privately. Do not open a public issue.
+  - name: Build and development help
+    url: https://github.com/tirthsaraiya29/Revenge/blob/main/CONTRIBUTING.md
+    about: Setup, build variants, and contribution workflow.

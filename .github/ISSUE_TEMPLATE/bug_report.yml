@@ -1,0 +1,72 @@
+name: Error report
+description: Report a crash, wrong behaviour, or a feature that does not work.
+title: "[Error] "
+labels: ["bug", "needs triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this. Please search existing issues
+        first. Do not paste API keys, tokens, or personal data.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+      placeholder: |
+        1. Open ...
+        2. Tap ...
+        Expected: ...
+        Actual: ...
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: The shortest sequence that reliably shows the problem.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Revenge version
+      description: Find it in Settings → About, or name the release you installed.
+      placeholder: "1.0.0 (universal-foss)"
+    validations:
+      required: true
+  - type: input
+    id: android
+    attributes:
+      label: Android version and device
+      placeholder: "Android 15, Pixel 8"
+    validations:
+      required: true
+  - type: dropdown
+    id: build
+    attributes:
+      label: Build variant
+      options:
+        - FOSS
+        - GMS
+        - Self-built
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or crash report
+      description: Paste a stack trace if you have one. Remove personal data first.
+      render: text
+    validations:
+      required: false
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and this is not a duplicate.
+          required: true
+        - label: I am using the latest release, or I explain why I cannot.
+          required: true

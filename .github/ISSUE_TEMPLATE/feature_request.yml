@@ -1,0 +1,54 @@
+name: Feature request
+description: Suggest a capability Revenge does not have yet.
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the problem first, then the feature. Requests for better
+        behaviour of existing screens are also welcome here.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do that Revenge makes hard or impossible?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behaviour
+      description: What should Revenge do? Be concrete about the user-visible result.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other apps, workarounds, or designs you have tried.
+    validations:
+      required: false
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Playback
+        - Library and downloads
+        - Lyrics
+        - Search and browsing
+        - Audio effects
+        - Integrations (Last.fm, ListenBrainz, Cast, …)
+        - Appearance and accessibility
+        - Widgets
+        - Other
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and this is not a duplicate.
+          required: true

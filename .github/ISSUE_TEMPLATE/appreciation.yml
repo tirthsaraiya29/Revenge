@@ -1,0 +1,31 @@
+name: Appreciation
+description: Say thanks, share what works well, or post a screenshot.
+title: "[Thanks] "
+labels: ["appreciation"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Kind words are useful signal. If you are reporting a problem, use the
+        Error report template instead.
+  - type: textarea
+    id: message
+    attributes:
+      label: Message
+      description: What do you enjoy? Which detail made a difference?
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      placeholder: "1.0.0 (universal-foss)"
+    validations:
+      required: false
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots
+      description: Drag images here if you want to show a screen you like.
+    validations:
+      required: false

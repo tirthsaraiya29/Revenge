@@ -1,0 +1,48 @@
+package com.revenge.music.utils
+
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+
+enum class PlaybackLogLevel {
+  INFO,
+  WARNING,
+  ERROR,
+  DEBUG,
+  BOT,
+}
+
+data class PlaybackLogEntry(
+  val timestamp: String,
+  val level: PlaybackLogLevel,
+  val message: String,
+  val details: String? = null,
+)
+
+/** In-memory ring buffer of playback diagnostics shown in the debug screen. */
+object PlaybackLogManager {
+  private const val MAX_LOG_ENTRIES = 500
+  private val timeFormat = DateTimeFormatter.ofPattern("HH:mm:ss.SSS")
+
+  private val _logs = MutableStateFlow<List<PlaybackLogEntry>>(emptyList())
+  val logs: StateFlow<List<PlaybackLogEntry>> = _logs.asStateFlow()
+
+  fun log(level: PlaybackLogLevel, message: String, details: String? = null) {
+    val entry =
+      PlaybackLogEntry(
+        timestamp = LocalDateTime.now().format(timeFormat),
+        level = level,
+        message = message,
+        details = details,
+      )
+
+    _logs.value =
+      (_logs.value + entry).let { if (it.size > MAX_LOG_ENTRIES) it.takeLast(MAX_LOG_ENTRIES) else it }
+  }
+
+  fun clearLogs() {
+    _logs.value = emptyList()
+  }
+}

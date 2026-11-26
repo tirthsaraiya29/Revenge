@@ -1,0 +1,7 @@
+#!/bin/sh
+# Advisory formatting check. CI enforces the build and tests.
+if [ -x ./gradlew ]; then
+  ./gradlew :app:spotlessKotlinCheck --console=plain || \
+    echo "pre-commit: formatting differs. Run ./gradlew spotlessApply before opening a PR."
+fi
+exit 0

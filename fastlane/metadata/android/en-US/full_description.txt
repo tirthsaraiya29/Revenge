@@ -1,0 +1,21 @@
+Revenge is an Android music player for YouTube Music and the audio files stored on your phone.
+
+Playback: background playback, a real queue, gapless transitions, crossfade, sleep timer, and speed control. Controls work from the notification, lock screen, headset buttons, and Android Auto.
+
+Offline: download songs, albums, and playlists for listening without a connection. The local library scanner picks up the audio files you already have.
+
+Lyrics: synchronized lyrics from LRCLIB, Paxsenix, YouLyPlus, BetterLyrics, KuGou, SimpMusic, and YouTube subtitles. Lyrics are cached on the device.
+
+Sound: parametric equalizer with saved profiles, bass boost, stereo widening, and loudness normalization. USB DAC output is available for compatible hardware.
+
+Discovery: home, search, charts, moods, artists, albums, and podcasts from the YouTube Music catalogue. Personalized recommendations are computed on the device.
+
+Library: create and reorder playlists, like songs, view listening statistics, and resume the queue after a restart.
+
+Connections: Last.fm scrobbling, ListenBrainz, Spotify playlist import, Listen Together group sessions, and Chromecast in the GMS build.
+
+Appearance: Material 3 interface, dynamic color from album art, light, dark, and black themes, selectable app icons, home screen widgets, and animated canvas artwork.
+
+Privacy: no account required. The FOSS build contains no Google Play services and no analytics SDK. Library, history, and settings stay in the app's private storage.
+
+Revenge is free software under the GNU General Public License v3.0. Source code and issue tracker: https://github.com/tirthsaraiya29/Revenge

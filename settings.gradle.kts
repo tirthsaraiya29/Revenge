@@ -1,0 +1,46 @@
+@file:Suppress("UnstableApiUsage")
+
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+
+    repositories {
+        google()
+        mavenCentral()
+        maven { setUrl("https://jitpack.io") }
+        maven { setUrl("https://maven.aliyun.com/repository/public") }
+    }
+}
+
+rootProject.name = "Revenge"
+
+include(
+    ":app",
+    ":core",
+    ":domain",
+    ":innertube",
+    ":metadata",
+    ":playback",
+    ":usbaudio",
+    ":dsp-core",
+    ":audio-dsp",
+    ":lyrics",
+    ":lrclib",
+    ":kugou",
+    ":betterlyrics",
+    ":simpmusic",
+    ":youlyplus",
+    ":paxsenixlyrics",
+    ":canvas",
+    ":applecanvas",
+    ":artistvideo",
+    ":shazamkit",
+    ":unison",
+)

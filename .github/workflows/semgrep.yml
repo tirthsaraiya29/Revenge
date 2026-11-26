@@ -1,0 +1,53 @@
+name: Semgrep
+
+on:
+  push:
+    branches: [main]
+    paths: &code-paths
+      - "**/*.kt"
+      - "**/*.java"
+      - "**/*.kts"
+      - "**/*.xml"
+      - "**/*.c"
+      - "**/*.cc"
+      - "**/*.cpp"
+      - "**/*.h"
+      - "**/*.hpp"
+      - "**/*.js"
+  pull_request:
+    branches: [main]
+    paths: *code-paths
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+concurrency:
+  group: semgrep-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scan:
+    name: Static analysis
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep:latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scan
+        run: |
+          semgrep scan \
+            --config .semgrep/rules.yml \
+            --sarif --output semgrep.sarif \
+            --error \
+            --exclude app/src/test \
+            --exclude "**/build/**" \
+            .
+      - name: Upload SARIF
+        if: always() && hashFiles('semgrep.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep

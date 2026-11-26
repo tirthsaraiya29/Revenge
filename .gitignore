@@ -1,0 +1,62 @@
+# Build output
+build/
+**/build/
+build-local/
+**/build-local/
+.gradle/
+.kotlin/
+.cxx/
+.externalNativeBuild/
+captures/
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+.design-shots/
+
+# Local configuration and secrets
+local.properties
+*.keystore
+*.jks
+*.p12
+*.pem
+*.key
+keystore.properties
+secrets.properties
+app/google-services.json
+app/yt_video_next.json
+
+# IDE and editor metadata
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+*.swp
+*~
+
+# OS metadata
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs and temporary files
+*.log
+*.tmp
+*.bak
+*.orig
+*.rej
+/tmp/
+.cache/
+
+# Test and coverage artifacts
+coverage/
+*.exec
+*.ec
+/tests-results/
+/app/build/reports/
+/app/build/test-results/
+
+# Generated dependency caches
+.gradle-cache/

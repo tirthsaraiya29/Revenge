@@ -1,0 +1,60 @@
+rules:
+  - id: revenge-hardcoded-credential
+    languages: [kotlin]
+    severity: ERROR
+    message: >-
+      A credential-looking value is hardcoded. Read secrets from
+      local.properties, environment variables, or BuildConfig instead.
+    patterns:
+      - pattern-either:
+          - pattern: val $NAME = "$VALUE"
+          - pattern: var $NAME = "$VALUE"
+      - metavariable-regex:
+          metavariable: $NAME
+          regex: (?i)^(.*_)?(api_?key|secret|client_?secret|access_?token|refresh_?token|password|passwd|private_?key)$
+      - metavariable-regex:
+          metavariable: $VALUE
+          regex: ^[A-Za-z0-9_\-.]{16,}$
+      - focus-metavariable: $VALUE
+
+  - id: revenge-cleartext-endpoint
+    languages: [kotlin]
+    severity: ERROR
+    message: >-
+      Production request uses cleartext HTTP. Use HTTPS so credentials and media
+      URLs are not exposed on the network.
+    patterns:
+      - pattern-regex: '"http://[^"]+"'
+      - pattern-not-regex: '"http://(localhost|127\.0\.0\.1|10\.0\.2\.2|schemas\.android\.com|www\.w3\.org|ns\.adobe\.com|xmlpull\.org)'
+    paths:
+      exclude:
+        - "**/test/**"
+        - "**/androidTest/**"
+
+  - id: revenge-webview-javascript
+    languages: [kotlin]
+    severity: WARNING
+    message: >-
+      WebView JavaScript is enabled. Keep it off unless the loaded content is
+      fully trusted, and never expose addJavascriptInterface together with it.
+    patterns:
+      - pattern: $SETTINGS.javaScriptEnabled = true
+    paths:
+      exclude:
+        - "**/test/**"
+        - "**/androidTest/**"
+
+  - id: revenge-insecure-hostname-verifier
+    languages: [kotlin]
+    severity: ERROR
+    message: >-
+      Hostname verification is disabled. Never accept every host in production.
+    patterns:
+      - pattern: |
+          override fun verify($HOST: String?, $SESSION: SSLSession?): Boolean {
+            return true
+          }
+    paths:
+      exclude:
+        - "**/test/**"
+        - "**/androidTest/**"

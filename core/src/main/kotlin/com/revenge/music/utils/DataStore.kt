@@ -1,0 +1,44 @@
+package com.revenge.music.utils
+
+import android.content.Context
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.preferencesDataStore
+import com.revenge.music.extensions.toEnum
+import kotlin.properties.ReadOnlyProperty
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
+
+val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
+
+operator fun <T> DataStore<Preferences>.get(key: Preferences.Key<T>): T? =
+  runBlocking(Dispatchers.IO) {
+    runCatching { data.first()[key] }.getOrNull()
+  }
+
+fun <T> DataStore<Preferences>.get(
+  key: Preferences.Key<T>,
+  defaultValue: T,
+): T =
+  runBlocking(Dispatchers.IO) {
+    runCatching { data.first()[key] }.getOrNull() ?: defaultValue
+  }
+
+fun <T> preference(
+  context: Context,
+  key: Preferences.Key<T>,
+  defaultValue: T,
+) =
+  ReadOnlyProperty<Any?, T> { _, _ ->
+    runCatching { context.dataStore[key] }.getOrNull() ?: defaultValue
+  }
+
+inline fun <reified T : Enum<T>> enumPreference(
+  context: Context,
+  key: Preferences.Key<String>,
+  defaultValue: T,
+) =
+  ReadOnlyProperty<Any?, T> { _, _ ->
+    runCatching { context.dataStore[key] }.getOrNull().toEnum(defaultValue)
+  }
