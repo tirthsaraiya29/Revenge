@@ -8,6 +8,9 @@ import androidx.media3.database.StandaloneDatabaseProvider
 import androidx.media3.datasource.cache.NoOpCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
 import androidx.room.Room
+import com.revenge.core.di.ApplicationScope
+import com.revenge.core.di.DownloadCache
+import com.revenge.core.di.PlayerCache
 import com.revenge.core.constants.MaxSongCacheSizeKey
 import com.revenge.core.db.InternalDatabase
 import com.revenge.core.db.MusicDatabase

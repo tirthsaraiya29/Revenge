@@ -18,6 +18,7 @@ import coil3.request.ImageRequest
 import com.revenge.innertube.YouTube
 import com.revenge.innertube.models.IpVersion
 import com.revenge.core.constants.AudioQuality
+import com.revenge.playback.ChunkingDataSourceFactory
 import com.revenge.core.constants.DownloadOnWifiOnlyKey
 import com.revenge.core.constants.DownloadWithMetadataKey
 import com.revenge.core.constants.IpVersionKey
@@ -32,7 +33,7 @@ import com.revenge.lyrics.lyrics.LyricsUtils
 import com.revenge.core.ui.utils.resize
 import com.revenge.music.utils.YTPlayerUtils
 import com.revenge.core.utils.dataStore
-import com.revenge.music.utils.enumPreference
+import com.revenge.core.utils.enumPreference
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.net.Inet4Address
 import java.net.Inet6Address

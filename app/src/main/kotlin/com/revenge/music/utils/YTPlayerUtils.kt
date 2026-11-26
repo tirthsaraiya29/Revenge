@@ -17,6 +17,7 @@ import com.revenge.innertube.models.YouTubeClient.Companion.WEB_REMIX
 import com.revenge.innertube.models.response.PlayerConfig
 import com.revenge.innertube.models.response.PlayerResponse
 import com.revenge.core.constants.AudioQuality
+import com.revenge.core.utils.reportException
 import com.revenge.music.utils.YTPlayerUtils.MAIN_CLIENT
 import com.revenge.music.utils.YTPlayerUtils.STREAM_FALLBACK_CLIENTS
 import com.revenge.music.utils.YTPlayerUtils.validateStatus

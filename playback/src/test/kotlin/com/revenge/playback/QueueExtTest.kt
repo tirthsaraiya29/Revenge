@@ -21,11 +21,14 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.ObjectInputStream
 import java.io.ObjectOutputStream
 
+@RunWith(RobolectricTestRunner::class)
 class QueueExtTest {
 
     private val items = listOf(metadata("a"), metadata("b"), metadata("c"))

@@ -11,8 +11,11 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 import java.io.IOException
 
+@RunWith(RobolectricTestRunner::class)
 class YouTubePlaylistQueueTest {
 
     @Test

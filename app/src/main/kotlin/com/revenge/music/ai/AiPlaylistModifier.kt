@@ -2,6 +2,7 @@ package com.revenge.music.ai
 
 import android.content.Context
 import com.revenge.innertube.YouTube
+import com.revenge.core.ai.AiLogger
 import com.revenge.innertube.models.SongItem
 import com.revenge.core.db.MusicDatabase
 import com.revenge.core.db.entities.PlaylistSong
