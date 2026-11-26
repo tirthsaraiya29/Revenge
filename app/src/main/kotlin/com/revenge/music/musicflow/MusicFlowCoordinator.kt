@@ -1,115 +1,111 @@
 package com.revenge.music.musicflow
 
-/** The narrow slice of the shared player Music Flow is allowed to drive. */
+import kotlinx.coroutines.flow.StateFlow
+
+/** Port implemented by the player layer; the coordinator never touches Media3 directly. */
 interface MusicFlowPlayer {
-  fun currentMediaId(): String?
+    val currentMediaId: String?
+    val queueMediaIds: List<String>
+    val isPlaying: StateFlow<Boolean>
+    val isAnyFlowQueueActive: Boolean
+    val takeoverBlock: TakeoverBlock?
 
-  fun queueMediaIds(): List<String>
-
-  fun ownsQueue(handle: Any): Boolean
-
-  fun isAnyFlowQueueActive(): Boolean
-
-  fun takeoverBlock(): TakeoverBlock?
-
-  fun seekTo(queueIndex: Int, playWhenReady: Boolean)
-
-  fun startQueue(items: List<MusicFlowItem>, startIndex: Int, playWhenReady: Boolean): Any
-
-  fun append(handle: Any, items: List<MusicFlowItem>)
-
-  fun setPauseAtEnd(handle: Any, pause: Boolean)
-
-  fun snapshot(): Any?
-
-  fun restore(snapshot: Any, playWhenReady: Boolean)
-
-  fun isPlaying(): Boolean
+    fun ownsQueue(handle: Any): Boolean
+    fun seekTo(queueIndex: Int, playWhenReady: Boolean)
+    suspend fun startQueue(
+        items: List<MusicFlowItem>,
+        startIndex: Int,
+        playWhenReady: Boolean,
+    ): Any
+    fun append(handle: Any, items: List<MusicFlowItem>)
+    fun setPauseAtEnd(handle: Any, pause: Boolean)
+    fun snapshot(): Any?
+    fun restore(snapshot: Any, playWhenReady: Boolean)
 }
 
 /**
- * Turns settled-page selections into commands on the single shared player. Requests carry a
- * monotonically increasing id; anything older than the newest request is dropped so a burst of
- * swipes can only ever command the final destination.
+ * Arbitrates feed selections against the player. Requests are numbered so a late answer to an old
+ * selection can never win over a newer one.
  */
 class MusicFlowCoordinator(
-  private val session: MusicFlowSession,
-  private val player: MusicFlowPlayer,
+    private val session: MusicFlowSession,
+    private val player: MusicFlowPlayer,
 ) {
-  private var latestRequestId = 0L
+    private var newestRequestId = 0L
+    private var handle: Any? = null
+    private var previousSnapshot: Any? = null
 
-  fun nextRequestId(): Long = ++latestRequestId
+    fun nextRequestId(): Long {
+        newestRequestId += 1
+        return newestRequestId
+    }
 
-  fun ownsPlayback(): Boolean = session.queueHandle?.let(player::ownsQueue) == true
+    suspend fun select(
+        requestId: Long,
+        item: MusicFlowItem,
+        autoNext: Boolean = true,
+        playWhenReady: Boolean = true,
+    ): MusicFlowPlaybackStatus {
+        if (requestId < newestRequestId) return MusicFlowPlaybackStatus.Switching
+        if (item.songId == player.currentMediaId) return MusicFlowPlaybackStatus.Synced
 
-  fun select(
-    requestId: Long,
-    songId: String,
-    playWhenReady: Boolean,
-    autoNext: Boolean,
-  ): MusicFlowPlaybackStatus {
-    if (requestId < latestRequestId) return MusicFlowPlaybackStatus.Switching
-    if (player.currentMediaId() == songId) return MusicFlowPlaybackStatus.Synced
+        val owned = handle?.let(player::ownsQueue) == true
+        if (owned) {
+            val index = player.queueMediaIds.indexOf(item.songId)
+            if (index >= 0) {
+                player.seekTo(index, playWhenReady)
+                return MusicFlowPlaybackStatus.Switching
+            }
+        }
 
-    val handle = session.queueHandle
-    if (handle != null && player.ownsQueue(handle)) {
-      val queueIndex = player.queueMediaIds().indexOf(songId)
-      if (queueIndex >= 0) {
-        player.seekTo(queueIndex, playWhenReady)
+        player.takeoverBlock?.let { return MusicFlowPlaybackStatus.Blocked(it) }
+
+        if (!player.isAnyFlowQueueActive) {
+            previousSnapshot = player.snapshot()
+        }
+
+        val items = session.queueHandle().items
+        val startIndex = items.indexOfFirst { it.songId == item.songId }.coerceAtLeast(0)
+        val newHandle = player.startQueue(items, startIndex, playWhenReady)
+        handle = newHandle
+        player.setPauseAtEnd(newHandle, !autoNext)
         return MusicFlowPlaybackStatus.Switching
-      }
     }
 
-    player.takeoverBlock()?.let {
-      return MusicFlowPlaybackStatus.Blocked(it)
+    fun applyAutoNext(autoNext: Boolean) {
+        handle?.let { player.setPauseAtEnd(it, !autoNext) }
     }
 
-    val items = session.state.value.items
-    val startIndex = items.indexOfFirst { it.songId == songId }
-    if (startIndex < 0) return MusicFlowPlaybackStatus.Idle
-
-    if (!player.isAnyFlowQueueActive()) {
-      session.queueSnapshot = player.snapshot()
+    fun appendIfOwned(items: List<MusicFlowItem>) {
+        val active = handle ?: return
+        if (player.ownsQueue(active)) player.append(active, items)
     }
-    val newHandle = player.startQueue(items, startIndex, playWhenReady)
-    session.queueHandle = newHandle
-    player.setPauseAtEnd(newHandle, !autoNext)
-    return MusicFlowPlaybackStatus.Switching
-  }
 
-  fun applyAutoNext(autoNext: Boolean) {
-    session.queueHandle?.takeIf(player::ownsQueue)?.let { player.setPauseAtEnd(it, !autoNext) }
-  }
+    val canRestorePreviousQueue: Boolean
+        get() {
+            val snapshot = previousSnapshot ?: return false
+            val active = handle ?: return false
+            return player.ownsQueue(active)
+        }
 
-  fun appendIfOwned(items: List<MusicFlowItem>) {
-    if (items.isEmpty()) return
-    session.queueHandle?.takeIf(player::ownsQueue)?.let { player.append(it, items) }
-  }
-
-  fun canRestorePreviousQueue(): Boolean = session.queueSnapshot != null && ownsPlayback()
-
-  /** Restores the queue that was playing before Flow took over, only while Flow still owns it. */
-  fun restorePreviousQueue(): Boolean {
-    val snapshot = session.queueSnapshot ?: return false
-    if (!ownsPlayback()) {
-      session.queueSnapshot = null
-      return false
+    fun restorePreviousQueue(playWhenReady: Boolean): Boolean {
+        if (!canRestorePreviousQueue) {
+            previousSnapshot = null
+            handle = null
+            return false
+        }
+        val snapshot = previousSnapshot ?: return false
+        player.restore(snapshot, playWhenReady)
+        previousSnapshot = null
+        handle = null
+        return true
     }
-    player.restore(snapshot, player.isPlaying())
-    session.queueSnapshot = null
-    session.queueHandle = null
-    return true
-  }
 
-  /**
-   * Drops the snapshot once another source (playlist, radio, cast, Listen Together) replaced the
-   * Flow queue.
-   */
-  fun invalidateIfSuperseded() {
-    val handle = session.queueHandle ?: return
-    if (!player.ownsQueue(handle)) {
-      session.queueHandle = null
-      session.queueSnapshot = null
+    fun invalidateIfSuperseded() {
+        val active = handle ?: return
+        if (!player.ownsQueue(active)) {
+            handle = null
+            previousSnapshot = null
+        }
     }
-  }
 }

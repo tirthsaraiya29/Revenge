@@ -1,28 +1,13 @@
-/*
- * Revenge (2026)
- * © Chartreux Westia — github.com/koiverse
- * GPL-3.0 License | Contributors: see git history
- * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
- */
-
 package com.revenge.music.spotify.models
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 @Serializable
-data class SpotifyTrack(
-  val id: String = "",
-  val name: String = "",
-  val artists: List<SpotifySimpleArtist> = emptyList(),
-  val album: SpotifySimpleAlbum? = null,
-  @SerialName("duration_ms") val durationMs: Int = 0,
-  val explicit: Boolean = false,
-  @SerialName("is_local") val isLocal: Boolean = false,
-  @SerialName("preview_url") val previewUrl: String? = null,
-  @SerialName("track_number") val trackNumber: Int? = null,
-  val uri: String? = null,
-  val popularity: Int? = null,
+data class SpotifyImage(
+  val url: String = "",
+  val height: Int? = null,
+  val width: Int? = null,
 )
 
 @Serializable
@@ -43,9 +28,23 @@ data class SpotifySimpleAlbum(
   val uri: String? = null,
 )
 
-/** Wrapper for the /me/tracks endpoint which returns SavedTrack objects */
+@Serializable
+data class SpotifyTrack(
+  val id: String = "",
+  val name: String = "",
+  val artists: List<SpotifySimpleArtist> = emptyList(),
+  val album: SpotifySimpleAlbum? = null,
+  @SerialName("duration_ms") val durationMs: Int = 0,
+  val explicit: Boolean = false,
+  @SerialName("is_local") val isLocal: Boolean = false,
+  @SerialName("preview_url") val previewUrl: String? = null,
+  @SerialName("track_number") val trackNumber: Int? = null,
+  val uri: String? = null,
+  val popularity: Int? = null,
+)
+
 @Serializable
 data class SpotifySavedTrack(
   @SerialName("added_at") val addedAt: String? = null,
-  val track: SpotifyTrack,
+  val track: SpotifyTrack = SpotifyTrack(),
 )

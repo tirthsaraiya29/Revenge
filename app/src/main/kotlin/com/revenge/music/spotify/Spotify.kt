@@ -1,1633 +1,991 @@
-/*
- * Revenge (2026)
- * © Chartreux Westia — github.com/koiverse
- * GPL-3.0 License | Contributors: see git history
- * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
- */
-
 package com.revenge.music.spotify
 
+import java.net.HttpURLConnection
+import java.net.URI
+import java.net.URLEncoder
+import java.time.ZoneId
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
 import com.revenge.music.spotify.models.SpotifyAlbum
 import com.revenge.music.spotify.models.SpotifyArtist
+import com.revenge.music.spotify.models.SpotifyHomeFeed
+import com.revenge.music.spotify.models.SpotifyHomeFeedItem
+import com.revenge.music.spotify.models.SpotifyHomeFeedSection
 import com.revenge.music.spotify.models.SpotifyImage
+import com.revenge.music.spotify.models.SpotifyLibraryFolder
+import com.revenge.music.spotify.models.SpotifyLibraryItem
 import com.revenge.music.spotify.models.SpotifyPaging
 import com.revenge.music.spotify.models.SpotifyPlaylist
 import com.revenge.music.spotify.models.SpotifyPlaylistOwner
 import com.revenge.music.spotify.models.SpotifyPlaylistTrack
 import com.revenge.music.spotify.models.SpotifyPlaylistTracksRef
 import com.revenge.music.spotify.models.SpotifyRecommendations
-import com.revenge.music.spotify.models.SpotifySavedTrack
 import com.revenge.music.spotify.models.SpotifySearchResult
 import com.revenge.music.spotify.models.SpotifySimpleAlbum
 import com.revenge.music.spotify.models.SpotifySimpleArtist
 import com.revenge.music.spotify.models.SpotifyTrack
 import com.revenge.music.spotify.models.SpotifyUser
-import io.ktor.client.HttpClient
-import io.ktor.client.call.body
-import io.ktor.client.engine.okhttp.OkHttp
-import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
-import io.ktor.client.plugins.defaultRequest
-import io.ktor.client.request.get
-import io.ktor.client.request.header
-import io.ktor.client.request.parameter
-import io.ktor.client.request.post
-import io.ktor.client.request.setBody
-import io.ktor.client.statement.bodyAsText
-import io.ktor.http.ContentType
-import io.ktor.http.HttpStatusCode
-import io.ktor.http.content.TextContent
-import io.ktor.serialization.kotlinx.json.json
-import kotlinx.coroutines.delay
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonNull
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.add
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.intOrNull
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
-import kotlinx.serialization.json.put
-import kotlinx.serialization.json.putJsonArray
-import kotlinx.serialization.json.putJsonObject
+
+data class PlaylistItemRef(val uri: String, val uid: String)
+
+data class ArtistTopTracksResponse(val tracks: List<SpotifyTrack> = emptyList())
+
+data class RelatedArtistsResponse(val artists: List<SpotifyArtist> = emptyList())
+
+data class NewReleasesResponse(val albums: SpotifyPaging<SpotifyAlbum>? = null)
 
 /**
- * Spotify API client that uses the internal GraphQL API (api-partner.spotify.com) for most
- * operations, falling back to the public REST API (api.spotify.com/v1/) only for endpoints without
- * a GraphQL equivalent (top tracks/artists, recommendations, related artists).
- *
- * GraphQL persisted-query hashes sourced from:
- * https://github.com/sonic-liberation/hetu_spotify_gql_client
+ * Client for Spotify's internal web-player endpoints. All public operations are [Result]-based;
+ * failures are [SpotifyException]. The HTTP transport is an internal seam so tests can drive the
+ * client with canned responses.
  */
 object Spotify {
+
+  private const val GRAPHQL_URL = "https://api-partner.spotify.com/pathfinder/v2/query"
+  private const val REST_BASE = "https://api.spotify.com/v1/"
+  private const val CHROME_UA =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) " +
+      "Chrome/126.0.0.0 Safari/537.36"
+
   @Volatile var accessToken: String? = null
-
-  private const val GQL_URL = "https://api-partner.spotify.com/pathfinder/v2/query"
-
-  private fun randomUserAgent(): String {
-    val osOptions =
-      arrayOf(
-        "Windows NT 10.0; Win64; x64",
-        "Macintosh; Intel Mac OS X 10_15_7",
-        "X11; Linux x86_64",
-      )
-    val chromeBase = 140
-    val chromeMajor = chromeBase - (0..4).random()
-    val chromePatch = (0..499).random()
-    val os = osOptions.random()
-    return "Mozilla/5.0 ($os) AppleWebKit/537.36 (KHTML, like Gecko) " +
-      "Chrome/$chromeMajor.0.$chromePatch.0 Safari/537.36"
-  }
-
-  private val json = Json {
-    isLenient = true
-    ignoreUnknownKeys = true
-    coerceInputValues = true
-  }
-
-  private val restClient by lazy {
-    HttpClient(OkHttp) {
-      install(ContentNegotiation) { json(json) }
-      defaultRequest {
-        url("https://api.spotify.com/v1/")
-        header("User-Agent", randomUserAgent())
-        header("app-platform", "WebPlayer")
-        header("Origin", "https://open.spotify.com")
-        header("Referer", "https://open.spotify.com/")
-      }
-      expectSuccess = false
-    }
-  }
-
-  private val gqlClient by lazy {
-    HttpClient(OkHttp) {
-      engine {
-        config {
-          connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
-          readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
-          writeTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
-        }
-      }
-      defaultRequest {
-        header("User-Agent", randomUserAgent())
-        header("app-platform", "WebPlayer")
-        header("Origin", "https://open.spotify.com")
-        header("Referer", "https://open.spotify.com/")
-        header("Accept", "application/json")
-      }
-      expectSuccess = false
-    }
-  }
-
-  class SpotifyException(
-    val statusCode: Int,
-    override val message: String,
-    val retryAfterSec: Long = 0,
-  ) : Exception(message)
 
   @Volatile var logger: ((level: String, message: String) -> Unit)? = null
 
-  private fun log(
-    level: String,
-    message: String,
-  ) {
-    logger?.invoke(level, message)
-  }
-
-  // ── JSON navigation helpers ──────────────────────────────────────────
-
-  private fun JsonObject.obj(key: String): JsonObject? =
-    try {
-      this[key]?.takeIf { it !is JsonNull }?.jsonObject
-    } catch (_: Exception) {
-      null
-    }
-
-  private fun JsonObject.str(key: String): String? =
-    try {
-      this[key]?.takeIf { it !is JsonNull }?.jsonPrimitive?.contentOrNull
-    } catch (_: Exception) {
-      null
-    }
-
-  private fun JsonObject.int(key: String): Int? =
-    try {
-      this[key]?.takeIf { it !is JsonNull }?.jsonPrimitive?.intOrNull
-    } catch (_: Exception) {
-      null
-    }
-
-  private fun JsonObject.arr(key: String): JsonArray? =
-    try {
-      this[key]?.takeIf { it !is JsonNull }?.jsonArray
-    } catch (_: Exception) {
-      null
-    }
-
-  // ── GraphQL core ─────────────────────────────────────────────────────
-
-  /**
-   * Callback invoked when a GQL hash is rejected (PersistedQueryNotFound). The app module sets this
-   * to trigger a remote hash refresh.
-   */
   @Volatile var onHashExpired: ((operationName: String) -> Unit)? = null
 
-  private suspend fun graphqlPost(
-    operationName: String,
-    variables: JsonObject = buildJsonObject {},
-  ): JsonObject {
-    val token =
-      accessToken
-        ?: throw SpotifyException(401, "Not authenticated").also {
-          log("E", "GQL $operationName — no token")
-        }
+  fun isAuthenticated(): Boolean = accessToken != null
 
-    val primaryHash = SpotifyHashProvider.getHash(operationName)
-    val hashCandidates = buildList {
-      add(primaryHash)
-      SpotifyHashProvider.getPreviousHash(operationName)?.let { prev ->
-        if (prev != primaryHash) add(prev)
-      }
-    }
+  class SpotifyException(
+    val statusCode: Int,
+    message: String,
+    val retryAfterSec: Long = 0,
+  ) : Exception(message)
 
-    for ((hashIdx, sha256Hash) in hashCandidates.withIndex()) {
-      val body = buildGqlBody(operationName, sha256Hash, variables)
-      val result = executeGqlWithRetries(operationName, token, body)
-
-      if (result.isPersistedQueryNotFound) {
-        if (hashIdx < hashCandidates.lastIndex) {
-          log("W", "GQL $operationName hash rejected, trying previous_hash")
-          continue
-        }
-        log("E", "GQL $operationName all known hashes rejected, triggering remote refresh")
-        onHashExpired?.invoke(operationName)
-        throw SpotifyException(
-          412,
-          "PersistedQueryNotFound for $operationName — hash may have rotated",
-        )
-      }
-
-      return result.json!!
-    }
-
-    throw SpotifyException(412, "No valid hash found for $operationName")
-  }
-
-  private fun buildGqlBody(
-    operationName: String,
-    sha256Hash: String,
-    variables: JsonObject,
-  ): JsonObject = buildJsonObject {
-    put("variables", variables)
-    put("operationName", operationName)
-    putJsonObject("extensions") {
-      putJsonObject("persistedQuery") {
-        put("version", 1)
-        put("sha256Hash", sha256Hash)
-      }
-    }
-  }
-
-  private class GqlResult(
-    val json: JsonObject?,
-    val isPersistedQueryNotFound: Boolean,
+  internal data class HttpRequest(
+    val method: String,
+    val url: String,
+    val headers: Map<String, String>,
+    val body: String? = null,
   )
 
-  private suspend fun executeGqlWithRetries(
-    operationName: String,
-    token: String,
-    body: JsonObject,
-  ): GqlResult {
-    val maxRetries = 3
-    for (attempt in 0 until maxRetries) {
-      log(
-        "D",
-        "GQL POST $operationName (token: ${token.take(8)}...)" +
-          if (attempt > 0) " [retry $attempt]" else "",
-      )
+  internal data class HttpResponse(
+    val status: Int,
+    val body: String,
+    val retryAfter: Long = 0,
+  )
 
-      val response =
-        gqlClient.post(GQL_URL) {
-          header("Authorization", "Bearer $token")
-          setBody(
-            TextContent(
-              body.toString(),
-              ContentType.Application.Json.withParameter("charset", "UTF-8"),
+  internal var transport: suspend (HttpRequest) -> HttpResponse = { realTransport(it) }
+
+  internal val json = Json {
+    ignoreUnknownKeys = true
+    isLenient = true
+  }
+
+  val defaultZoneId: String
+    get() = ZoneId.systemDefault().id
+
+  // ------------------------------------------------------------------ public operations
+
+  suspend fun me(): Result<SpotifyUser> =
+    graphql("profileAttributes", buildJsonObject {}).fold(
+      onSuccess = { data ->
+        val profile = data.obj("me")?.obj("profile")
+        if (profile == null) restMe()
+        else {
+          val uri = profile.str("uri")
+          Result.success(
+            SpotifyUser(
+              id = idFromUri(uri).ifBlank { profile.str("id").orEmpty() },
+              displayName = profile.str("name") ?: profile.obj("profile")?.str("name"),
+              images = imagesFrom(profile.obj("avatar")?.get("sources") ?: profile["images"]),
             ),
           )
         }
-
-      log("D", "GQL POST $operationName -> ${response.status.value}")
-
-      if (response.status == HttpStatusCode.Unauthorized) {
-        throw SpotifyException(401, "Token expired or invalid")
-      }
-      if (response.status == HttpStatusCode.TooManyRequests) {
-        val retryAfter = response.headers["Retry-After"]?.toLongOrNull() ?: (2L * (attempt + 1))
-        if (attempt < maxRetries - 1) {
-          log(
-            "W",
-            "GQL $operationName -> 429, waiting ${retryAfter}s (attempt ${attempt + 1}/$maxRetries)",
-          )
-          delay(retryAfter * 1000)
-          continue
-        }
-        throw SpotifyException(429, "Rate limited", retryAfterSec = retryAfter)
-      }
-      if (response.status == HttpStatusCode.PreconditionFailed) {
-        return GqlResult(json = null, isPersistedQueryNotFound = true)
-      }
-      if (response.status.value !in 200..299) {
-        val bodyText = response.bodyAsText()
-        log("E", "GQL $operationName FAILED: ${response.status.value} — ${bodyText.take(200)}")
-        throw SpotifyException(
-          response.status.value,
-          "GraphQL error ${response.status.value}: $bodyText",
-        )
-      }
-
-      val responseJson = json.parseToJsonElement(response.bodyAsText()).jsonObject
-
-      val errors = responseJson.arr("errors")
-      if (errors != null && errors.isNotEmpty()) {
-        val errorMsg = errors[0].jsonObject.str("message") ?: "Unknown GraphQL error"
-        if (errorMsg.contains("PersistedQueryNotFound", ignoreCase = true)) {
-          return GqlResult(json = null, isPersistedQueryNotFound = true)
-        }
-        log("E", "GQL $operationName returned error: $errorMsg")
-        throw SpotifyException(400, "GraphQL: $errorMsg")
-      }
-
-      return GqlResult(json = responseJson, isPersistedQueryNotFound = false)
-    }
-
-    throw SpotifyException(429, "Rate limited after $maxRetries retries")
-  }
-
-  // ── REST core (fallback for endpoints without GQL equivalent) ────────
-
-  private suspend inline fun <reified T> authenticatedGet(
-    endpoint: String,
-    failFastOn429: Boolean = false,
-    crossinline block: io.ktor.client.request.HttpRequestBuilder.() -> Unit = {},
-  ): T {
-    val token =
-      accessToken
-        ?: throw SpotifyException(401, "Not authenticated").also {
-          log("E", "REST $endpoint — no token")
-        }
-
-    val maxRetries = if (failFastOn429) 1 else 3
-    val maxRetryDelaySec = 3L
-    for (attempt in 0 until maxRetries) {
-      log(
-        "D",
-        "REST GET $endpoint (token: ${token.take(8)}...)" +
-          if (attempt > 0) " [retry $attempt]" else "",
-      )
-      val response =
-        restClient.get(endpoint) {
-          header("Authorization", "Bearer $token")
-          block()
-        }
-      log("D", "REST GET $endpoint -> ${response.status.value}")
-
-      if (response.status == HttpStatusCode.Unauthorized) {
-        throw SpotifyException(401, "Token expired or invalid")
-      }
-      if (response.status == HttpStatusCode.TooManyRequests) {
-        val retryAfter = response.headers["Retry-After"]?.toLongOrNull() ?: (2L * (attempt + 1))
-        if (failFastOn429 || retryAfter > maxRetryDelaySec) {
-          log("W", "REST $endpoint -> 429, failing fast (retryAfter=${retryAfter}s)")
-          throw SpotifyException(429, "Rate limited", retryAfterSec = retryAfter)
-        }
-        if (attempt < maxRetries - 1) {
-          log(
-            "W",
-            "REST $endpoint -> 429, waiting ${retryAfter}s (attempt ${attempt + 1}/$maxRetries)",
-          )
-          delay(retryAfter * 1000)
-          continue
-        }
-        throw SpotifyException(429, "Rate limited", retryAfterSec = retryAfter)
-      }
-      if (response.status.value !in 200..299) {
-        val bodyText = response.bodyAsText()
-        log("E", "REST $endpoint FAILED: ${response.status.value} — ${bodyText.take(200)}")
-        throw SpotifyException(
-          response.status.value,
-          "Spotify API error ${response.status.value}: $bodyText",
-        )
-      }
-      return response.body()
-    }
-
-    throw SpotifyException(429, "Rate limited after $maxRetries retries")
-  }
-
-  // ── GQL response converters ──────────────────────────────────────────
-
-  private fun parseGqlImage(source: JsonObject): SpotifyImage? {
-    val url = source.str("url") ?: return null
-    return SpotifyImage(url = url, height = source.int("height"), width = source.int("width"))
-  }
-
-  private fun parseGqlImages(sources: JsonArray?): List<SpotifyImage> =
-    sources?.mapNotNull { parseGqlImage(it.jsonObject) } ?: emptyList()
-
-  private fun parseGqlSimpleArtist(artistObj: JsonObject): SpotifySimpleArtist? {
-    val uri = artistObj.str("uri") ?: return null
-    return SpotifySimpleArtist(
-      id = uri.substringAfterLast(":"),
-      name = artistObj.obj("profile")?.str("name") ?: "",
-      uri = uri,
+      },
+      onFailure = { restMe() },
     )
-  }
 
-  /**
-   * Parses the common track data structure shared across multiple GQL operations (fetchPlaylist,
-   * fetchLibraryTracks, queryArtistOverview, etc.).
-   *
-   * @param albumOverride When non-null, used instead of the `albumOfTrack` field (needed for
-   *   album-track responses where no albumOfTrack is present).
-   * @param uriOverride When non-null, used as the track URI instead of reading it from [trackData].
-   *   Needed when the URI lives on a wrapper object (e.g. `track._uri`) rather than inside
-   *   `track.data`.
-   */
-  private fun parseGqlTrack(
-    trackData: JsonObject,
-    albumOverride: SpotifySimpleAlbum? = null,
-    uriOverride: String? = null,
-  ): SpotifyTrack {
-    val uri = uriOverride ?: trackData.str("uri") ?: trackData.str("_uri") ?: ""
-    val trackId = uri.substringAfterLast(":")
-
-    val artists =
-      trackData.obj("artists")?.arr("items")?.mapNotNull { elem ->
-        parseGqlSimpleArtist(elem.jsonObject)
-      } ?: emptyList()
-
-    val album =
-      albumOverride
-        ?: run {
-          val albumData = trackData.obj("albumOfTrack")
-          val albumUri = albumData?.str("uri") ?: ""
-          val albumId = albumUri.substringAfterLast(":")
-          SpotifySimpleAlbum(
-            id = albumId,
-            name = albumData?.str("name") ?: "",
-            images = parseGqlImages(albumData?.obj("coverArt")?.arr("sources")),
-            uri = albumUri.ifEmpty { null },
-          )
-        }
-
-    return SpotifyTrack(
-      id = trackId,
-      name = trackData.str("name") ?: "",
-      artists = artists,
-      album = album,
-      durationMs = parseGqlTrackDurationMs(trackData),
-      uri = uri.ifEmpty { null },
-    )
-  }
-
-  /**
-   * Extracts track duration in ms from GQL track payload. Tries multiple keys because different
-   * operations may return duration as nested (duration.totalMilliseconds) or flat (durationMs /
-   * duration_ms).
-   */
-  private fun parseGqlTrackDurationMs(trackData: JsonObject): Int {
-    // Direct or nested trackDuration/duration objects
-    trackData.obj("trackDuration")?.int("totalMilliseconds")?.let { if (it > 0) return it }
-    trackData.obj("duration")?.int("totalMilliseconds")?.let { if (it > 0) return it }
-    trackData.obj("track")?.obj("trackDuration")?.int("totalMilliseconds")?.let {
-      if (it > 0) return it
-    }
-    trackData.obj("track")?.obj("duration")?.int("totalMilliseconds")?.let { if (it > 0) return it }
-    // Flat milliseconds fields
-    trackData.int("durationMs")?.let { if (it > 0) return it }
-    trackData.int("duration_ms")?.let { if (it > 0) return it }
-    trackData.obj("track")?.int("duration_ms")?.let { if (it > 0) return it }
-    trackData.obj("track")?.int("durationMs")?.let { if (it > 0) return it }
-    // Some APIs return duration in seconds
-    trackData.int("duration")?.let { sec -> if (sec > 0) return sec * 1000 }
-    trackData.obj("track")?.int("duration")?.let { sec -> if (sec > 0) return sec * 1000 }
-    return 0
-  }
-
-  /**
-   * Flattens the nested `images.items[].sources[]` structure used by playlists in the GQL response.
-   */
-  private fun parseGqlPlaylistImages(imagesObj: JsonObject?): List<SpotifyImage> =
-    imagesObj?.arr("items")?.flatMap { imageGroup ->
-      parseGqlImages(imageGroup.jsonObject.arr("sources"))
-    } ?: emptyList()
-
-  // ── User Profile (GQL with REST fallback) ──────────────────────────
-
-  suspend fun me(): Result<SpotifyUser> = runCatching {
-    try {
-      val response = graphqlPost(operationName = "profileAttributes")
-      val profile =
-        response.obj("data")?.obj("me")?.obj("profile")
-          ?: throw SpotifyException(500, "Invalid profileAttributes response")
-
-      val uri = profile.str("uri") ?: ""
+  private suspend fun restMe(): Result<SpotifyUser> =
+    rest("GET", "me").map { body ->
       SpotifyUser(
-        id = uri.substringAfterLast(":"),
-        displayName = profile.str("name"),
-        email = null,
-        images = parseGqlImages(profile.obj("avatar")?.arr("sources")),
+        id = body.str("id").orEmpty(),
+        displayName = body.str("display_name"),
+        email = body.str("email"),
+        images = imagesFrom(body["images"]),
+        product = body.str("product"),
+        country = body.str("country"),
       )
-    } catch (e: Exception) {
-      log("W", "GQL me() failed, falling back to REST: ${e.message}")
-      authenticatedGet<SpotifyUser>("me")
     }
-  }
-
-  // ── Playlists (GQL: libraryV3) ──────────────────────────────────────
 
   suspend fun myPlaylists(
     limit: Int = 50,
     offset: Int = 0,
-  ): Result<SpotifyPaging<SpotifyPlaylist>> = runCatching {
-    val vars = buildJsonObject {
-      putJsonArray("filters") { add("Playlists") }
-      put("order", null as String?)
-      put("textFilter", "")
-      putJsonArray("features") {
-        add("LIKED_SONGS")
-        add("YOUR_EPISODES_V2")
-        add("PRERELEASES")
-        add("EVENTS")
-      }
-      put("limit", limit)
-      put("offset", offset)
-      // Ask Spotify to return every leaf playlist regardless of folder
-      // nesting. Without flatten=true the response only contains root-
-      // level items: top-level playlists plus FolderResponseWrapper
-      // entries whose contents are never expanded — the parser below
-      // ignores non-PlaylistResponseWrapper items, so anything inside
-      // a folder would otherwise be invisible (issues #46, #78).
-      put("flatten", true)
-      putJsonArray("expandedFolders") {}
-      put("folderUri", null as String?)
-      put("includeFoldersWhenFlattening", false)
+  ): Result<SpotifyPaging<SpotifyPlaylist>> =
+    library(limit = limit, offset = offset, flatten = true, folderUri = null) { wrapper ->
+      val data = wrapper.obj("data") ?: return@library null
+      val typename = data.str("__typename")
+      data.str("__typename")?.let { if (it != "Playlist") return@library null }
+      if (typename == null && data.obj("ownerV2") == null) return@library null
+      parsePlaylist(data)
     }
 
-    val response =
-      graphqlPost(
-        operationName = "libraryV3",
-        variables = vars,
-      )
-
-    val libraryData =
-      response.obj("data")?.obj("me")?.obj("libraryV3")
-        ?: throw SpotifyException(500, "Invalid libraryV3 response")
-
-    val totalCount = libraryData.int("totalCount") ?: 0
-    val pagingInfo = libraryData.obj("pagingInfo")
-
-    val playlists =
-      libraryData.arr("items")?.mapNotNull { itemElem ->
-        val wrapper = itemElem.jsonObject.obj("item") ?: return@mapNotNull null
-        if (wrapper.str("__typename") != "PlaylistResponseWrapper") return@mapNotNull null
-        parsePlaylistWrapper(wrapper)
-      } ?: emptyList()
-
-    SpotifyPaging(
-      items = playlists,
-      total = totalCount,
-      limit = pagingInfo?.int("limit") ?: limit,
-      offset = pagingInfo?.int("offset") ?: offset,
-    )
-  }
-
-  // ── Library hierarchy (GQL: libraryV3, folders preserved) ───────────
-
-  /**
-   * Returns one level of the user's library tree. When [folderUri] is null the response is the
-   * library root: top-level playlists plus folder containers. When [folderUri] is set, Spotify
-   * treats that folder as the root and returns its direct children (which may include sub-folders).
-   *
-   * Use this for UIs that want to mirror the user's folder organization. For a flat list of every
-   * playlist regardless of nesting, use [myPlaylists].
-   */
   suspend fun myLibraryNode(
     folderUri: String? = null,
     limit: Int = 50,
     offset: Int = 0,
-  ): Result<SpotifyPaging<com.revenge.music.spotify.models.SpotifyLibraryItem>> = runCatching {
-    val vars = buildJsonObject {
-      putJsonArray("filters") { add("Playlists") }
-      put("order", null as String?)
-      put("textFilter", "")
-      putJsonArray("features") {
-        add("LIKED_SONGS")
-        add("YOUR_EPISODES_V2")
-        add("PRERELEASES")
-        add("EVENTS")
-      }
-      put("limit", limit)
-      put("offset", offset)
-      // flatten=false preserves folder boundaries; folderUri scopes
-      // the response to a single level (null = root).
-      put("flatten", false)
-      putJsonArray("expandedFolders") {}
-      if (folderUri != null) put("folderUri", folderUri) else put("folderUri", null as String?)
-      put("includeFoldersWhenFlattening", true)
-    }
-
-    val response =
-      graphqlPost(
-        operationName = "libraryV3",
-        variables = vars,
-      )
-
-    val libraryData =
-      response.obj("data")?.obj("me")?.obj("libraryV3")
-        ?: throw SpotifyException(500, "Invalid libraryV3 response")
-
-    val totalCount = libraryData.int("totalCount") ?: 0
-    val pagingInfo = libraryData.obj("pagingInfo")
-
-    val rawItems = libraryData.arr("items").orEmpty()
-    // Diagnostic: dump every wrapper's __typename so we can spot any
-    // schema variation Spotify ships (the names have shifted historically).
-    // Trim once we're confident the recognized set is stable.
-    log("D", "myLibraryNode(folder=$folderUri): ${rawItems.size} raw items")
-    val typeCounts = mutableMapOf<String, Int>()
-    rawItems.forEach { itemElem ->
-      val wrapper = itemElem.jsonObject.obj("item")
-      val tn = wrapper?.str("__typename") ?: "<missing>"
-      typeCounts[tn] = (typeCounts[tn] ?: 0) + 1
-    }
-    log("D", "myLibraryNode: typename counts = $typeCounts")
-
-    val items = rawItems.mapNotNull { itemElem ->
-      val wrapper = itemElem.jsonObject.obj("item") ?: return@mapNotNull null
-      val typeName = wrapper.str("__typename") ?: ""
-      when {
-        typeName == "PlaylistResponseWrapper" || typeName.contains("Playlist", ignoreCase = true) ->
-          parsePlaylistWrapper(wrapper)?.let {
-            com.revenge.music.spotify.models.SpotifyLibraryItem.Playlist(it)
-          }
-        typeName == "FolderResponseWrapper" || typeName.contains("Folder", ignoreCase = true) ->
-          parseFolderWrapper(wrapper)?.let {
-            com.revenge.music.spotify.models.SpotifyLibraryItem.Folder(it)
-          }
-            ?: run {
-              // Folder typename matched but parsing returned null —
-              // likely a shape we don't know. Dump the keys so we
-              // can update parseFolderWrapper.
-              log(
-                "W",
-                "myLibraryNode: failed to parse folder wrapper, keys=${wrapper.keys}, dataKeys=${wrapper.obj("data")?.keys}",
-              )
-              null
-            }
-        else -> {
-          log("D", "myLibraryNode: skipping unknown __typename='$typeName'")
-          null
-        }
+  ): Result<SpotifyPaging<SpotifyLibraryItem>> =
+    library(limit = limit, offset = offset, flatten = false, folderUri = folderUri) { wrapper ->
+      val data = wrapper.obj("data") ?: return@library null
+      when (data.str("__typename")) {
+        "Playlist" -> SpotifyLibraryItem.Playlist(parsePlaylist(data))
+        "Folder" -> SpotifyLibraryItem.Folder(
+          SpotifyLibraryFolder(
+            uri = data.str("uri").orEmpty(),
+            name = data.str("name").orEmpty(),
+            totalChildren = data.int("totalCount") ?: 0,
+          ),
+        )
+        else -> null
       }
     }
-
-    SpotifyPaging(
-      items = items,
-      total = totalCount,
-      limit = pagingInfo?.int("limit") ?: limit,
-      offset = pagingInfo?.int("offset") ?: offset,
-    )
-  }
-
-  private fun parsePlaylistWrapper(wrapper: JsonObject): SpotifyPlaylist? {
-    val data = wrapper.obj("data") ?: return null
-    if (data.str("__typename") != "Playlist") return null
-    val playlistUri = wrapper.str("_uri") ?: return null
-    val playlistId = playlistUri.substringAfterLast(":")
-    val ownerData = data.obj("ownerV2")?.obj("data")
-    val ownerId = ownerData?.str("uri")?.substringAfterLast(":") ?: ownerData?.str("id") ?: ""
-    return SpotifyPlaylist(
-      id = playlistId,
-      name = data.str("name") ?: "",
-      description = data.str("description"),
-      images = parseGqlPlaylistImages(data.obj("images")),
-      owner =
-        SpotifyPlaylistOwner(
-          id = ownerId,
-          displayName = ownerData?.str("name"),
-          uri = ownerData?.str("uri"),
-        ),
-      tracks = SpotifyPlaylistTracksRef(total = parsePlaylistTrackCount(data)),
-      uri = playlistUri,
-    )
-  }
-
-  private fun parsePlaylistTrackCount(data: JsonObject): Int? =
-    data.obj("content")?.int("totalCount")
-      ?: data.obj("contents")?.int("totalCount")
-      ?: data.obj("tracks")?.int("totalCount")
-      ?: data.obj("tracksV2")?.int("totalCount")
-      ?: data.int("totalCount")
-      ?: data.int("trackCount")
-      ?: data.int("numTracks")
-
-  private fun parseFolderWrapper(
-    wrapper: JsonObject,
-  ): com.revenge.music.spotify.models.SpotifyLibraryFolder? {
-    val uri = wrapper.str("_uri") ?: return null
-    // Spotify has shipped this object under several shapes over time; the name
-    // and child count have lived in `data` and at the root of the wrapper.
-    // Try both so we don't break on a future field reshuffle.
-    val name = wrapper.obj("data")?.str("name") ?: wrapper.str("name") ?: return null
-    val total =
-      wrapper.obj("data")?.int("totalLength")
-        ?: wrapper.obj("data")?.int("numberOfItems")
-        ?: wrapper.int("totalLength")
-        ?: 0
-    return com.revenge.music.spotify.models.SpotifyLibraryFolder(
-      uri = uri,
-      name = name,
-      totalChildren = total,
-    )
-  }
-
-  // ── Library Artists (GQL: libraryV3 with Artists filter) ───────────
 
   suspend fun myArtists(
     limit: Int = 50,
     offset: Int = 0,
-  ): Result<SpotifyPaging<SpotifyArtist>> = runCatching {
-    val vars = buildJsonObject {
-      putJsonArray("filters") { add("Artists") }
-      put("order", null as String?)
-      put("textFilter", "")
-      putJsonArray("features") {
-        add("LIKED_SONGS")
-        add("YOUR_EPISODES_V2")
-        add("PRERELEASES")
-        add("EVENTS")
-      }
-      put("limit", limit)
-      put("offset", offset)
-      put("flatten", false)
-      putJsonArray("expandedFolders") {}
-      put("folderUri", null as String?)
-      put("includeFoldersWhenFlattening", true)
+  ): Result<SpotifyPaging<SpotifyArtist>> =
+    library(limit = limit, offset = offset, flatten = true, folderUri = null) { wrapper ->
+      val data = wrapper.obj("data") ?: return@library null
+      val typename = data.str("__typename").orEmpty()
+      if (!typename.contains("Artist")) return@library null
+      parseArtist(data)
     }
 
-    val response =
-      graphqlPost(
-        operationName = "libraryV3",
-        variables = vars,
+  private suspend fun <T> library(
+    limit: Int,
+    offset: Int,
+    flatten: Boolean,
+    folderUri: String?,
+    item: (JsonObject) -> T?,
+  ): Result<SpotifyPaging<T>> =
+    graphql(
+        "libraryV3",
+        buildJsonObject {
+          put("limit", limit)
+          put("offset", offset)
+          put("flatten", flatten)
+          folderUri?.let { put("folderUri", it) }
+        },
       )
-
-    val libraryData =
-      response.obj("data")?.obj("me")?.obj("libraryV3")
-        ?: throw SpotifyException(500, "Invalid libraryV3 response")
-
-    val totalCount = libraryData.int("totalCount") ?: 0
-    val pagingInfo = libraryData.obj("pagingInfo")
-
-    val artists =
-      libraryData.arr("items")?.mapNotNull { itemElem ->
-        val wrapper = itemElem.jsonObject.obj("item") ?: return@mapNotNull null
-        val typeName = wrapper.str("__typename") ?: ""
-        if (!typeName.contains("Artist", ignoreCase = true)) return@mapNotNull null
-        val data = wrapper.obj("data") ?: return@mapNotNull null
-
-        val artistUri = wrapper.str("_uri") ?: data.str("uri") ?: return@mapNotNull null
-        val artistId = artistUri.substringAfterLast(":")
-
-        val name = data.obj("profile")?.str("name") ?: data.str("name") ?: return@mapNotNull null
-
-        val images =
-          data.obj("visuals")?.obj("avatarImage")?.arr("sources")?.let { parseGqlImages(it) }
-            ?: emptyList()
-
-        SpotifyArtist(
-          id = artistId,
-          name = name,
-          images = images,
-          uri = artistUri,
+      .map { data ->
+        val root = data.obj("me")?.obj("libraryV3")
+          ?: throw SpotifyException(500, "Invalid libraryV3 response")
+        val items = root.arr("items").mapNotNull { it.asObj()?.let(item) }
+        val paging = root.obj("pagingInfo")
+        SpotifyPaging(
+          items = items,
+          total = root.int("totalCount") ?: items.size,
+          limit = paging?.int("limit") ?: limit,
+          offset = paging?.int("offset") ?: offset,
         )
-      } ?: emptyList()
+      }
 
-    SpotifyPaging(
-      items = artists,
-      total = totalCount,
-      limit = pagingInfo?.int("limit") ?: limit,
-      offset = pagingInfo?.int("offset") ?: offset,
-    )
-  }
-
-  // ── Playlist detail (GQL: fetchPlaylist) ────────────────────────────
-
-  suspend fun playlist(playlistId: String): Result<SpotifyPlaylist> = runCatching {
-    val vars = buildJsonObject {
-      put("uri", "spotify:playlist:$playlistId")
-      put("offset", 0)
-      put("limit", 25)
-      put("enableWatchFeedEntrypoint", true)
-    }
-
-    val response =
-      graphqlPost(
-        operationName = "fetchPlaylist",
-        variables = vars,
+  suspend fun playlist(playlistId: String): Result<SpotifyPlaylist> =
+    graphql(
+        "fetchPlaylist",
+        buildJsonObject {
+          put("uri", "spotify:playlist:$playlistId")
+          put("limit", 25)
+        },
       )
-
-    val playlist =
-      response.obj("data")?.obj("playlistV2")
-        ?: throw SpotifyException(500, "Invalid fetchPlaylist response")
-
-    val ownerData = playlist.obj("ownerV2")?.obj("data")
-    val ownerUri = ownerData?.str("uri") ?: ""
-
-    val images =
-      playlist.obj("images")?.arr("items")?.firstOrNull()?.let {
-        parseGqlImages(it.jsonObject.arr("sources"))
-      } ?: emptyList()
-
-    SpotifyPlaylist(
-      id = playlistId,
-      name = playlist.str("name") ?: "",
-      description = playlist.str("description"),
-      images = images,
-      owner =
-        SpotifyPlaylistOwner(
-          id = ownerUri.substringAfterLast(":"),
-          displayName = ownerData?.str("name"),
-          uri = ownerUri.ifEmpty { null },
-        ),
-      tracks = SpotifyPlaylistTracksRef(total = parsePlaylistTrackCount(playlist)),
-      collaborative = (playlist.obj("members")?.arr("items")?.size ?: 0) > 1,
-    )
-  }
+      .map { data ->
+        val union = data.obj("playlistV2")
+          ?: throw SpotifyException(500, "Invalid fetchPlaylist response")
+        parsePlaylist(union)
+      }
 
   suspend fun playlistTracks(
     playlistId: String,
     limit: Int = 100,
     offset: Int = 0,
-  ): Result<SpotifyPaging<SpotifyPlaylistTrack>> = runCatching {
-    val vars = buildJsonObject {
-      put("uri", "spotify:playlist:$playlistId")
-      put("offset", offset)
-      put("limit", limit)
-      put("enableWatchFeedEntrypoint", false)
-    }
-
-    val response =
-      graphqlPost(
-        operationName = "fetchPlaylist",
-        variables = vars,
+  ): Result<SpotifyPaging<SpotifyPlaylistTrack>> =
+    graphql(
+        "fetchPlaylist",
+        buildJsonObject {
+          put("uri", "spotify:playlist:$playlistId")
+          put("limit", limit)
+          put("offset", offset)
+        },
       )
-
-    val content =
-      response.obj("data")?.obj("playlistV2")?.obj("content")
-        ?: throw SpotifyException(500, "No content in fetchPlaylist response")
-
-    val tracks =
-      content.arr("items")?.mapNotNull { elem ->
-        val itemWrapper = elem.jsonObject.obj("itemV2") ?: return@mapNotNull null
-        val itemData = itemWrapper.obj("data") ?: return@mapNotNull null
-        val wrapperUri = itemWrapper.str("_uri") ?: itemWrapper.str("uri")
-        val uid = elem.jsonObject.str("uid") ?: itemWrapper.str("uid")
-        SpotifyPlaylistTrack(
-          track = parseGqlTrack(itemData, uriOverride = wrapperUri),
-          uid = uid,
+      .map { data ->
+        val content = data.obj("playlistV2")?.obj("content")
+          ?: throw SpotifyException(500, "Invalid fetchPlaylist response")
+        val items = content.arr("items").mapNotNull { element ->
+          val outer = element.asObj() ?: return@mapNotNull null
+          val inner = outer.obj("itemV2") ?: return@mapNotNull null
+          val trackData = inner.obj("data")?.let { parseTrack(it) } ?: return@mapNotNull null
+          SpotifyPlaylistTrack(
+            uid = outer.str("uid") ?: inner.str("uid") ?: trackData.uri?.let(::idFromUri),
+            track = trackData,
+            isLocal = trackData.isLocal,
+          )
+        }
+        SpotifyPaging(
+          items = items,
+          total = content.int("totalCount") ?: items.size,
+          limit = limit,
+          offset = offset,
         )
-      } ?: emptyList()
-
-    SpotifyPaging(
-      items = tracks,
-      total = content.int("totalCount") ?: 0,
-      limit = limit,
-      offset = offset,
-    )
-  }
-
-  // ── Playlist Mutations (GQL) ──────────────────────────────────────
-
-  /**
-   * Adds tracks to a Spotify playlist via GQL mutation.
-   *
-   * @param playlistId Playlist ID (without the `spotify:playlist:` prefix).
-   * @param trackUris Full Spotify URIs, e.g. `["spotify:track:abc123"]`.
-   */
-  suspend fun addTracksToPlaylist(
-    playlistId: String,
-    trackUris: List<String>,
-  ): Result<Unit> = runCatching {
-    val vars = buildJsonObject {
-      put("playlistUri", "spotify:playlist:$playlistId")
-      putJsonArray("playlistItemUris") { trackUris.forEach { add(it) } }
-      putJsonObject("newPosition") {
-        put("moveType", "BOTTOM_OF_PLAYLIST")
-        put("fromUid", JsonNull)
       }
-    }
-    log(
-      "D",
-      "addTracksToPlaylist: sending mutation for $playlistId with ${trackUris.size} tracks, vars=$vars",
-    )
-    kotlinx.coroutines.withTimeout(20_000L) {
-      graphqlPost(
-        operationName = "addToPlaylist",
-        variables = vars,
-      )
-    }
-    log("D", "addTracksToPlaylist: added ${trackUris.size} tracks to $playlistId")
-  }
 
-  /**
-   * Removes tracks from a Spotify playlist via GQL mutation. Requires the playlist-scoped [uid] for
-   * each item (returned by fetchPlaylist in each content item).
-   */
+  suspend fun addTracksToPlaylist(playlistId: String, trackUris: List<String>): Result<Unit> =
+    withTimeout(20_000) {
+      graphql(
+          "addToPlaylist",
+          buildJsonObject {
+            put("playlistUri", "spotify:playlist:$playlistId")
+            put("playlistItemUris", buildJsonArray { trackUris.forEach { add(JsonPrimitive(it)) } })
+            put("newPosition", "BOTTOM_OF_PLAYLIST")
+          },
+        )
+        .map { }
+    }
+
   suspend fun removeTracksFromPlaylist(
     playlistId: String,
     items: List<PlaylistItemRef>,
-  ): Result<Unit> = runCatching {
-    val vars = buildJsonObject {
-      put("playlistUri", "spotify:playlist:$playlistId")
-      putJsonArray("uids") { items.forEach { item -> add(item.uid) } }
-    }
-    graphqlPost(
-      operationName = "removeFromPlaylist",
-      variables = vars,
-    )
-    log("D", "removeTracksFromPlaylist: removed ${items.size} items from $playlistId")
-  }
+  ): Result<Unit> =
+    graphql(
+        "removeFromPlaylist",
+        buildJsonObject {
+          put("playlistUri", "spotify:playlist:$playlistId")
+          put(
+            "items",
+            buildJsonArray {
+              items.forEach { item ->
+                add(buildJsonObject { put("uid", item.uid) })
+              }
+            },
+          )
+        },
+      )
+      .map { }
 
-  /**
-   * Moves items within a Spotify playlist via GQL mutation. [uids] are playlist-scoped item
-   * identifiers returned by fetchPlaylist. [beforeUid] is the uid of the item the moved items
-   * should be placed before, or null to move to the end of the playlist.
-   */
   suspend fun moveItemsInPlaylist(
     playlistId: String,
     uids: List<String>,
     beforeUid: String?,
-  ): Result<Unit> = runCatching {
-    val vars = buildJsonObject {
-      put("playlistUri", "spotify:playlist:$playlistId")
-      putJsonArray("uids") { uids.forEach { add(it) } }
-      putJsonObject("newPosition") {
-        if (beforeUid != null) {
-          put("moveType", "BEFORE_UID")
-          put("fromUid", beforeUid)
-        } else {
-          put("moveType", "BOTTOM_OF_PLAYLIST")
-          put("fromUid", JsonNull)
-        }
-      }
-    }
-    graphqlPost(
-      operationName = "moveItemsInPlaylist",
-      variables = vars,
-    )
-    log("D", "moveItemsInPlaylist: moved ${uids.size} items (before=$beforeUid) in $playlistId")
-  }
+  ): Result<Unit> =
+    graphql(
+        "moveItemsInPlaylist",
+        buildJsonObject {
+          put("playlistUri", "spotify:playlist:$playlistId")
+          put("uids", buildJsonArray { uids.forEach { add(JsonPrimitive(it)) } })
+          if (beforeUid != null) {
+            put("beforeUid", beforeUid)
+            put("position", "BEFORE_UID")
+          } else {
+            put("position", "BOTTOM_OF_PLAYLIST")
+          }
+        },
+      )
+      .map { }
 
-  /** Renames a playlist and/or updates its description via GQL mutation. */
   suspend fun editPlaylistAttributes(
     playlistId: String,
     newName: String? = null,
     newDescription: String? = null,
-  ): Result<Unit> = runCatching {
-    val vars = buildJsonObject {
-      put("playlistUri", "spotify:playlist:$playlistId")
-      if (newName != null) put("newName", newName)
-      if (newDescription != null) put("newDescription", newDescription)
-    }
-    graphqlPost(
-      operationName = "editPlaylistAttributes",
-      variables = vars,
-    )
-    log("D", "editPlaylistAttributes: updated $playlistId (name=$newName)")
-  }
-
-  /** Reference to a specific item inside a playlist, needed for removal/reorder. */
-  data class PlaylistItemRef(
-    val uri: String,
-    val uid: String,
-  )
-
-  // ── Liked Songs (GQL: fetchLibraryTracks) ───────────────────────────
+  ): Result<Unit> =
+    graphql(
+        "editPlaylistAttributes",
+        buildJsonObject {
+          put("playlistUri", "spotify:playlist:$playlistId")
+          newName?.let { put("name", it) }
+          newDescription?.let { put("description", it) }
+        },
+      )
+      .map { }
 
   suspend fun likedSongs(
     limit: Int = 50,
     offset: Int = 0,
-  ): Result<SpotifyPaging<SpotifySavedTrack>> = runCatching {
-    val vars = buildJsonObject {
-      put("offset", offset)
-      put("limit", limit)
-    }
-
-    val response =
-      graphqlPost(
-        operationName = "fetchLibraryTracks",
-        variables = vars,
+  ): Result<SpotifyPaging<SpotifySavedTrack>> =
+    graphql(
+        "fetchLibraryTracks",
+        buildJsonObject {
+          put("limit", limit)
+          put("offset", offset)
+        },
       )
+      .map { data ->
+        val tracks = data.obj("me")?.obj("library")?.obj("tracks")
+          ?: throw SpotifyException(500, "Invalid fetchLibraryTracks response")
+        val items = tracks.arr("items").mapNotNull { element ->
+          val track = element.asObj()?.obj("track")?.obj("data")?.let(::parseTrack)
+            ?: return@mapNotNull null
+          SpotifySavedTrack(track = track)
+        }
+        SpotifyPaging(items = items, total = tracks.int("totalCount") ?: items.size, limit = limit, offset = offset)
+      }
 
-    val tracksData =
-      response.obj("data")?.obj("me")?.obj("library")?.obj("tracks")
-        ?: throw SpotifyException(500, "Invalid fetchLibraryTracks response")
+  suspend fun addToLibrary(uris: List<String>): Result<Unit> =
+    graphql("addToLibrary", libraryUris(uris)).map { }
 
-    val savedTracks =
-      tracksData.arr("items")?.mapNotNull { elem ->
-        val trackWrapper = elem.jsonObject.obj("track") ?: return@mapNotNull null
-        val trackData = trackWrapper.obj("data") ?: return@mapNotNull null
-        val wrapperUri = trackWrapper.str("_uri") ?: trackWrapper.str("uri")
-        SpotifySavedTrack(track = parseGqlTrack(trackData, uriOverride = wrapperUri))
-      } ?: emptyList()
+  suspend fun removeFromLibrary(uris: List<String>): Result<Unit> =
+    graphql("removeFromLibrary", libraryUris(uris)).map { }
 
-    SpotifyPaging(
-      items = savedTracks,
-      total = tracksData.int("totalCount") ?: 0,
-      limit = limit,
-      offset = offset,
-    )
-  }
-
-  // ── Library Mutations (GQL: addToLibrary / removeFromLibrary) ──────
-
-  /**
-   * Saves tracks/albums/playlists to the user's Spotify library (like).
-   *
-   * @param uris Full Spotify URIs, e.g. `["spotify:track:abc123"]`.
-   */
-  suspend fun addToLibrary(uris: List<String>): Result<Unit> = runCatching {
-    val vars = buildJsonObject { putJsonArray("libraryItemUris") { uris.forEach { add(it) } } }
-    graphqlPost(
-      operationName = "addToLibrary",
-      variables = vars,
-    )
-    log("D", "addToLibrary: added ${uris.size} items")
-  }
-
-  /**
-   * Removes tracks/albums/playlists from the user's Spotify library (unlike).
-   *
-   * @param uris Full Spotify URIs, e.g. `["spotify:track:abc123"]`.
-   */
-  suspend fun removeFromLibrary(uris: List<String>): Result<Unit> = runCatching {
-    val vars = buildJsonObject { putJsonArray("libraryItemUris") { uris.forEach { add(it) } } }
-    graphqlPost(
-      operationName = "removeFromLibrary",
-      variables = vars,
-    )
-    log("D", "removeFromLibrary: removed ${uris.size} items")
-  }
-
-  // ── Top Tracks (REST fallback — no GQL equivalent) ──────────────────
+  private fun libraryUris(uris: List<String>) =
+    buildJsonObject {
+      put("libraryItemUris", buildJsonArray { uris.forEach { add(JsonPrimitive(it)) } })
+    }
 
   suspend fun topTracks(
     timeRange: String = "medium_term",
     limit: Int = 50,
     offset: Int = 0,
-  ): Result<SpotifyPaging<SpotifyTrack>> = runCatching {
-    authenticatedGet("me/top/tracks", failFastOn429 = true) {
-      parameter("time_range", timeRange)
-      parameter("limit", limit)
-      parameter("offset", offset)
-    }
-  }
-
-  // ── Top Artists (REST fallback — no GQL equivalent) ─────────────────
+  ): Result<SpotifyPaging<SpotifyTrack>> =
+    rest(
+        "GET",
+        "me/top/tracks?time_range=${encode(timeRange)}&limit=$limit&offset=$offset",
+        failFastOn429 = true,
+      )
+      .map { pagingOf(it, ::parseTrack) }
 
   suspend fun topArtists(
     timeRange: String = "medium_term",
     limit: Int = 50,
     offset: Int = 0,
-  ): Result<SpotifyPaging<SpotifyArtist>> = runCatching {
-    authenticatedGet("me/top/artists", failFastOn429 = true) {
-      parameter("time_range", timeRange)
-      parameter("limit", limit)
-      parameter("offset", offset)
-    }
-  }
-
-  // ── Recommendations (REST fallback — no GQL equivalent) ─────────────
+  ): Result<SpotifyPaging<SpotifyArtist>> =
+    rest(
+        "GET",
+        "me/top/artists?time_range=${encode(timeRange)}&limit=$limit&offset=$offset",
+        failFastOn429 = true,
+      )
+      .map { pagingOf(it, ::parseArtist) }
 
   suspend fun recommendations(
     seedTrackIds: List<String> = emptyList(),
     seedArtistIds: List<String> = emptyList(),
     seedGenres: List<String> = emptyList(),
     limit: Int = 50,
-  ): Result<SpotifyRecommendations> = runCatching {
-    authenticatedGet("recommendations") {
-      if (seedTrackIds.isNotEmpty()) parameter("seed_tracks", seedTrackIds.joinToString(","))
-      if (seedArtistIds.isNotEmpty()) parameter("seed_artists", seedArtistIds.joinToString(","))
-      if (seedGenres.isNotEmpty()) parameter("seed_genres", seedGenres.joinToString(","))
-      parameter("limit", limit)
-    }
+  ): Result<SpotifyRecommendations> {
+    val seeds =
+      buildList {
+        seedTrackIds.forEach { add(it) }
+        seedArtistIds.forEach { add(it) }
+        seedGenres.forEach { add(it) }
+      }.joinToString(",")
+    return rest(
+        "GET",
+        "recommendations?limit=$limit&seed_tracks=${encode(seedTrackIds.joinToString(","))}" +
+          "&seed_artists=${encode(seedArtistIds.joinToString(","))}" +
+          "&seed_genres=${encode(seedGenres.joinToString(","))}",
+      )
+      .map { body ->
+        SpotifyRecommendations(
+          tracks = body.arr("tracks").mapNotNull { parseTrack(it) },
+          seeds = emptyList(),
+        )
+      }
   }
-
-  // ── Search (GQL: searchDesktop) ─────────────────────────────────────
 
   suspend fun search(
     query: String,
     types: List<String> = listOf("track"),
     limit: Int = 20,
     offset: Int = 0,
-  ): Result<SpotifySearchResult> = runCatching {
-    val vars = buildJsonObject {
-      put("searchTerm", query)
-      put("offset", offset)
-      put("limit", limit)
-      put("numberOfTopResults", 5)
-      put("includeAudiobooks", false)
-      put("includeArtistHasConcertsField", false)
-      put("includePreReleases", false)
-      put("includeLocalConcertsField", false)
-      put("includeAuthors", false)
-    }
-
-    val response =
-      graphqlPost(
-        operationName = "searchDesktop",
-        variables = vars,
+  ): Result<SpotifySearchResult> =
+    graphql(
+        "searchDesktop",
+        buildJsonObject {
+          put("searchTerm", query)
+          put("limit", limit)
+          put("offset", offset)
+          put("numberOfTopResults", 5)
+        },
       )
-
-    val searchData =
-      response.obj("data")?.obj("searchV2")
-        ?: throw SpotifyException(500, "Invalid searchDesktop response")
-
-    val tracksSection = searchData.obj("tracksV2")
-    val trackItems =
-      tracksSection?.arr("items")?.mapNotNull { elem ->
-        val itemWrapper = elem.jsonObject.obj("item") ?: return@mapNotNull null
-        if (itemWrapper.str("__typename") != "TrackResponseWrapper") return@mapNotNull null
-        val data = itemWrapper.obj("data") ?: return@mapNotNull null
-        if (data.str("__typename") != "Track") return@mapNotNull null
-        val wrapperUri = itemWrapper.str("_uri") ?: itemWrapper.str("uri")
-        parseGqlTrack(data, uriOverride = wrapperUri)
-      } ?: emptyList()
-
-    val albumsSection = searchData.obj("albumsV2")
-    val albumItems =
-      albumsSection?.arr("items")?.mapNotNull { elem ->
-        val wrapper = elem.jsonObject
-        if (wrapper.str("__typename") != "AlbumResponseWrapper") return@mapNotNull null
-        val data = wrapper.obj("data") ?: return@mapNotNull null
-        if (data.str("__typename") != "Album") return@mapNotNull null
-        parseGqlSearchAlbum(data)
-      } ?: emptyList()
-
-    val artistsSection = searchData.obj("artists")
-    val artistItems =
-      artistsSection?.arr("items")?.mapNotNull { elem ->
-        val wrapper = elem.jsonObject
-        if (wrapper.str("__typename") != "ArtistResponseWrapper") return@mapNotNull null
-        val data = wrapper.obj("data") ?: return@mapNotNull null
-        if (data.str("__typename") != "Artist") return@mapNotNull null
-        parseGqlSearchArtist(data)
-      } ?: emptyList()
-
-    val playlistsSection = searchData.obj("playlists")
-    val playlistItems =
-      playlistsSection?.arr("items")?.mapNotNull { elem ->
-        val wrapper = elem.jsonObject
-        if (wrapper.str("__typename") != "PlaylistResponseWrapper") return@mapNotNull null
-        val data = wrapper.obj("data") ?: return@mapNotNull null
-        if (data.str("__typename") != "Playlist") return@mapNotNull null
-        parseGqlSearchPlaylist(data)
-      } ?: emptyList()
-
-    SpotifySearchResult(
-      tracks =
-        SpotifyPaging(
-          items = trackItems,
-          total = tracksSection?.int("totalCount") ?: 0,
-          limit = limit,
-          offset = offset,
-        ),
-      albums =
-        if (albumItems.isNotEmpty()) {
-          SpotifyPaging(
-            items = albumItems,
-            total = albumsSection?.int("totalCount") ?: 0,
-            limit = limit,
-            offset = offset,
-          )
-        } else {
-          null
-        },
-      artists =
-        if (artistItems.isNotEmpty()) {
-          SpotifyPaging(
-            items = artistItems,
-            total = artistsSection?.int("totalCount") ?: 0,
-            limit = limit,
-            offset = offset,
-          )
-        } else {
-          null
-        },
-      playlists =
-        if (playlistItems.isNotEmpty()) {
-          SpotifyPaging(
-            items = playlistItems,
-            total = playlistsSection?.int("totalCount") ?: 0,
-            limit = limit,
-            offset = offset,
-          )
-        } else {
-          null
-        },
-    )
-  }
-
-  private fun parseGqlSearchAlbum(data: JsonObject): SpotifyAlbum {
-    val uri = data.str("uri") ?: ""
-    return SpotifyAlbum(
-      id = uri.substringAfterLast(":"),
-      name = data.str("name") ?: "",
-      albumType = data.str("type")?.lowercase(),
-      artists =
-        data.obj("artists")?.arr("items")?.mapNotNull { parseGqlSimpleArtist(it.jsonObject) }
-          ?: emptyList(),
-      images = parseGqlImages(data.obj("coverArt")?.arr("sources")),
-      releaseDate = data.obj("date")?.int("year")?.toString(),
-      uri = uri.ifEmpty { null },
-    )
-  }
-
-  private fun parseGqlSearchArtist(data: JsonObject): SpotifyArtist {
-    val uri = data.str("uri") ?: ""
-    return SpotifyArtist(
-      id = uri.substringAfterLast(":"),
-      name = data.obj("profile")?.str("name") ?: "",
-      images = parseGqlImages(data.obj("visuals")?.obj("avatarImage")?.arr("sources")),
-      uri = uri.ifEmpty { null },
-    )
-  }
-
-  private fun parseGqlSearchPlaylist(data: JsonObject): SpotifyPlaylist {
-    val uri = data.str("uri") ?: ""
-    val ownerData = data.obj("ownerV2")?.obj("data")
-    val ownerUri = ownerData?.str("uri") ?: ""
-
-    return SpotifyPlaylist(
-      id = uri.substringAfterLast(":"),
-      name = data.str("name") ?: "",
-      description = data.str("description"),
-      images = parseGqlPlaylistImages(data.obj("images")),
-      owner =
-        SpotifyPlaylistOwner(
-          id = ownerUri.substringAfterLast(":"),
-          displayName = ownerData?.str("name"),
-          uri = ownerUri.ifEmpty { null },
-        ),
-      uri = uri.ifEmpty { null },
-    )
-  }
-
-  // ── Browse: New Releases (GQL: queryWhatsNewFeed) ───────────────────
-
-  suspend fun newReleases(
-    limit: Int = 20,
-    offset: Int = 0,
-  ): Result<NewReleasesResponse> = runCatching {
-    val vars = buildJsonObject {
-      put("offset", offset)
-      put("limit", limit)
-      put("onlyUnPlayedItems", false)
-      putJsonArray("includedContentTypes") { add("ALBUM") }
-    }
-
-    val response =
-      graphqlPost(
-        operationName = "queryWhatsNewFeed",
-        variables = vars,
-      )
-
-    val feedData =
-      response.obj("data")?.obj("whatsNewFeedItems")
-        ?: throw SpotifyException(500, "Invalid queryWhatsNewFeed response")
-
-    val pagingInfo = feedData.obj("pagingInfo")
-
-    val albums =
-      feedData.arr("items")?.mapNotNull { elem ->
-        val content = elem.jsonObject.obj("content") ?: return@mapNotNull null
-        if (content.str("__typename") != "AlbumResponseWrapper") return@mapNotNull null
-        val data = content.obj("data") ?: return@mapNotNull null
-        if (data.str("__typename") != "Album") return@mapNotNull null
-
-        val uri = data.str("uri") ?: return@mapNotNull null
-        SpotifyAlbum(
-          id = uri.substringAfterLast(":"),
-          name = data.str("name") ?: "",
-          albumType = data.str("albumType")?.lowercase(),
-          artists =
-            data.obj("artists")?.arr("items")?.mapNotNull { parseGqlSimpleArtist(it.jsonObject) }
-              ?: emptyList(),
-          images = parseGqlImages(data.obj("coverArt")?.arr("sources")),
-          releaseDate = data.obj("date")?.str("isoString"),
-          uri = uri,
+      .map { data ->
+        val root = data.obj("searchV2")
+          ?: throw SpotifyException(500, "Invalid searchDesktop response")
+        SpotifySearchResult(
+          tracks = parseSearchSection(root.obj("tracksV2"), "Track", ::parseTrack),
+          albums = parseSearchSection(root.obj("albumsV2"), "Album", ::parseAlbum),
+          artists = parseSearchSection(root.obj("artists"), "Artist", ::parseArtist),
+          playlists = parseSearchSection(root.obj("playlists"), "Playlist", ::parsePlaylist),
         )
-      } ?: emptyList()
+      }
 
-    NewReleasesResponse(
-      albums =
-        SpotifyPaging(
-          items = albums,
-          total = feedData.int("totalCount") ?: 0,
-          limit = pagingInfo?.int("limit") ?: limit,
-          offset = pagingInfo?.int("offset") ?: offset,
-        ),
-    )
-  }
-
-  // ── Home feed (GQL: home) ──────────────────────────────────────────
-  //
-  // Returns the fully personalized Spotify home: Daily Mix, Discover Weekly,
-  // Release Radar, "Jump back in", "More like <artist>", daylist, etc.
-  // Shape matches open.spotify.com landing page, one request for ~21 sections.
+  suspend fun newReleases(limit: Int = 20, offset: Int = 0): Result<NewReleasesResponse> =
+    graphql("queryWhatsNewFeed", buildJsonObject { put("limit", limit); put("offset", offset) })
+      .map { data ->
+        val root = data.arr("whatsNewFeedItems")
+        val albums = root.mapNotNull { element ->
+          val dataObj = element.asObj()?.obj("data") ?: return@mapNotNull null
+          if (dataObj.str("__typename") != "Album") return@mapNotNull null
+          parseAlbum(dataObj)
+        }
+        NewReleasesResponse(
+          albums = SpotifyPaging(items = albums, total = albums.size, limit = limit, offset = offset),
+        )
+      }
 
   suspend fun home(
     sectionItemsLimit: Int = 10,
-    timeZone: String = java.util.TimeZone.getDefault().id,
-  ): Result<com.revenge.music.spotify.models.SpotifyHomeFeed> = runCatching {
-    log("D", "spotifyHome: GQL home() request — timeZone=$timeZone limit=$sectionItemsLimit")
-    val vars = buildJsonObject {
-      put("homeEndUserIntegration", "INTEGRATION_WEB_PLAYER")
-      put("timeZone", timeZone)
-      put("sp_t", "")
-      put("facet", "")
-      put("sectionItemsLimit", sectionItemsLimit)
-      put("includeEpisodeContentRatingsV2", false)
-    }
-
-    val response =
-      graphqlPost(
-        operationName = "home",
-        variables = vars,
+    timeZone: String = defaultZoneId,
+  ): Result<SpotifyHomeFeed> =
+    graphql(
+        "home",
+        buildJsonObject {
+          put("timeZone", timeZone)
+          put("sectionItemsLimit", sectionItemsLimit)
+        },
       )
-
-    val homeData =
-      response.obj("data")?.obj("home")
-        ?: run {
-          log(
-            "E",
-            "spotifyHome: GQL response has no data.home — keys=${response.obj("data")?.keys}",
+      .map { data ->
+        val root = data.obj("home")
+          ?: throw SpotifyException(500, "Invalid home response")
+        val container = root.obj("sectionContainer")
+        val sections = container?.arr("sections")?.mapNotNull { element ->
+          val obj = element.asObj() ?: return@mapNotNull null
+          val items = obj.arr("sectionItems").mapNotNull { it.asObj()?.let(::parseHomeItem) }
+          if (items.isEmpty()) return@mapNotNull null
+          SpotifyHomeFeedSection(
+            sectionUri = obj.obj("sectionUri")?.str("uri") ?: obj.str("uri").orEmpty(),
+            title = obj.obj("title")?.str("transformedLabel") ?: obj.str("title"),
+            typename = obj.str("__typename").orEmpty(),
+            totalCount = obj.int("totalCount") ?: items.size,
+            items = items,
           )
-          throw SpotifyException(500, "Invalid home response")
-        }
+        }.orEmpty()
+        SpotifyHomeFeed(greeting = root.obj("greeting")?.str("transformedLabel"), sections = sections)
+      }
 
-    val greeting = homeData.obj("greeting")?.str("transformedLabel")
-    log("D", "spotifyHome: GQL home() OK greeting='$greeting'")
-
-    val sectionElements =
-      homeData.obj("sectionContainer")?.obj("sections")?.arr("items")
-        ?: run {
-          log("W", "spotifyHome: no sectionContainer.sections.items in response")
-          return@runCatching com.revenge.music.spotify.models.SpotifyHomeFeed(
-            greeting = greeting,
-            sections = emptyList(),
-          )
-        }
-
-    log("D", "spotifyHome: parsing ${sectionElements.size} raw sections")
-    val sections = sectionElements.mapNotNull { elem -> parseHomeSection(elem.jsonObject) }
-    log("D", "spotifyHome: parsed ${sections.size}/${sectionElements.size} sections successfully")
-
-    com.revenge.music.spotify.models.SpotifyHomeFeed(
-      greeting = greeting,
-      sections = sections,
-    )
-  }
-
-  private fun parseHomeSection(
-    sectionObj: JsonObject,
-  ): com.revenge.music.spotify.models.SpotifyHomeFeedSection? {
-    val sectionData = sectionObj.obj("data") ?: return null
-    val typename = sectionData.str("__typename") ?: return null
-    val titleObj = sectionData.obj("title")
-    val title =
-      titleObj?.str("transformedLabel")
-        ?: titleObj?.str("translatedBaseText")
-        ?: titleObj?.str("text")
-
-    val sectionItems = sectionObj.obj("sectionItems")
-    val totalCount = sectionItems?.int("totalCount") ?: 0
-    val itemElements = sectionItems?.arr("items") ?: return null
-
-    val items = itemElements.mapNotNull { itemElem -> parseHomeItem(itemElem.jsonObject) }
-
-    if (items.isEmpty()) return null
-
-    return com.revenge.music.spotify.models.SpotifyHomeFeedSection(
-      sectionUri = sectionObj.str("uri") ?: "",
-      title = title,
-      typename = typename,
-      totalCount = totalCount,
-      items = items,
-    )
-  }
-
-  private fun parseHomeItem(
-    itemObj: JsonObject,
-  ): com.revenge.music.spotify.models.SpotifyHomeFeedItem? {
-    val content = itemObj.obj("content") ?: return null
-    val wrapper = content.str("__typename") ?: return null
-    val data = content.obj("data") ?: return null
-
-    return when (wrapper) {
-      "PlaylistResponseWrapper" -> parseHomePlaylist(data)
-      "AlbumResponseWrapper" -> parseHomeAlbum(data)
-      "ArtistResponseWrapper" -> parseHomeArtist(data)
-      else -> null
-    }
-  }
-
-  private fun parseHomePlaylist(
-    data: JsonObject,
-  ): com.revenge.music.spotify.models.SpotifyHomeFeedItem.Playlist? {
-    val uri = data.str("uri") ?: return null
-    val imageItem = data.obj("images")?.arr("items")?.firstOrNull()?.jsonObject
-    val imageUrl = imageItem?.arr("sources")?.firstOrNull()?.jsonObject?.str("url")
-    val colorHex = imageItem?.obj("extractedColors")?.obj("colorDark")?.str("hex")
-    val madeFor =
-      data
-        .arr("attributes")
-        ?.firstOrNull { it.jsonObject.str("key") == "madeFor.username" }
-        ?.jsonObject
-        ?.str("value")
-
-    return com.revenge.music.spotify.models.SpotifyHomeFeedItem.Playlist(
-      uri = uri,
-      id = uri.substringAfterLast(":"),
-      name = data.str("name") ?: "",
-      description = data.str("description"),
-      format = data.str("format"),
-      totalCount = data.obj("content")?.int("totalCount") ?: 0,
-      imageUrl = imageUrl,
-      extractedColorHex = colorHex,
-      ownerName = data.obj("ownerV2")?.obj("data")?.str("name"),
-      madeForUsername = madeFor,
-    )
-  }
-
-  private fun parseHomeAlbum(
-    data: JsonObject,
-  ): com.revenge.music.spotify.models.SpotifyHomeFeedItem.Album? {
-    val uri = data.str("uri") ?: return null
-    val artists =
-      data.obj("artists")?.arr("items")?.mapNotNull { parseGqlSimpleArtist(it.jsonObject) }
-        ?: emptyList()
-    val imageUrl = data.obj("coverArt")?.arr("sources")?.firstOrNull()?.jsonObject?.str("url")
-
-    return com.revenge.music.spotify.models.SpotifyHomeFeedItem.Album(
-      uri = uri,
-      id = uri.substringAfterLast(":"),
-      name = data.str("name") ?: "",
-      albumType = data.str("type")?.lowercase(),
-      artists = artists,
-      imageUrl = imageUrl,
-    )
-  }
-
-  private fun parseHomeArtist(
-    data: JsonObject,
-  ): com.revenge.music.spotify.models.SpotifyHomeFeedItem.Artist? {
-    val uri = data.str("uri") ?: return null
-    val profile = data.obj("profile")
-    val imageUrl =
-      data.obj("visuals")?.obj("avatarImage")?.arr("sources")?.firstOrNull()?.jsonObject?.str("url")
-    return com.revenge.music.spotify.models.SpotifyHomeFeedItem.Artist(
-      uri = uri,
-      id = uri.substringAfterLast(":"),
-      name = profile?.str("name") ?: "",
-      imageUrl = imageUrl,
-    )
-  }
-
-  // ── Albums (GQL: getAlbum) ──────────────────────────────────────────
-
-  suspend fun album(albumId: String): Result<SpotifyAlbum> = runCatching {
-    val vars = buildJsonObject {
-      put("uri", "spotify:album:$albumId")
-      put("locale", "")
-      put("offset", 0)
-      put("limit", 50)
-    }
-
-    val response =
-      graphqlPost(
-        operationName = "getAlbum",
-        variables = vars,
+  suspend fun album(albumId: String): Result<SpotifyAlbum> =
+    graphql(
+        "getAlbum",
+        buildJsonObject {
+          put("uri", "spotify:album:$albumId")
+          put("locale", "")
+          put("offset", 0)
+          put("limit", 50)
+        },
       )
+      .map { data ->
+        val union = data.obj("albumUnion")
+          ?: throw SpotifyException(500, "Invalid getAlbum response")
+        val tracks =
+          union.obj("tracksV2")?.arr("items")?.mapNotNull { element ->
+            element.asObj()?.obj("track")?.let(::parseTrack)
+          }.orEmpty()
+        parseAlbum(union).copy(
+          tracks = SpotifyPaging(items = tracks, total = tracks.size, limit = 50, offset = 0),
+        )
+      }
 
-    val albumData =
-      response.obj("data")?.obj("albumUnion")
-        ?: throw SpotifyException(500, "Invalid getAlbum response")
-
-    val artists =
-      albumData.obj("artists")?.arr("items")?.mapNotNull { parseGqlSimpleArtist(it.jsonObject) }
-        ?: emptyList()
-
-    val albumImages = parseGqlImages(albumData.obj("coverArt")?.arr("sources"))
-
-    val albumSimple =
-      SpotifySimpleAlbum(
-        id = albumId,
-        name = albumData.str("name") ?: "",
-        images = albumImages,
-        releaseDate = albumData.obj("date")?.str("isoString"),
-        albumType = albumData.str("type")?.lowercase(),
-        artists = artists,
-        uri = "spotify:album:$albumId",
+  suspend fun artist(artistId: String): Result<SpotifyArtist> =
+    graphql(
+        "queryArtistOverview",
+        buildJsonObject {
+          put("uri", "spotify:artist:$artistId")
+          put("locale", "")
+          put("includePrerelease", true)
+        },
       )
-
-    val tracksData = albumData.obj("tracksV2")
-    val trackItems =
-      tracksData?.arr("items")?.mapNotNull { elem ->
-        val trackObj = elem.jsonObject.obj("track") ?: return@mapNotNull null
-        parseGqlTrack(trackObj, albumOverride = albumSimple)
-      } ?: emptyList()
-
-    SpotifyAlbum(
-      id = albumId,
-      name = albumData.str("name") ?: "",
-      albumType = albumData.str("type")?.lowercase(),
-      artists = artists,
-      images = albumImages,
-      releaseDate = albumData.obj("date")?.str("isoString"),
-      totalTracks = tracksData?.int("totalCount") ?: 0,
-      tracks = SpotifyPaging(items = trackItems, total = tracksData?.int("totalCount") ?: 0),
-      uri = "spotify:album:$albumId",
-    )
-  }
-
-  // ── Artists (GQL: queryArtistOverview) ───────────────────────────────
-
-  suspend fun artist(artistId: String): Result<SpotifyArtist> = runCatching {
-    val vars = buildJsonObject {
-      put("uri", "spotify:artist:$artistId")
-      put("locale", "")
-    }
-
-    val response =
-      graphqlPost(
-        operationName = "queryArtistOverview",
-        variables = vars,
-      )
-
-    val artistData =
-      response.obj("data")?.obj("artistUnion")
-        ?: throw SpotifyException(500, "Invalid queryArtistOverview response")
-
-    SpotifyArtist(
-      id = artistId,
-      name = artistData.obj("profile")?.str("name") ?: "",
-      images = parseGqlImages(artistData.obj("visuals")?.obj("avatarImage")?.arr("sources")),
-      uri = "spotify:artist:$artistId",
-    )
-  }
+      .map { data ->
+        data.obj("artistUnion") ?: throw SpotifyException(500, "Invalid queryArtistOverview response")
+      }
+      .map(::parseArtist)
 
   suspend fun artistTopTracks(
     artistId: String,
     market: String = "US",
-  ): Result<ArtistTopTracksResponse> = runCatching {
-    val vars = buildJsonObject {
-      put("uri", "spotify:artist:$artistId")
-      put("locale", "")
-    }
-
-    val response =
-      graphqlPost(
-        operationName = "queryArtistOverview",
-        variables = vars,
+  ): Result<ArtistTopTracksResponse> =
+    graphql(
+        "queryArtistOverview",
+        buildJsonObject {
+          put("uri", "spotify:artist:$artistId")
+          put("locale", "")
+        },
       )
+      .map { data ->
+        val union = data.obj("artistUnion")
+          ?: throw SpotifyException(500, "Invalid queryArtistOverview response")
+        val items =
+          union.obj("discography")?.obj("topTracks")?.arr("items")
+            ?.mapNotNull { it.asObj()?.obj("track")?.let(::parseTrack) }
+            .orEmpty()
+        ArtistTopTracksResponse(tracks = items)
+      }
 
-    val artistData =
-      response.obj("data")?.obj("artistUnion")
-        ?: throw SpotifyException(500, "Invalid queryArtistOverview response")
-
-    val topTracksItems =
-      artistData.obj("discography")?.obj("topTracks")?.arr("items") ?: JsonArray(emptyList())
-
-    val tracks = topTracksItems.mapNotNull { elem ->
-      val trackObj = elem.jsonObject.obj("track") ?: return@mapNotNull null
-      parseGqlTrack(trackObj)
-    }
-
-    ArtistTopTracksResponse(tracks = tracks)
-  }
-
-  /**
-   * Extracts related artists from the GQL queryArtistOverview endpoint. This avoids the
-   * rate-limited REST /related-artists endpoint entirely.
-   */
-  suspend fun artistRelatedArtists(artistId: String): Result<List<SpotifyArtist>> = runCatching {
-    val vars = buildJsonObject {
-      put("uri", "spotify:artist:$artistId")
-      put("locale", "")
-    }
-
-    val response =
-      graphqlPost(
-        operationName = "queryArtistOverview",
-        variables = vars,
+  suspend fun artistRelatedArtists(artistId: String): Result<List<SpotifyArtist>> =
+    graphql(
+        "queryArtistOverview",
+        buildJsonObject {
+          put("uri", "spotify:artist:$artistId")
+          put("locale", "")
+        },
       )
+      .map { data ->
+        val union = data.obj("artistUnion")
+          ?: throw SpotifyException(500, "Invalid queryArtistOverview response")
+        union.obj("relatedContent")?.obj("relatedArtists")?.arr("items")
+          ?.mapNotNull { it.asObj()?.obj("data")?.let(::parseArtist) }
+          .orEmpty()
+      }
 
-    val artistData =
-      response.obj("data")?.obj("artistUnion")
-        ?: throw SpotifyException(500, "Invalid queryArtistOverview response")
+  suspend fun relatedArtists(artistId: String): Result<RelatedArtistsResponse> =
+    rest("GET", "artists/$artistId/related-artists").map { body ->
+      RelatedArtistsResponse(artists = body.arr("artists").mapNotNull(::parseArtist))
+    }
 
-    val relatedItems =
-      artistData.obj("relatedContent")?.obj("relatedArtists")?.arr("items")
-        ?: JsonArray(emptyList())
+  suspend fun getCanvas(trackId: String): String? {
+    if (accessToken == null) return null
+    return graphql(
+        "canvas",
+        buildJsonObject {
+          put("uri", "spotify:track:$trackId")
+        },
+      )
+      .getOrNull()
+      ?.obj("trackUnion")
+      ?.obj("canvas")
+      ?.str("url")
+  }
 
-    relatedItems.mapNotNull { elem ->
-      val uri = elem.jsonObject.str("uri") ?: return@mapNotNull null
-      val id = uri.substringAfterLast(":")
-      val name = elem.jsonObject.obj("profile")?.str("name") ?: return@mapNotNull null
-      val images =
-        parseGqlImages(elem.jsonObject.obj("visuals")?.obj("avatarImage")?.arr("sources"))
-      SpotifyArtist(id = id, name = name, images = images, uri = uri)
+  suspend fun getCanvasForSong(title: String, artist: String): String? {
+    val track = search("$artist $title", limit = 1).getOrNull()?.tracks?.items?.firstOrNull()
+      ?: return null
+    return getCanvas(track.id)
+  }
+
+  // ------------------------------------------------------------------ graphql / rest
+
+  private suspend fun graphql(operationName: String, variables: JsonObject): Result<JsonObject> =
+    try {
+      val token = accessToken ?: throw SpotifyException(401, "Not authenticated")
+      val primary = SpotifyHashProvider.getHash(operationName)
+      val hashes =
+        buildList {
+          add(primary)
+          SpotifyHashProvider.getPreviousHash(operationName)
+            ?.takeIf { it != primary }
+            ?.let(::add)
+        }
+      var rotated = false
+      for (hash in hashes) {
+        var notFound = false
+        for (attempt in 0 until 3) {
+          val request =
+            HttpRequest(
+              method = "POST",
+              url = GRAPHQL_URL,
+              headers = graphqlHeaders(token),
+              body =
+                buildJsonObject {
+                    put("variables", variables)
+                    put("operationName", operationName)
+                    put(
+                      "extensions",
+                      buildJsonObject {
+                        put(
+                          "persistedQuery",
+                          buildJsonObject {
+                            put("version", 1)
+                            put("sha256Hash", hash)
+                          },
+                        )
+                      },
+                    )
+                  }
+                  .toString(),
+            )
+          val response = transport(request)
+          val parsed = runCatching { json.parseToJsonElement(response.body).jsonObject }.getOrNull()
+          val message = parsed?.arr("errors")?.firstOrNull()?.asObj()?.str("message")
+          if (response.status == 412 || message?.contains("PersistedQueryNotFound", true) == true) {
+            notFound = true
+            break
+          }
+          when {
+            response.status == 401 -> throw SpotifyException(401, "Not authenticated")
+            response.status == 429 -> {
+              val wait = if (response.retryAfter > 0) response.retryAfter else 2L * (attempt + 1)
+              if (attempt == 2) throw SpotifyException(429, "Rate limited", retryAfterSec = wait)
+              delay(wait * 1000)
+            }
+            response.status !in 200..299 ->
+              throw SpotifyException(
+                response.status,
+                "GraphQL error ${response.status}: ${response.body}",
+              )
+            else -> {
+              val errors = parsed?.arr("errors")?.firstOrNull()?.asObj()
+              if (errors != null) {
+                val errorMessage = errors.str("message").orEmpty()
+                if (errorMessage.contains("PersistedQueryNotFound", true)) {
+                  notFound = true
+                  break
+                }
+                throw SpotifyException(400, "GraphQL: $errorMessage")
+              }
+              val data = parsed?.obj("data")
+                ?: throw SpotifyException(500, "Invalid $operationName response")
+              return Result.success(data)
+            }
+          }
+        }
+        if (notFound) rotated = true else rotated = false
+      }
+      if (rotated || hashes.isNotEmpty()) {
+        onHashExpired?.invoke(operationName)
+        throw SpotifyException(412, "$operationName hash may have rotated")
+      }
+      throw SpotifyException(412, "$operationName hash may have rotated")
+    } catch (e: CancellationException) {
+      throw e
+    } catch (e: SpotifyException) {
+      Result.failure(e)
+    } catch (e: Throwable) {
+      Result.failure(e)
+    }
+
+  private suspend fun rest(
+    method: String,
+    path: String,
+    failFastOn429: Boolean = false,
+  ): Result<JsonObject> =
+    try {
+      val token = accessToken ?: throw SpotifyException(401, "Not authenticated")
+      val url = REST_BASE + path
+      val attempts = if (failFastOn429) 1 else 3
+      for (attempt in 0 until attempts) {
+        val response =
+          transport(HttpRequest(method = method, url = url, headers = restHeaders(token)))
+        when {
+          response.status == 401 -> throw SpotifyException(401, "Not authenticated")
+          response.status == 429 -> {
+            val retryAfter = response.retryAfter
+            if (failFastOn429 && retryAfter > 3) {
+              throw SpotifyException(429, "Rate limited", retryAfterSec = retryAfter)
+            }
+            val wait = if (retryAfter > 0) retryAfter else 2L * (attempt + 1)
+            if (attempt == attempts - 1) {
+              throw SpotifyException(429, "Rate limited", retryAfterSec = wait)
+            }
+            delay(wait * 1000)
+          }
+          response.status !in 200..299 ->
+            throw SpotifyException(response.status, "HTTP ${response.status}: ${response.body}")
+          else ->
+            return Result.success(json.parseToJsonElement(response.body).jsonObject)
+        }
+      }
+      throw SpotifyException(429, "Rate limited")
+    } catch (e: CancellationException) {
+      throw e
+    } catch (e: SpotifyException) {
+      Result.failure(e)
+    } catch (e: Throwable) {
+      Result.failure(e)
+    }
+
+  private fun graphqlHeaders(token: String) =
+    mapOf(
+      "Authorization" to "Bearer $token",
+      "Content-Type" to "application/json",
+      "Accept" to "application/json",
+      "app-platform" to "WebPlayer",
+      "Origin" to "https://open.spotify.com",
+      "Referer" to "https://open.spotify.com/",
+      "User-Agent" to CHROME_UA,
+    )
+
+  private fun restHeaders(token: String) =
+    mapOf(
+      "Authorization" to "Bearer $token",
+      "Accept" to "application/json",
+      "app-platform" to "WebPlayer",
+      "Origin" to "https://open.spotify.com",
+      "Referer" to "https://open.spotify.com/",
+      "User-Agent" to CHROME_UA,
+    )
+
+  private suspend fun realTransport(request: HttpRequest): HttpResponse =
+    withContext(Dispatchers.IO) {
+      val connection = (URI(request.url).toURL().openConnection() as HttpURLConnection).apply {
+        requestMethod = request.method
+        connectTimeout = 15_000
+        readTimeout = 30_000
+        useCaches = false
+        request.headers.forEach { (k, v) -> setRequestProperty(k, v) }
+        if (request.body != null) {
+          doOutput = true
+          setRequestProperty("Content-Type", "application/json")
+        }
+      }
+      try {
+        if (request.body != null) {
+          connection.outputStream.use { it.write(request.body.toByteArray(Charsets.UTF_8)) }
+        }
+        val status = connection.responseCode
+        val stream = if (status in 200..299) connection.inputStream else connection.errorStream
+        val body = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
+        HttpResponse(
+          status = status,
+          body = body,
+          retryAfter = connection.getHeaderField("Retry-After")?.toLongOrNull() ?: 0,
+        )
+      } finally {
+        connection.disconnect()
+      }
+    }
+
+  // ------------------------------------------------------------------ parsers
+
+  internal fun parseTrack(element: JsonElement?): SpotifyTrack? {
+    val outer = element?.asObj() ?: return null
+    val obj = outer.obj("track") ?: outer
+    val uri = obj.str("uri") ?: outer.str("uri")
+    val name = obj.str("name") ?: obj.obj("profile")?.str("name") ?: ""
+    if (name.isBlank() && uri == null) return null
+    return SpotifyTrack(
+      id = idFromUri(uri).ifBlank { obj.str("id").orEmpty() },
+      name = name,
+      artists = parseSimpleArtists(obj["artists"]),
+      album = obj.obj("album")?.let(::parseSimpleAlbum),
+      durationMs = parseDurationMs(obj),
+      explicit = obj.bool("explicit") ?: false,
+      isLocal = obj.bool("isLocal") ?: obj.bool("is_local") ?: false,
+      previewUrl = obj.str("previewUrl") ?: obj.str("preview_url"),
+      trackNumber = obj.int("trackNumber") ?: obj.int("track_number"),
+      uri = uri,
+      popularity = obj.int("popularity"),
+    )
+  }
+
+  internal fun parsePlaylist(obj: JsonObject): SpotifyPlaylist {
+    val uri = obj.str("uri")
+    val owner = obj.obj("ownerV2")?.obj("data") ?: obj.obj("owner")
+    val content = obj.obj("content") ?: obj.obj("contents")
+    return SpotifyPlaylist(
+      id = idFromUri(uri).ifBlank { obj.str("id").orEmpty() },
+      name = obj.str("name").orEmpty(),
+      description = obj.str("description"),
+      images =
+        imagesFrom(obj.obj("images")?.arr("items")?.flatMap { it.asObj()?.arr("sources").orEmpty() })
+          .ifEmpty { imagesFrom(obj["images"]) },
+      owner =
+        owner?.let {
+          val ownerUri = it.str("uri")
+          SpotifyPlaylistOwner(
+            id = idFromUri(ownerUri).ifBlank { it.str("id").orEmpty() },
+            displayName = it.str("name") ?: it.str("displayName") ?: it.str("display_name"),
+            uri = ownerUri,
+          )
+        },
+      tracks =
+        SpotifyPlaylistTracksRef(
+          total =
+            content?.int("totalCount")
+              ?: obj.int("totalCount")
+              ?: obj.obj("tracksV2")?.int("totalCount")
+              ?: obj.int("trackCount")
+              ?: obj.int("numTracks"),
+        ),
+      uri = uri,
+      collaborative = (obj.obj("members")?.arr("items")?.size ?: 0) > 1,
+      snapshotId = obj.str("snapshotId"),
+    )
+  }
+
+  internal fun parseArtist(obj: JsonObject): SpotifyArtist {
+    val uri = obj.str("uri")
+    val profile = obj.obj("profile")
+    return SpotifyArtist(
+      id = idFromUri(uri).ifBlank { obj.str("id").orEmpty() },
+      name = profile?.str("name") ?: obj.str("name").orEmpty(),
+      images =
+        imagesFrom(
+          obj.obj("visuals")?.obj("avatarImage")?.get("sources") ?: obj["images"],
+        ),
+      genres = obj.arr("genres").mapNotNull { it.asString() },
+      popularity = obj.int("popularity"),
+      uri = uri,
+    )
+  }
+
+  internal fun parseAlbum(obj: JsonObject): SpotifyAlbum {
+    val uri = obj.str("uri")
+    val artists =
+      obj.obj("artists")?.arr("items")?.mapNotNull { element ->
+        element.asObj()?.obj("profile")?.str("name")?.let { SpotifySimpleArtist(name = it) }
+          ?: element.asObj()?.str("name")?.let { SpotifySimpleArtist(name = it) }
+      }.orEmpty()
+    return SpotifyAlbum(
+      id = idFromUri(uri).ifBlank { obj.str("id").orEmpty() },
+      name = obj.str("name").orEmpty(),
+      albumType = obj.str("type") ?: obj.str("albumType"),
+      artists = artists,
+      images = imagesFrom(obj.obj("coverArt")?.get("sources") ?: obj["images"]),
+      releaseDate = obj.obj("date")?.str("isoString") ?: obj.str("releaseDate"),
+      totalTracks = obj.obj("tracksV2")?.int("totalCount") ?: obj.int("totalTracks") ?: 0,
+      uri = uri,
+      popularity = obj.int("popularity"),
+      genres = obj.arr("genres").mapNotNull { it.asString() },
+    )
+  }
+
+  private fun parseSimpleArtists(element: JsonElement?): List<SpotifySimpleArtist> {
+    val array = element as? JsonArray ?: return emptyList()
+    return array.mapNotNull { item ->
+      val obj = item.asObj() ?: return@mapNotNull null
+      val profile = obj.obj("profile")
+      val name = profile?.str("name") ?: obj.str("name") ?: return@mapNotNull null
+      val uri = obj.str("uri")
+      SpotifySimpleArtist(id = idFromUri(uri).ifBlank { obj.str("id") }, name = name, uri = uri)
     }
   }
 
-  // ── Related Artists (REST fallback) ─────────────────────────────────
-
-  suspend fun relatedArtists(artistId: String): Result<RelatedArtistsResponse> = runCatching {
-    authenticatedGet("artists/$artistId/related-artists")
+  private fun parseSimpleAlbum(obj: JsonObject): SpotifySimpleAlbum {
+    val uri = obj.str("uri")
+    return SpotifySimpleAlbum(
+      id = idFromUri(uri).ifBlank { obj.str("id").orEmpty() },
+      name = obj.str("name").orEmpty(),
+      images = imagesFrom(obj.obj("coverArt")?.get("sources") ?: obj["images"]),
+      releaseDate = obj.obj("date")?.str("isoString") ?: obj.str("releaseDate"),
+      albumType = obj.str("type") ?: obj.str("albumType"),
+      artists = parseSimpleArtists(obj["artists"]),
+      uri = uri,
+    )
   }
 
-  suspend fun getCanvas(trackId: String): String? = runCatching {
-    if (!isAuthenticated()) return@runCatching null
-    val vars = buildJsonObject {
-      put("trackUri", "spotify:track:$trackId")
+  private fun parseDurationMs(obj: JsonObject): Int {
+    obj.obj("trackDuration")?.long("totalMilliseconds")?.takeIf { it > 0 }
+      ?.let { return it.toInt() }
+    obj.obj("duration")?.long("totalMilliseconds")?.takeIf { it > 0 }?.let { return it.toInt() }
+    (obj.long("durationMs") ?: obj.long("duration_ms"))?.takeIf { it > 0 }?.let { return it.toInt() }
+    val seconds = (obj["duration"] as? JsonPrimitive)?.content?.toLongOrNull()
+    if (seconds != null && seconds > 0) return (seconds * 1000).toInt()
+    val nested = obj.obj("track")?.let { (it["duration"] as? JsonPrimitive)?.content?.toLongOrNull() }
+    if (nested != null && nested > 0) return (nested * 1000).toInt()
+    return 0
+  }
+
+  private fun parseHomeItem(obj: JsonObject): SpotifyHomeFeedItem? {
+    val data = obj.obj("content")?.obj("data") ?: obj.obj("data") ?: obj
+    val typename = data.str("__typename")
+    val uri = data.str("uri") ?: obj.str("uri") ?: return null
+    return when {
+      typename?.contains("Playlist") == true ->
+        SpotifyHomeFeedItem.Playlist(
+          uri = uri,
+          id = idFromUri(uri),
+          name = data.str("name").orEmpty(),
+          description = data.str("description"),
+          totalCount = data.int("totalCount") ?: 0,
+          imageUrl =
+            data.obj("images")?.arr("items")?.firstOrNull()?.asObj()
+              ?.arr("sources")?.firstOrNull()?.asObj()?.str("url")
+              ?: imagesFrom(data["images"]).firstOrNull()?.url,
+          ownerName = data.obj("ownerV2")?.obj("data")?.str("name"),
+        )
+      typename?.contains("Album") == true ->
+        SpotifyHomeFeedItem.Album(
+          uri = uri,
+          id = idFromUri(uri),
+          name = data.str("name").orEmpty(),
+          imageUrl = imagesFrom(data.obj("coverArt")?.get("sources")).firstOrNull()?.url,
+        )
+      typename?.contains("Artist") == true ->
+        SpotifyHomeFeedItem.Artist(
+          uri = uri,
+          id = idFromUri(uri),
+          name = data.obj("profile")?.str("name") ?: data.str("name").orEmpty(),
+          imageUrl =
+            imagesFrom(data.obj("visuals")?.obj("avatarImage")?.get("sources")).firstOrNull()?.url,
+        )
+      else -> null
     }
-    val response = graphqlPost("canvas", vars)
-    response.obj("data")?.obj("trackUnion")?.obj("canvas")?.str("url")
   }
-    .getOrNull()
 
-  suspend fun getCanvasForSong(title: String, artist: String): String? = runCatching {
-    if (!isAuthenticated()) return@runCatching null
-    val searchResult =
-      search(query = "$title $artist", types = listOf("track"), limit = 5).getOrNull()
-    val topTrack = searchResult?.tracks?.items?.firstOrNull() ?: return@runCatching null
-    getCanvas(topTrack.id)
+  private fun <T> parseSearchSection(
+    section: JsonObject?,
+    typename: String,
+    parser: (JsonObject) -> T,
+  ): SpotifyPaging<T>? {
+    if (section == null) return null
+    val items =
+      section.arr("items").mapNotNull { element ->
+        val wrapper = element.asObj() ?: return@mapNotNull null
+        val data = wrapper.obj("data") ?: return@mapNotNull null
+        if (data.str("__typename") != typename) return@mapNotNull null
+        runCatching { parser(data) }.getOrNull()
+      }
+    if (items.isEmpty()) return null
+    return SpotifyPaging(
+      items = items,
+      total = section.int("totalCount") ?: items.size,
+      limit = section.int("limit") ?: items.size,
+      offset = 0,
+    )
   }
-    .getOrNull()
 
-  fun isAuthenticated(): Boolean = accessToken != null
+  private fun <T> pagingOf(body: JsonObject, parser: (JsonObject) -> T): SpotifyPaging<T> =
+    SpotifyPaging(
+      items = body.arr("items").mapNotNull { it.asObj()?.let(parser) },
+      total = body.int("total") ?: 0,
+      limit = body.int("limit") ?: 20,
+      offset = body.int("offset") ?: 0,
+      next = body.str("next"),
+      previous = body.str("previous"),
+      href = body.str("href"),
+    )
+
+  private fun imagesFrom(element: JsonElement?): List<SpotifyImage> {
+    val array = element as? JsonArray ?: return emptyList()
+    return array.mapNotNull { item ->
+      val obj = item.asObj() ?: return@mapNotNull null
+      val url = obj.str("url") ?: return@mapNotNull null
+      SpotifyImage(url = url, height = obj.int("height"), width = obj.int("width"))
+    }
+  }
+
+  private fun idFromUri(uri: String?): String =
+    uri?.substringAfterLast(':')?.takeIf { it.isNotBlank() } ?: ""
+
+  private fun encode(value: String): String = URLEncoder.encode(value, "UTF-8")
 }
 
-@kotlinx.serialization.Serializable
-data class ArtistTopTracksResponse(val tracks: List<SpotifyTrack> = emptyList())
+// ------------------------------------------------------------------ JSON helpers
 
-@kotlinx.serialization.Serializable
-data class RelatedArtistsResponse(val artists: List<SpotifyArtist> = emptyList())
+internal fun JsonElement?.asObj(): JsonObject? = this as? JsonObject
 
-@kotlinx.serialization.Serializable
-data class NewReleasesResponse(val albums: SpotifyPaging<SpotifyAlbum>? = null)
+internal fun JsonElement?.asArr(): JsonArray? = this as? JsonArray
+
+internal fun JsonElement?.asString(): String? =
+  (this as? JsonPrimitive)?.let { runCatching { it.content }.getOrNull() }
+
+internal fun JsonObject.obj(key: String): JsonObject? = (this[key] as? JsonObject)
+
+internal fun JsonObject.arr(key: String): List<JsonElement> = (this[key] as? JsonArray)?.toList().orEmpty()
+
+internal fun JsonObject.str(key: String): String? =
+  (this[key] as? JsonPrimitive)?.let { runCatching { it.content }.getOrNull() }
+
+internal fun JsonObject.int(key: String): Int? = str(key)?.toIntOrNull()
+
+internal fun JsonObject.long(key: String): Long? = str(key)?.toLongOrNull()
+
+internal fun JsonObject.bool(key: String): Boolean? = str(key)?.toBooleanStrictOrNull()

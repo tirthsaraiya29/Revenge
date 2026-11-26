@@ -12,29 +12,42 @@ import com.revenge.music.constants.MusicFlowHideRecentKey
 import com.revenge.music.constants.MusicFlowLyricsKey
 
 data class MusicFlowPreferences(
-  val enabled: Boolean = true,
-  val autoplay: Boolean = true,
-  val autoNext: Boolean = true,
-  val animatedBackground: Boolean = false,
-  val lyrics: Boolean = true,
-  val cellularPrefetch: Boolean = true,
-  val hideRecent: Boolean = true,
-  val dataSaver: Boolean = false,
+    val enabled: Boolean,
+    val autoplay: Boolean,
+    val autoNext: Boolean,
+    val lyrics: Boolean,
+    val cellularPrefetch: Boolean,
+    val hideRecent: Boolean,
+    val animatedBackground: Boolean,
+    val dataSaver: Boolean,
 ) {
-  companion object {
-    fun from(preferences: Preferences) =
-      MusicFlowPreferences(
-        enabled = preferences[MusicFlowEnabledKey] ?: true,
-        autoplay = preferences[MusicFlowAutoplayKey] ?: true,
-        autoNext = preferences[MusicFlowAutoNextKey] ?: true,
-        animatedBackground =
-          preferences[MusicFlowAnimatedBackgroundKey]
-            ?: preferences[CanvasThumbnailAnimationKey]
-            ?: false,
-        lyrics = preferences[MusicFlowLyricsKey] ?: true,
-        cellularPrefetch = preferences[MusicFlowCellularPrefetchKey] ?: true,
-        hideRecent = preferences[MusicFlowHideRecentKey] ?: true,
-        dataSaver = preferences[DataSaverEnabledKey] ?: false,
-      )
-  }
+    companion object {
+        @JvmStatic
+        fun from(preferences: Preferences): MusicFlowPreferences {
+            val animated = preferences[MusicFlowAnimatedBackgroundKey]
+                ?: preferences[CanvasThumbnailAnimationKey]
+                ?: false
+            return MusicFlowPreferences(
+                enabled = preferences[MusicFlowEnabledKey] ?: true,
+                autoplay = preferences[MusicFlowAutoplayKey] ?: true,
+                autoNext = preferences[MusicFlowAutoNextKey] ?: true,
+                lyrics = preferences[MusicFlowLyricsKey] ?: true,
+                cellularPrefetch = preferences[MusicFlowCellularPrefetchKey] ?: true,
+                hideRecent = preferences[MusicFlowHideRecentKey] ?: true,
+                animatedBackground = animated,
+                dataSaver = preferences[DataSaverEnabledKey] ?: true,
+            )
+        }
+
+        fun defaults(): MusicFlowPreferences = MusicFlowPreferences(
+            enabled = true,
+            autoplay = true,
+            autoNext = true,
+            lyrics = true,
+            cellularPrefetch = true,
+            hideRecent = true,
+            animatedBackground = false,
+            dataSaver = true,
+        )
+    }
 }
