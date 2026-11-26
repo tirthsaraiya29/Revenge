@@ -2,344 +2,210 @@ package com.revenge.music.ui.screens
 
 import android.annotation.SuppressLint
 import android.content.Intent
-import android.os.Message
-import android.webkit.ConsoleMessage
+import android.graphics.Bitmap
+import android.net.Uri
 import android.webkit.CookieManager
-import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
-import android.webkit.WebResourceRequest
-import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.datastore.preferences.core.edit
 import androidx.navigation.NavController
 import com.revenge.innertube.YouTube
-import com.revenge.music.LocalPlayerAwareWindowInsets
-import com.revenge.music.R
-import com.revenge.music.constants.AccountChannelHandleKey
-import com.revenge.music.constants.AccountEmailKey
-import com.revenge.music.constants.AccountNameKey
-import com.revenge.music.constants.DataSyncIdKey
-import com.revenge.music.constants.InnerTubeCookieKey
 import com.revenge.music.constants.SavedAccountsKey
 import com.revenge.music.constants.VisitorDataKey
+import com.revenge.music.constants.DataSyncIdKey
+import com.revenge.music.constants.InnerTubeCookieKey
 import com.revenge.music.models.AccountData
-import com.revenge.music.ui.component.IconButton
-import com.revenge.music.ui.utils.backToMain
-import com.revenge.music.utils.rememberPreference
-import kotlinx.coroutines.DelicateCoroutinesApi
-import kotlinx.coroutines.delay
+import com.revenge.music.utils.dataStore
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import timber.log.Timber
 
-private val ALLOWED_LOGIN_HOSTS_REGEX =
-  Regex(
-    """(^|\.)(google|youtube|gstatic|googleusercontent|googleapis|googlevideo)\.[a-z.]+$|^g\.co$""",
-    RegexOption.IGNORE_CASE,
-  )
-
-private fun isAllowedLoginHost(host: String): Boolean {
-  if (host.isEmpty()) return false
-  return ALLOWED_LOGIN_HOSTS_REGEX.containsMatchIn(host)
-}
+private val JSON = Json { ignoreUnknownKeys = true; isLenient = true }
 
 @SuppressLint("SetJavaScriptEnabled")
-@OptIn(ExperimentalMaterial3Api::class, DelicateCoroutinesApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LoginScreen(navController: NavController) {
   val context = LocalContext.current
-  val coroutineScope = rememberCoroutineScope()
-  var visitorData by rememberPreference(VisitorDataKey, "")
-  var dataSyncId by rememberPreference(DataSyncIdKey, "")
-  var innerTubeCookie by rememberPreference(InnerTubeCookieKey, "")
-  var accountName by rememberPreference(AccountNameKey, "")
-  var accountEmail by rememberPreference(AccountEmailKey, "")
-  var accountChannelHandle by rememberPreference(AccountChannelHandleKey, "")
-  var savedAccountsJson by rememberPreference(SavedAccountsKey, "[]")
-  var hasCompletedLogin by remember { mutableStateOf(false) }
+  val scope = rememberCoroutineScope()
+  val done = remember { mutableStateOf(false) }
+  val holder = remember { mutableStateOf<WebView?>(null) }
 
-  var webView: WebView? = null
+  fun cookieValue(cookie: String?, name: String): String? =
+    cookie
+      ?.split(';')
+      ?.mapNotNull { part ->
+        val index = part.indexOf('=')
+        if (index <= 0) null
+        else part.substring(0, index).trim() to part.substring(index + 1).trim()
+      }
+      ?.firstOrNull { it.first == name }
+      ?.second
 
-  fun processSuccessfulAuth(capturedCookie: String) {
-    if (hasCompletedLogin) return
-    hasCompletedLogin = true
-    innerTubeCookie = capturedCookie
-
-    coroutineScope.launch {
-      delay(500)
-
-      YouTube.cookie = innerTubeCookie
-      YouTube.dataSyncId = dataSyncId
-      YouTube.visitorData = visitorData
-
-      Timber.d("Login: YouTube object initialized, validating...")
-
-      YouTube.accountInfo()
-        .onSuccess {
-          accountName = it.name
-          accountEmail = it.email.orEmpty()
-          accountChannelHandle = it.channelHandle.orEmpty()
-
-          val newAccount =
+  fun complete(cookie: String, visitorData: String?, dataSyncId: String?) {
+    if (done.value) return
+    done.value = true
+    scope.launch {
+      try {
+        withContext(Dispatchers.IO) {
+          YouTube.cookie = cookie
+          YouTube.visitorData = visitorData
+          YouTube.dataSyncId = dataSyncId
+          val account =
             AccountData(
-              name = it.name,
-              email = it.email.orEmpty(),
-              channelHandle = it.channelHandle.orEmpty(),
-              cookie = innerTubeCookie,
-              visitorData = visitorData,
-              dataSyncId = dataSyncId,
-              avatarUrl = it.thumbnailUrl.orEmpty(),
+              name = "YouTube",
+              email = "",
+              channelHandle = "",
+              cookie = cookie,
+              visitorData = visitorData.orEmpty(),
+              dataSyncId = dataSyncId.orEmpty(),
             )
-          val accounts =
-            try {
-                Json.decodeFromString<List<AccountData>>(savedAccountsJson)
-              } catch (e: Exception) {
-                emptyList()
-              }
-              .toMutableList()
-          accounts.removeAll { acc -> acc.name == newAccount.name }
-          accounts.add(newAccount)
-          savedAccountsJson = Json.encodeToString(accounts)
-
-          Timber.d("Login: Successfully logged in as ${it.name}, navigating back...")
-
-          webView?.apply {
-            stopLoading()
-            clearHistory()
-            clearCache(true)
-            clearFormData()
-          }
-
-          android.widget.Toast.makeText(
-              context,
-              "Logged in as ${it.name}",
-              android.widget.Toast.LENGTH_SHORT,
-            )
-            .show()
-
-          if (!navController.navigateUp()) {
-            navController.backToMain()
+          val existing =
+            runCatching {
+              JSON.decodeFromString<List<AccountData>>(
+                context.dataStore.data.first()[SavedAccountsKey] ?: "[]",
+              )
+            }.getOrDefault(emptyList())
+          val accounts = listOf(account) + existing.filterNot { it.cookie == cookie }
+          context.dataStore.edit { preferences ->
+            preferences[SavedAccountsKey] = JSON.encodeToString(accounts)
+            preferences[InnerTubeCookieKey] = cookie
+            visitorData?.let { preferences[VisitorDataKey] = it }
+            dataSyncId?.let { preferences[DataSyncIdKey] = it }
           }
         }
-        .onFailure { error ->
-          Timber.e(error, "Login: Authentication validation failed, saving fallback and returning")
-          val newAccount =
-            AccountData(
-              name = accountName.ifBlank { "YouTube Music" },
-              email = accountEmail,
-              channelHandle = accountChannelHandle,
-              cookie = innerTubeCookie,
-              visitorData = visitorData,
-              dataSyncId = dataSyncId,
-              avatarUrl = "",
-            )
-          val accounts =
-            try {
-                Json.decodeFromString<List<AccountData>>(savedAccountsJson)
-              } catch (e: Exception) {
-                emptyList()
-              }
-              .toMutableList()
-          accounts.removeAll { acc -> acc.cookie == innerTubeCookie }
-          accounts.add(newAccount)
-          savedAccountsJson = Json.encodeToString(accounts)
-
-          webView?.apply {
-            stopLoading()
-            clearHistory()
-            clearCache(true)
-            clearFormData()
-          }
-
-          if (!navController.navigateUp()) {
-            navController.backToMain()
-          }
-        }
+      } catch (_: Throwable) {
+        // The login flow must never surface an exception to the UI thread.
+      } finally {
+        navController.navigateUp()
+      }
     }
   }
 
-  AndroidView(
-    modifier = Modifier.windowInsetsPadding(LocalPlayerAwareWindowInsets.current).fillMaxSize(),
-    factory = { webViewContext ->
-      WebView(webViewContext).apply {
-        webViewClient =
-          object : WebViewClient() {
-            override fun shouldOverrideUrlLoading(
-              view: WebView,
-              request: WebResourceRequest,
-            ): Boolean {
-              val url = request.url ?: return false
-              val host = url.host?.lowercase().orEmpty()
-              val scheme = url.scheme?.lowercase().orEmpty()
+  fun inspect(url: String?) {
+    val cookie = CookieManager.getInstance().getCookie("https://music.youtube.com")
+      ?: CookieManager.getInstance().getCookie("https://www.youtube.com")
+      ?: return
+    val authenticated =
+      cookie.contains("SAPISID") ||
+        cookie.contains("__Secure-3PSID") ||
+        cookie.contains("LOGIN_INFO")
+    val onYouTube = url?.contains("music.youtube.com") == true || url?.contains("youtube.com") == true
+    if (authenticated && onYouTube) {
+      complete(
+        cookie = cookie,
+        visitorData = cookieValue(cookie, "VISITOR_DATA"),
+        dataSyncId = cookieValue(cookie, "DATASYNC_ID"),
+      )
+    }
+  }
 
-              if (scheme != "http" && scheme != "https") {
-                try {
-                  context.startActivity(Intent(Intent.ACTION_VIEW, url))
-                } catch (e: Exception) {
-                  Timber.w(e, "Cannot open scheme: $url")
-                }
-                return true
-              }
+  fun isAllowed(uri: Uri): Boolean {
+    val host = uri.host?.lowercase() ?: return false
+    return ALLOWED_HOSTS.any { host == it || host.endsWith(".$it") }
+  }
 
-              if (isAllowedLoginHost(host)) {
-                return false
-              }
-
-              try {
-                context.startActivity(Intent(Intent.ACTION_VIEW, url))
-              } catch (e: Exception) {
-                Timber.w(e, "Cannot open external URL: $url")
-              }
-              return true
-            }
-
-            override fun onPageFinished(view: WebView, url: String?) {
-              if (url?.contains("youtube.com") == true) {
-                evaluateJavascript(
-                  "(function() { return (window.yt && window.yt.config_) ? window.yt.config_.VISITOR_DATA : ''; })();",
-                ) { value ->
-                  val unquoted = value?.removeSurrounding("\"")
-                  if (!unquoted.isNullOrEmpty() && unquoted != "null") {
-                    visitorData = unquoted
-                  }
-                }
-                evaluateJavascript(
-                  "(function() { return (window.yt && window.yt.config_) ? window.yt.config_.DATASYNC_ID : ''; })();",
-                ) { value ->
-                  val unquoted = value?.removeSurrounding("\"")
-                  if (!unquoted.isNullOrEmpty() && unquoted != "null") {
-                    dataSyncId = unquoted.substringBefore("||")
-                  }
-                }
-                loadUrl(
-                  "javascript:Android.onRetrieveVisitorData(window.yt && window.yt.config_ ? window.yt.config_.VISITOR_DATA : '')",
-                )
-                loadUrl(
-                  "javascript:Android.onRetrieveDataSyncId(window.yt && window.yt.config_ ? window.yt.config_.DATASYNC_ID : '')",
-                )
-              }
-
-              val musicCookie = CookieManager.getInstance().getCookie("https://music.youtube.com")
-              val currentCookie =
-                if (!url.isNullOrEmpty()) CookieManager.getInstance().getCookie(url) else null
-              val effectiveCookie = musicCookie ?: currentCookie
-
-              val isYouTubeMusic = url?.startsWith("https://music.youtube.com") == true
-              val hasAuthToken =
-                effectiveCookie?.contains("SAPISID") == true ||
-                  effectiveCookie?.contains("__Secure-3PSID") == true ||
-                  effectiveCookie?.contains("LOGIN_INFO") == true
-
-              if (
-                (isYouTubeMusic || (url?.contains("youtube.com") == true && hasAuthToken)) &&
-                  !hasCompletedLogin &&
-                  effectiveCookie != null
-              ) {
-                processSuccessfulAuth(effectiveCookie)
-              }
-            }
-          }
-
-        webChromeClient =
-          object : WebChromeClient() {
-            override fun onCreateWindow(
-              view: WebView?,
-              isDialog: Boolean,
-              isUserGesture: Boolean,
-              resultMsg: Message?,
-            ): Boolean {
-              val transport = resultMsg?.obj as? WebView.WebViewTransport ?: return false
-              transport.webView = view
-              resultMsg.sendToTarget()
-              return true
-            }
-
-            override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
-              Timber.d(
-                "Login WebView: ${consoleMessage?.message()} [${consoleMessage?.sourceId()}:${consoleMessage?.lineNumber()}]",
-              )
-              return super.onConsoleMessage(consoleMessage)
-            }
-          }
-
-        settings.apply {
-          javaScriptEnabled = true
-          domStorageEnabled = true
-          databaseEnabled = true
-          javaScriptCanOpenWindowsAutomatically = true
-          setSupportMultipleWindows(true)
-          allowFileAccess = false
-          allowContentAccess = false
-          setSupportZoom(true)
-          builtInZoomControls = true
-          displayZoomControls = false
-          mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
-
-          // Mask embedded WebView signature so Google 2FA and modern auth flows execute without
-          // rejection
-          val defaultUa = userAgentString ?: WebSettings.getDefaultUserAgent(context)
-          userAgentString =
-            defaultUa.replace("; wv", "").replace(Regex("Version/\\d+\\.\\d+\\s*"), "")
-        }
-
-        addJavascriptInterface(
-          object {
-            @JavascriptInterface
-            fun onRetrieveVisitorData(newVisitorData: String?) {
-              if (newVisitorData != null) {
-                visitorData = newVisitorData
-              }
-            }
-
-            @JavascriptInterface
-            fun onRetrieveDataSyncId(newDataSyncId: String?) {
-              if (newDataSyncId != null) {
-                dataSyncId = newDataSyncId.substringBefore("||")
-              }
-            }
-          },
-          "Android",
-        )
-        webView = this
-
-        val cookieManager = CookieManager.getInstance()
-        cookieManager.setAcceptCookie(true)
-        cookieManager.setAcceptThirdPartyCookies(this, true)
-        cookieManager.removeAllCookies(null)
-        cookieManager.flush()
-        loadUrl("https://accounts.google.com/ServiceLogin?continue=https%3A%2F%2Fmusic.youtube.com")
+  DisposableEffect(Unit) {
+    onDispose {
+      holder.value?.apply {
+        stopLoading()
+        clearHistory()
+        destroy()
       }
-    },
-  )
+      holder.value = null
+    }
+  }
 
-  TopAppBar(
-    title = { Text(stringResource(R.string.login)) },
-    navigationIcon = {
-      IconButton(onClick = navController::navigateUp, onLongClick = navController::backToMain) {
-        Icon(painterResource(R.drawable.arrow_back), contentDescription = null)
-      }
+  Scaffold(
+    topBar = {
+      TopAppBar(
+        title = { Text("Sign in") },
+        navigationIcon = {
+          IconButton(onClick = navController::navigateUp) {
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
+          }
+        },
+      )
     },
-  )
+  ) { padding ->
+    AndroidView(
+      modifier = Modifier.fillMaxSize().padding(padding),
+      factory = {
+        val webView =
+          WebView(it).apply {
+            settings.javaScriptEnabled = true
+            settings.domStorageEnabled = true
+            settings.setSupportMultipleWindows(true)
+            CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+            webChromeClient = WebChromeClient()
+            webViewClient =
+              object : WebViewClient() {
+                override fun shouldOverrideUrlLoading(
+                  view: WebView?,
+                  request: android.webkit.WebResourceRequest?,
+                ): Boolean {
+                  val uri = request?.url ?: return false
+                  if (isAllowed(uri)) {
+                    inspect(uri.toString())
+                    return false
+                  }
+                  runCatching {
+                    view?.context?.startActivity(Intent(Intent.ACTION_VIEW, uri))
+                  }
+                  return true
+                }
 
-  BackHandler(enabled = webView?.canGoBack() == true) { webView?.goBack() }
+                override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
+                  super.onPageStarted(view, url, favicon)
+                  inspect(url)
+                }
+
+                override fun onPageFinished(view: WebView?, url: String?) {
+                  super.onPageFinished(view, url)
+                  inspect(url)
+                }
+              }
+            loadUrl(
+              "https://accounts.google.com/ServiceLogin?continue=https://music.youtube.com",
+            )
+          }
+        holder.value = webView
+        webView
+      },
+    )
+  }
 }
+
+private val ALLOWED_HOSTS =
+  listOf(
+    "google.com",
+    "googleapis.com",
+    "googleusercontent.com",
+    "googlevideo.com",
+    "gstatic.com",
+    "youtube.com",
+    "g.co",
+  )

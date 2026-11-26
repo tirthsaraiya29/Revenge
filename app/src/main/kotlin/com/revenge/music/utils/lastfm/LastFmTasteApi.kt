@@ -1,176 +1,230 @@
 package com.revenge.music.utils.lastfm
 
 import com.revenge.music.BuildConfig
-import io.ktor.client.request.get
-import io.ktor.client.statement.bodyAsText
+import java.net.HttpURLConnection
+import java.net.URI
+import java.net.URLEncoder
 import javax.inject.Inject
+import javax.inject.Singleton
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.doubleOrNull
-import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 
-data class SimilarTrack(
-    val name: String,
-    val artist: String,
-    val match: Double = 0.0,
-)
+data class SimilarTrack(val name: String, val artist: String, val match: Double? = null)
 
-data class SimilarArtist(
-    val name: String,
-    val match: Double = 0.0,
-)
+data class SimilarArtist(val name: String, val match: Double? = null)
 
-data class TasteTag(
-    val name: String,
-    val count: Int = 0,
-)
+data class Tag(val name: String, val count: Int = 0)
 
-data class UserTopArtist(
-    val name: String,
-    val playCount: Int = 0,
-)
-
-data class UserTopTrack(
-    val name: String,
-    val artist: String,
-    val playCount: Int = 0,
-)
-
-/** External taste service. Every method returns a failure instead of throwing. */
 interface LastFmTasteApi {
-    suspend fun getSimilarTracks(artist: String, track: String): Result<List<SimilarTrack>>
-    suspend fun getSimilarArtists(artist: String): Result<List<SimilarArtist>>
-    suspend fun getTopTags(artist: String): Result<List<TasteTag>>
-    suspend fun getUserTopArtists(user: String, limit: Int = 30): Result<List<UserTopArtist>>
-    suspend fun getUserTopTracks(user: String, limit: Int = 50): Result<List<UserTopTrack>>
-    suspend fun getUserTopTags(user: String, limit: Int = 15): Result<List<TasteTag>>
+  suspend fun getSimilarTracks(artist: String, track: String): Result<List<SimilarTrack>>
+
+  suspend fun getSimilarArtists(artist: String): Result<List<SimilarArtist>>
+
+  suspend fun getTopTags(artist: String): Result<List<Tag>>
+
+  suspend fun getUserTopArtists(user: String, limit: Int = 30): Result<List<String>>
+
+  suspend fun getUserTopTracks(user: String, limit: Int = 50): Result<List<SimilarTrack>>
+
+  suspend fun getUserTopTags(user: String, limit: Int = 15): Result<List<Tag>>
 }
 
+@Singleton
 class RealLastFmTasteApi @Inject constructor() : LastFmTasteApi {
-    private val json = Json {
-        ignoreUnknownKeys = true
-        isLenient = true
+
+  private companion object {
+    const val BASE = "https://ws.audioscrobbler.com/2.0/"
+  }
+
+  private val json = Json {
+    ignoreUnknownKeys = true
+    isLenient = true
+  }
+
+  /** Test seam. */
+  internal var transport: suspend (Map<String, String>) -> Result<String> = { params -> get(params) }
+
+  override suspend fun getSimilarTracks(
+    artist: String,
+    track: String,
+  ): Result<List<SimilarTrack>> {
+    if (artist.isBlank() || track.isBlank()) return Result.success(emptyList())
+    return query(
+      mapOf(
+        "method" to "track.getsimilar",
+        "artist" to artist,
+        "track" to track,
+        "limit" to "30",
+      ),
+    ).map { body ->
+      val root = root(body) ?: return@map emptyList()
+      entries(root["similartracks"]?.jsonObject?.get("track")).mapNotNull { item ->
+        val obj = item.asObject() ?: return@mapNotNull null
+        val name = obj.string("name") ?: return@mapNotNull null
+        SimilarTrack(
+          name = name,
+          artist = obj.string("artist") ?: obj["artist"]?.jsonObject?.string("name").orEmpty(),
+          match = obj.double("match"),
+        )
+      }
+    }
+  }
+
+  override suspend fun getSimilarArtists(artist: String): Result<List<SimilarArtist>> {
+    if (artist.isBlank()) return Result.success(emptyList())
+    return query(
+      mapOf("method" to "artist.getsimilar", "artist" to artist, "limit" to "20"),
+    ).map { body ->
+      val root = root(body) ?: return@map emptyList()
+      entries(root["similarartists"]?.jsonObject?.get("artist")).mapNotNull { item ->
+        val obj = item.asObject() ?: return@mapNotNull null
+        val name = obj.string("name") ?: return@mapNotNull null
+        SimilarArtist(name = name, match = obj.double("match"))
+      }
+    }
+  }
+
+  override suspend fun getTopTags(artist: String): Result<List<Tag>> {
+    if (artist.isBlank()) return Result.success(emptyList())
+    return query(
+      mapOf("method" to "artist.gettoptags", "artist" to artist),
+    ).map { body ->
+      val root = root(body) ?: return@map emptyList()
+      parseTags(root["toptags"]?.jsonObject?.get("tag"))
+    }
+  }
+
+  override suspend fun getUserTopArtists(user: String, limit: Int): Result<List<String>> {
+    if (user.isBlank()) return Result.success(emptyList())
+    return query(
+      mapOf(
+        "method" to "user.gettopartists",
+        "user" to user,
+        "limit" to limit.toString(),
+        "period" to "overall",
+      ),
+    ).map { body ->
+      val root = root(body) ?: return@map emptyList()
+      entries(root["topartists"]?.jsonObject?.get("artist"))
+        .mapNotNull { it.asObject()?.string("name") }
+    }
+  }
+
+  override suspend fun getUserTopTracks(user: String, limit: Int): Result<List<SimilarTrack>> {
+    if (user.isBlank()) return Result.success(emptyList())
+    return query(
+      mapOf(
+        "method" to "user.gettoptracks",
+        "user" to user,
+        "limit" to limit.toString(),
+        "period" to "overall",
+      ),
+    ).map { body ->
+      val root = root(body) ?: return@map emptyList()
+      entries(root["toptracks"]?.jsonObject?.get("track")).mapNotNull { item ->
+        val obj = item.asObject() ?: return@mapNotNull null
+        val name = obj.string("name") ?: return@mapNotNull null
+        SimilarTrack(
+          name = name,
+          artist = obj.string("artist") ?: obj["artist"]?.jsonObject?.string("name").orEmpty(),
+        )
+      }
+    }
+  }
+
+  override suspend fun getUserTopTags(user: String, limit: Int): Result<List<Tag>> {
+    if (user.isBlank()) return Result.success(emptyList())
+    return query(
+      mapOf(
+        "method" to "user.gettoptags",
+        "user" to user,
+        "limit" to limit.toString(),
+      ),
+    ).map { body ->
+      val root = root(body) ?: return@map emptyList()
+      parseTags(root["toptags"]?.jsonObject?.get("tag"))
+    }
+  }
+
+  private fun parseTags(element: JsonElement?): List<Tag> =
+    entries(element).mapNotNull { item ->
+      val obj = item.asObject() ?: return@mapNotNull null
+      val name = obj.string("name") ?: return@mapNotNull null
+      Tag(name = name, count = obj.int("count") ?: 0)
     }
 
-    override suspend fun getSimilarTracks(
-        artist: String,
-        track: String,
-    ): Result<List<SimilarTrack>> = runCatching {
-        val body = call(
-            "track.getsimilar",
-            mapOf("artist" to artist, "track" to track, "limit" to "30"),
-        ) ?: return Result.success(emptyList())
-        body["similartracks"]?.jsonObject?.get("track")?.jsonArray
-            .orEmpty().mapNotNull { element ->
-                val item = element.jsonObject
-                val name = item["name"]?.jsonPrimitive?.contentOrNull
-                val itemArtist = item["artist"]?.jsonObject?.get("name")
-                    ?.jsonPrimitive?.contentOrNull
-                if (name.isNullOrBlank() || itemArtist.isNullOrBlank()) null
-                else SimilarTrack(name, itemArtist, item.number("match"))
+  private fun root(body: String): JsonObject? {
+    val obj = runCatching { json.parseToJsonElement(body).jsonObject }.getOrNull() ?: return null
+    if (obj.containsKey("error")) return null
+    return obj
+  }
+
+  private fun entries(element: JsonElement?): List<JsonElement> =
+    when (element) {
+      null -> emptyList()
+      is JsonArray -> element.toList()
+      is JsonObject -> listOf(element)
+      else -> emptyList()
+    }
+
+  private fun apiKey(): String =
+    LastFM.getApiKey().ifBlank { BuildConfig.LASTFM_API_KEY }
+
+  private suspend fun query(extras: Map<String, String>): Result<String> {
+    val key = apiKey()
+    if (key.isBlank()) return Result.success("{}")
+    val params =
+      extras + mapOf("api_key" to key, "format" to "json")
+    return transport(params)
+  }
+
+  private suspend fun get(params: Map<String, String>): Result<String> =
+    try {
+      withContext(Dispatchers.IO) {
+        val url =
+          BASE +
+            "?" +
+            params.entries.joinToString("&") { (key, value) ->
+              URLEncoder.encode(key, "UTF-8") + "=" + URLEncoder.encode(value, "UTF-8")
             }
-    }
-
-    override suspend fun getSimilarArtists(artist: String): Result<List<SimilarArtist>> =
-        runCatching {
-            val body = call("artist.getsimilar", mapOf("artist" to artist, "limit" to "20"))
-                ?: return Result.success(emptyList())
-            body["similarartists"]?.jsonObject?.get("artist")?.jsonArray
-                .orEmpty().mapNotNull { element ->
-                    val item = element.jsonObject
-                    val name = item["name"]?.jsonPrimitive?.contentOrNull
-                    if (name.isNullOrBlank()) null else SimilarArtist(name, item.number("match"))
-                }
+        val connection =
+          (URI(url).toURL().openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"
+            connectTimeout = 15_000
+            readTimeout = 20_000
+            useCaches = false
+            setRequestProperty("Accept", "application/json")
+          }
+        try {
+          val code = connection.responseCode
+          val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+          val body = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
+          if (code !in 200..299) Result.failure(Exception("HTTP $code")) else Result.success(body)
+        } finally {
+          connection.disconnect()
         }
-
-    override suspend fun getTopTags(artist: String): Result<List<TasteTag>> = runCatching {
-        val body = call("artist.gettoptags", mapOf("artist" to artist))
-            ?: return Result.success(emptyList())
-        body["toptags"]?.jsonObject?.get("tag")?.jsonArray.orEmpty().mapNotNull { element ->
-            val item = element.jsonObject
-            val name = item["name"]?.jsonPrimitive?.contentOrNull
-            if (name.isNullOrBlank()) null else TasteTag(name, item.number("count").toInt())
-        }
-    }
-
-    override suspend fun getUserTopArtists(
-        user: String,
-        limit: Int,
-    ): Result<List<UserTopArtist>> = runCatching {
-        val body = call(
-            "user.gettopartists",
-            mapOf("user" to user, "period" to "overall", "limit" to limit.toString()),
-        ) ?: return Result.success(emptyList())
-        body["topartists"]?.jsonObject?.get("artist")?.jsonArray.orEmpty().mapNotNull { element ->
-            val item = element.jsonObject
-            val name = item["name"]?.jsonPrimitive?.contentOrNull
-            if (name.isNullOrBlank()) null else UserTopArtist(name, item.number("playcount").toInt())
-        }
-    }
-
-    override suspend fun getUserTopTracks(
-        user: String,
-        limit: Int,
-    ): Result<List<UserTopTrack>> = runCatching {
-        val body = call(
-            "user.gettoptracks",
-            mapOf("user" to user, "period" to "overall", "limit" to limit.toString()),
-        ) ?: return Result.success(emptyList())
-        body["toptracks"]?.jsonObject?.get("track")?.jsonArray.orEmpty().mapNotNull { element ->
-            val item = element.jsonObject
-            val name = item["name"]?.jsonPrimitive?.contentOrNull
-            val artist = item["artist"]?.jsonObject?.get("name")
-                ?.jsonPrimitive?.contentOrNull
-            if (name.isNullOrBlank() || artist.isNullOrBlank()) null
-            else UserTopTrack(name, artist, item.number("playcount").toInt())
-        }
-    }
-
-    override suspend fun getUserTopTags(
-        user: String,
-        limit: Int,
-    ): Result<List<TasteTag>> = runCatching {
-        val body = call(
-            "user.gettoptags",
-            mapOf("user" to user, "period" to "overall", "limit" to limit.toString()),
-        ) ?: return Result.success(emptyList())
-        body["toptags"]?.jsonObject?.get("tag")?.jsonArray.orEmpty().mapNotNull { element ->
-            val item = element.jsonObject
-            val name = item["name"]?.jsonPrimitive?.contentOrNull
-            if (name.isNullOrBlank()) null else TasteTag(name, item.number("count").toInt())
-        }
-    }
-
-    private suspend fun call(method: String, params: Map<String, String>): JsonObject? {
-        val apiKey = LastFM.getApiKey().ifBlank { BuildConfig.LASTFM_API_KEY }
-        if (apiKey.isBlank()) return null
-        val query = buildList {
-            add("method" to method)
-            add("api_key" to apiKey)
-            add("format" to "json")
-            params.forEach { (key, value) ->
-                if (value.isNotBlank()) add(key to value)
-            }
-        }.joinToString("&") { (key, value) ->
-            "${encode(key)}=${encode(value)}"
-        }
-        val text = runCatching {
-            LastFM.getKtorClient().get("${LastFM.BASE_URL}?$query").bodyAsText()
-        }.getOrNull() ?: return null
-        val root = runCatching { json.parseToJsonElement(text).jsonObject }.getOrNull()
-            ?: return null
-        if (root["error"] != null) return null
-        return root
-    }
-
-    private fun encode(value: String): String =
-        java.net.URLEncoder.encode(value, "UTF-8")
-
-    private fun JsonObject.number(key: String): Double {
-        val primitive = this[key]?.jsonPrimitive ?: return 0.0
-        return primitive.doubleOrNull ?: primitive.contentOrNull?.toDoubleOrNull() ?: 0.0
+      }
+    } catch (e: CancellationException) {
+      throw e
+    } catch (e: Throwable) {
+      Result.failure(e)
     }
 }
+
+private fun JsonElement?.asObject(): JsonObject? = this as? JsonObject
+
+private fun JsonObject.string(key: String): String? =
+  (this[key] as? JsonPrimitive)?.content?.takeIf { it.isNotBlank() }
+
+private fun JsonObject.int(key: String): Int? =
+  (this[key] as? JsonPrimitive)?.content?.toIntOrNull()
+
+private fun JsonObject.double(key: String): Double? =
+  (this[key] as? JsonPrimitive)?.content?.toDoubleOrNull()

@@ -1,10 +1,16 @@
 syntax = "proto3";
 
-package listentogether;
+package com.revenge.music.listentogether.proto;
 
-option java_multiple_files = false;
-option java_outer_classname = "Listentogether";
 option java_package = "com.revenge.music.listentogether.proto";
+option java_outer_classname = "Listentogether";
+option java_multiple_files = false;
+
+message Envelope {
+  string type = 1;
+  bytes payload = 2;
+  bool compressed = 3;
+}
 
 message TrackInfo {
   string id = 1;
@@ -196,10 +202,4 @@ message UserReconnectedPayload {
 message UserDisconnectedPayload {
   string user_id = 1;
   string username = 2;
-}
-
-message Envelope {
-  string type = 1;
-  bytes payload = 2;
-  bool compressed = 3;
 }

@@ -47,14 +47,15 @@ class AppleMusicCanvasLogicTest {
 
     private fun obj(text: String): JsonObject = Json.parseToJsonElement(text) as JsonObject
 
-    private fun attributes(name: String, collection: String? = null, artist: String = "The Beatles"): JsonObject =
-        obj(
-            buildString {
-                append("""{"name":"$name","artistName":"$artist"""")
-                if (collection != null) append(""","collectionName":"$collection"""")
-                append("}")
-            }
-        )
+    private fun attributes(name: String, collection: String? = null, artist: String = "The Beatles"): JsonObject {
+        val builder = StringBuilder()
+        builder.append("{\"name\":\"").append(name).append("\",\"artistName\":\"").append(artist).append('"')
+        if (collection != null) {
+            builder.append(",\"collectionName\":\"").append(collection).append('"')
+        }
+        builder.append('}')
+        return obj(builder.toString())
+    }
 
     private fun directSongItem(url: String = "https://cdn/direct.mp4"): String = """
         {"id":"item1","type":"songs","attributes":{"name":"Come Together","artistName":"The Beatles",

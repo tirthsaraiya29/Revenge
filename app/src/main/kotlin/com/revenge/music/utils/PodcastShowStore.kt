@@ -1,35 +1,37 @@
 package com.revenge.music.utils
 
 import android.content.Context
-import androidx.core.content.edit
-import dagger.hilt.android.qualifiers.ApplicationContext
-import javax.inject.Inject
-import javax.inject.Singleton
+import android.content.SharedPreferences
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-/**
- * Playlist ids known to be podcast shows.
- *
- * Saved podcasts are stored as ordinary playlists, so the library tells them apart by this set,
- * which is filled whenever a show page is opened.
- */
-@Singleton
-class PodcastShowStore @Inject constructor(@ApplicationContext context: Context) {
-  private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-  private val _ids = MutableStateFlow(prefs.getStringSet(KEY_IDS, null).orEmpty().toSet())
-  val ids: StateFlow<Set<String>> = _ids.asStateFlow()
+/** Tracks which podcast-show browse ids the user has followed at least once. */
+class PodcastShowStore private constructor(
+    private val preferences: SharedPreferences,
+) {
+    private val _ids = MutableStateFlow(
+        preferences.getStringSet(KEY, emptySet())?.toSet() ?: emptySet(),
+    )
+    val ids: StateFlow<Set<String>> = _ids.asStateFlow()
 
-  fun add(id: String) {
-    if (id in _ids.value) return
-    val updated = _ids.value + id
-    _ids.value = updated
-    prefs.edit { putStringSet(KEY_IDS, updated) }
-  }
+    fun add(id: String) {
+        if (id.isBlank() || id in _ids.value) return
+        val updated = _ids.value + id
+        _ids.value = updated
+        preferences.edit().putStringSet(KEY, updated).apply()
+    }
 
-  private companion object {
-    const val PREFS_NAME = "podcast_shows"
-    const val KEY_IDS = "ids"
-  }
+    companion object {
+        private const val KEY = "show_ids"
+
+        @Volatile private var instance: PodcastShowStore? = null
+
+        fun getInstance(context: Context): PodcastShowStore =
+            instance ?: synchronized(this) {
+                instance ?: PodcastShowStore(
+                    context.getSharedPreferences("podcast_shows", Context.MODE_PRIVATE),
+                ).also { instance = it }
+            }
+    }
 }

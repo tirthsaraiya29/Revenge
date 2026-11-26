@@ -1,68 +1,37 @@
 package com.revenge.music.ui.screens.settings
 
 import android.content.Context
-import java.util.concurrent.atomic.AtomicBoolean
-import kotlinx.coroutines.*
+import com.revenge.music.BuildConfig
+import java.net.HttpURLConnection
+import java.net.URI
+import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
+import kotlinx.coroutines.withContext
 import timber.log.Timber
 
+/** Fire-and-forget ListenBrainz submissions. */
 object ListenBrainzManager {
-  private val logTag = "ListenBrainzManager"
-  private val started = AtomicBoolean(false)
-  private var scope: CoroutineScope? = null
-  private var job: Job? = null
-  private var lifecycleObserver: Any? = null
-  private val httpClient = OkHttpClient()
 
-  private val _lastSubmitTime = MutableStateFlow<Long?>(null)
-  val lastSubmitTimeFlow = _lastSubmitTime.asStateFlow()
+  private const val ENDPOINT = "https://api.listenbrainz.org/1/submit-listens"
+  private const val MIN_LISTENED_AT = 1_033_430_400L
+  private const val CLIENT = "Revenge"
 
-  private fun extractArtistName(artist: Any): String {
-    try {
-      val getterNames = listOf("getName", "getArtistName", "name")
-      for (methodName in getterNames) {
-        try {
-          val method = artist.javaClass.getMethod(methodName)
-          val result = method.invoke(artist)
-          if (result is String && result.isNotBlank()) {
-            return result
-          }
-        } catch (e: Exception) {}
-      }
+  private val _lastSubmitTimeFlow = MutableStateFlow<Long?>(null)
+  val lastSubmitTimeFlow: StateFlow<Long?> = _lastSubmitTimeFlow.asStateFlow()
 
-      val fieldNames = listOf("name", "artistName")
-      for (fieldName in fieldNames) {
-        try {
-          val field = artist.javaClass.getDeclaredField(fieldName)
-          field.isAccessible = true
-          val result = field.get(artist)
-          if (result is String && result.isNotBlank()) {
-            return result
-          }
-        } catch (e: Exception) {}
-      }
+  private val active = AtomicInteger(0)
 
-      val str = artist.toString()
-      val namePattern = Regex("""name\s*=\s*([^,)\]]+)""")
-      val match = namePattern.find(str)
-      if (match != null) {
-        val extractedName = match.groupValues[1].trim()
-        if (extractedName.isNotBlank()) {
-          return extractedName
-        }
-      }
+  internal var nowSeconds: () -> Long = { System.currentTimeMillis() / 1000L }
 
-      return str
-    } catch (e: Exception) {
-      Timber.tag(logTag).w(e, "extractArtistName failed, using toString()")
-      return artist.toString()
-    }
+  internal var httpPost: suspend (token: String, body: String) -> Boolean = { token, body ->
+    post(token, body)
   }
+
+  fun isRunning(): Boolean = active.get() > 0
 
   suspend fun submitPlayingNow(
     context: Context,
@@ -72,55 +41,22 @@ object ListenBrainzManager {
     releaseName: String,
     durationMs: Long,
     positionMs: Long,
-  ): Boolean {
-    if (token.isBlank()) return false
-    if (title.isBlank()) return false
-    return withContext(Dispatchers.IO) {
-      try {
-        val releasePart =
-          if (releaseName.isBlank()) "" else "\"release_name\":\"${escapeJson(releaseName)}\","
-        val trackMetadata =
-          "{\"track_metadata\":{\"artist_name\":\"${escapeJson(
-                    artistNames,
-                )}\",\"track_name\":\"${escapeJson(
-                    title,
-                )}\",${releasePart}\"additional_info\":{\"duration_ms\":$durationMs,\"position_ms\":$positionMs,\"submission_client\":\"Revenge\",\"submission_client_version\":\"5.2.89\"}}}"
-        val listensJson = "[$trackMetadata]"
-        val bodyJson = "{\"listen_type\":\"playing_now\",\"payload\":$listensJson}"
-        Timber.tag(logTag).d("submitPlayingNow JSON: %s", bodyJson)
-        val mediaType = "application/json".toMediaType()
-        val body = bodyJson.toRequestBody(mediaType)
-        val request =
-          Request.Builder()
-            .url("https://api.listenbrainz.org/1/submit-listens")
-            .post(body)
-            .addHeader("Content-Type", "application/json")
-            .addHeader("Authorization", "Token $token")
-            .addHeader("User-Agent", "Revenge/5.2.89")
-            .build()
-
-        httpClient.newCall(request).execute().use { resp ->
-          val success = resp.isSuccessful
-          if (success) {
-            _lastSubmitTime.value = System.currentTimeMillis()
-            Timber.tag(logTag).d("playing_now submitted for %s", title)
-          } else {
-            val respBody =
-              try {
-                resp.body?.string() ?: ""
-              } catch (e: Exception) {
-                "<unable to read>"
-              }
-            Timber.tag(logTag).w("playing_now submit failed: %s - %s", resp.code, respBody)
-          }
-          success
-        }
-      } catch (ex: Exception) {
-        Timber.tag(logTag).e(ex, "submitPlayingNow failed")
-        false
-      }
-    }
-  }
+  ): Boolean =
+    submit(
+      token = token,
+      title = title,
+      body =
+        buildString {
+          append("{\"listen_type\":\"playing_now\",\"payload\":[{\"track_metadata\":{")
+          appendMetadata(artistNames, title, releaseName)
+          append(",\"additional_info\":{\"duration_ms\":")
+          append(durationMs)
+          append(",\"position_ms\":")
+          append(positionMs)
+          appendClientInfo()
+          append("}}}]}")
+        },
+    )
 
   suspend fun submitFinished(
     context: Context,
@@ -132,67 +68,101 @@ object ListenBrainzManager {
     startMs: Long,
     endMs: Long,
   ): Boolean {
-    if (token.isBlank()) return false
-    if (title.isBlank()) return false
-    return withContext(Dispatchers.IO) {
-      try {
-        val releasePart =
-          if (releaseName.isBlank()) "" else "\"release_name\":\"${escapeJson(releaseName)}\","
-        var listenedAtStart = (startMs / 1000L)
-        val MIN_LISTEN_TS = 1033430400L
-        if (listenedAtStart < MIN_LISTEN_TS) {
-          Timber.tag(logTag)
-            .w(
-              "listened_at %s looks too small, replacing with current epoch seconds",
-              listenedAtStart,
-            )
-          listenedAtStart = System.currentTimeMillis() / 1000L
-        }
-        val trackMetadataSingle =
-          "{\"listened_at\":$listenedAtStart,\"track_metadata\":{\"artist_name\":\"${escapeJson(
-                    artistNames,
-                )}\",\"track_name\":\"${escapeJson(
-                    title,
-                )}\",${releasePart}\"additional_info\":{\"duration_ms\":$durationMs,\"start_ms\":$startMs,\"end_ms\":$endMs,\"submission_client\":\"Revenge\",\"submission_client_version\":\"5.2.89\"}}}"
-        val listensJson = "[$trackMetadataSingle]"
-        val bodyJson = "{\"listen_type\":\"single\",\"payload\":$listensJson}"
-        Timber.tag(logTag).d("submitFinished JSON: %s", bodyJson)
-        val mediaType = "application/json".toMediaType()
-        val body = bodyJson.toRequestBody(mediaType)
-        val request =
-          Request.Builder()
-            .url("https://api.listenbrainz.org/1/submit-listens")
-            .post(body)
-            .addHeader("Content-Type", "application/json")
-            .addHeader("Authorization", "Token $token")
-            .addHeader("User-Agent", "Revenge/5.2.89")
-            .build()
+    val listenedAt =
+      (startMs / 1000L).let { if (it < MIN_LISTENED_AT) nowSeconds() else it }
+    return submit(
+      token = token,
+      title = title,
+      body =
+        buildString {
+          append("{\"listen_type\":\"single\",\"payload\":[{\"listened_at\":")
+          append(listenedAt)
+          append(",\"track_metadata\":{")
+          appendMetadata(artistNames, title, releaseName)
+          append(",\"additional_info\":{\"duration_ms\":")
+          append(durationMs)
+          append(",\"start_ms\":")
+          append(startMs)
+          append(",\"end_ms\":")
+          append(endMs)
+          appendClientInfo()
+          append("}}}]}")
+        },
+    )
+  }
 
-        httpClient.newCall(request).execute().use { resp ->
-          val success = resp.isSuccessful
-          if (success) {
-            _lastSubmitTime.value = System.currentTimeMillis()
-            Timber.tag(logTag).d("finished listen submitted for %s", title)
-          } else {
-            val respBody =
-              try {
-                resp.body?.string() ?: ""
-              } catch (e: Exception) {
-                "<unable to read>"
-              }
-            Timber.tag(logTag).w("finished listen submit failed: %s - %s", resp.code, respBody)
-          }
-          success
-        }
-      } catch (ex: Exception) {
-        Timber.tag(logTag).e(ex, "submitFinished failed")
-        false
+  private suspend fun submit(token: String, title: String, body: String): Boolean {
+    if (token.isBlank() || title.isBlank()) return false
+    active.incrementAndGet()
+    return try {
+      httpPost(token, body).also { success ->
+        if (success) _lastSubmitTimeFlow.value = System.currentTimeMillis()
       }
+    } catch (e: CancellationException) {
+      throw e
+    } catch (e: Throwable) {
+      Timber.tag("ListenBrainz").w(e, "Submission failed")
+      false
+    } finally {
+      active.decrementAndGet()
     }
   }
 
-  private fun escapeJson(s: String): String =
-    s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
+  private fun StringBuilder.appendMetadata(
+    artistNames: String,
+    title: String,
+    releaseName: String,
+  ) {
+    append("\"artist_name\":\"")
+    append(escape(artistNames))
+    append("\",\"track_name\":\"")
+    append(escape(title))
+    append('"')
+    if (releaseName.isNotBlank()) {
+      append(",\"release_name\":\"")
+      append(escape(releaseName))
+      append('"')
+    }
+  }
 
-  fun isRunning(): Boolean = started.get()
+  private fun StringBuilder.appendClientInfo() {
+    append(",\"submission_client\":\"")
+    append(CLIENT)
+    append("\",\"submission_client_version\":\"")
+    append(escape(BuildConfig.VERSION_NAME))
+    append('"')
+  }
+
+  internal fun escape(value: String): String =
+    buildString(value.length + 8) {
+      value.forEach { character ->
+        when (character) {
+          '\\' -> append("\\\\")
+          '"' -> append("\\\"")
+          '\n' -> append("\\n")
+          else -> append(character)
+        }
+      }
+    }
+
+  private suspend fun post(token: String, body: String): Boolean =
+    withContext(Dispatchers.IO) {
+      val connection =
+        (URI(ENDPOINT).toURL().openConnection() as HttpURLConnection).apply {
+          requestMethod = "POST"
+          connectTimeout = 15_000
+          readTimeout = 20_000
+          doOutput = true
+          useCaches = false
+          setRequestProperty("Content-Type", "application/json")
+          setRequestProperty("Authorization", "Token $token")
+          setRequestProperty("User-Agent", "Revenge/${BuildConfig.VERSION_NAME}")
+        }
+      try {
+        connection.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+        connection.responseCode in 200..299
+      } finally {
+        connection.disconnect()
+      }
+    }
 }

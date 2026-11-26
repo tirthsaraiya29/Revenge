@@ -3,18 +3,13 @@ package com.revenge.music.utils
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
-import androidx.core.content.getSystemService
 
-fun isInternetAvailable(context: Context): Boolean {
-  val connectivityManager = context.getSystemService<ConnectivityManager>() ?: return false
-  val activeNetwork = connectivityManager.activeNetwork ?: return false
-  val networkCapabilities =
-    connectivityManager.getNetworkCapabilities(activeNetwork) ?: return false
-
-  return when {
-    networkCapabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> true
-    networkCapabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> true
-    networkCapabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> true
-    else -> false
-  }
+object NetworkUtils {
+    fun isInternetAvailable(context: Context): Boolean = runCatching {
+        val manager = context.getSystemService(ConnectivityManager::class.java) ?: return false
+        val network = manager.activeNetwork ?: return false
+        val capabilities = manager.getNetworkCapabilities(network) ?: return false
+        capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+            capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+    }.getOrDefault(false)
 }

@@ -1,147 +1,121 @@
 package com.revenge.music.spotify
 
+import com.revenge.innertube.models.SongItem
 import com.revenge.music.db.MusicDatabase
+import com.revenge.music.db.entities.Artist
+import com.revenge.music.db.entities.ArtistEntity
+import com.revenge.music.db.entities.Song
 import com.revenge.music.models.SimilarRecommendation
 import com.revenge.music.spotifyimport.SpotifyImportRepository
 import javax.inject.Inject
 import javax.inject.Singleton
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
 
 @Singleton
 class LoadSpotifyRecommendationsUseCase
 @Inject
 constructor(
-  private val spotifyImportRepository: SpotifyImportRepository,
+  private val repository: SpotifyImportRepository,
   private val database: MusicDatabase,
-  private val spotifyPlaybackResolver: SpotifyPlaybackResolver,
+  private val resolver: SpotifyPlaybackResolver,
 ) {
+
   suspend operator fun invoke(
     hideExplicit: Boolean,
     fromTimeStamp: Long,
-  ): List<SimilarRecommendation>? =
-    withContext(Dispatchers.IO) {
-      val session = spotifyImportRepository.restoreSession()
-      if (!session.isAuthenticated) return@withContext null
+  ): List<SimilarRecommendation>? {
+    val session = repository.restoreSession()
+    if (!session.isAuthenticated) return null
 
-      val localArtists =
-        database
-          .mostPlayedArtists(fromTimeStamp, limit = 10)
-          .first()
-          .filter { it.artist.isYouTubeArtist }
-          .shuffled()
-          .take(3)
-      val localSongs =
-        database
-          .mostPlayedSongs(fromTimeStamp, limit = 10)
-          .first()
-          .filter { it.album != null }
-          .shuffled()
-          .take(2)
+    val local = collectLocalSeeds(fromTimeStamp)
+    val fromHistory = buildFromSeeds(local, hideExplicit)
+    if (fromHistory.isNotEmpty()) return fromHistory
 
-      val recommendations = mutableListOf<SimilarRecommendation>()
-
-      coroutineScope {
-        localArtists
-          .map { artist ->
-            async {
-              try {
-                val spotifyArtistId = getSpotifyArtistId(artist.artist.name) ?: return@async null
-                val result =
-                  Spotify.recommendations(seedArtistIds = listOf(spotifyArtistId), limit = 8)
-                    .getOrNull()
-                val tracks = result?.tracks.orEmpty()
-                if (tracks.isEmpty()) return@async null
-                val resolved = spotifyPlaybackResolver.resolveAndFilter(tracks, hideExplicit)
-                if (resolved.isEmpty()) return@async null
-                SimilarRecommendation(title = artist, items = resolved)
-              } catch (e: Exception) {
-                null
-              }
-            }
-          }
-          .awaitAll()
-          .filterNotNull()
-          .let { recommendations.addAll(it) }
+    val top = Spotify.topArtists(limit = 3).getOrNull()?.items.orEmpty()
+    val synthetic =
+      top.map { spotify ->
+        Artist(
+          artist =
+            ArtistEntity(
+              id = spotify.id,
+              name = spotify.name,
+              thumbnailUrl = spotify.images.firstOrNull()?.url,
+              bookmarkedAt = null,
+            ),
+          songCount = 0,
+        )
       }
+    val fallback = buildFromSeeds(synthetic, hideExplicit)
+    return fallback.ifEmpty { null }
+  }
 
-      coroutineScope {
-        localSongs
-          .map { song ->
-            async {
-              try {
-                val spotifyTrackId =
-                  getSpotifyTrackId(song.song.title, song.artists.firstOrNull()?.name)
-                    ?: return@async null
-                val result =
-                  Spotify.recommendations(seedTrackIds = listOf(spotifyTrackId), limit = 8)
-                    .getOrNull()
-                val tracks = result?.tracks.orEmpty()
-                if (tracks.isEmpty()) return@async null
-                val resolved = spotifyPlaybackResolver.resolveAndFilter(tracks, hideExplicit)
-                if (resolved.isEmpty()) return@async null
-                SimilarRecommendation(title = song, items = resolved)
-              } catch (e: Exception) {
-                null
-              }
+  private data class Seed(val local: com.revenge.music.db.entities.LocalItem, val query: String)
+
+  private suspend fun collectLocalSeeds(fromTimeStamp: Long): List<Seed> {
+    val artists =
+      runCatching {
+          database.mostPlayedArtists(fromTimeStamp, limit = 10).first()
+            .shuffled()
+            .take(3)
+        }
+        .getOrDefault(emptyList())
+        .map { artist -> Seed(artist, artist.title) }
+    val songs =
+      runCatching {
+          database.mostPlayedSongs(fromTimeStamp, limit = 10).first()
+            .filter { it.song.albumName != null }
+            .shuffled()
+            .take(2)
+        }
+        .getOrDefault(emptyList())
+        .map { song ->
+          Seed(song, "${song.title} ${song.artists.joinToString(" ") { it.name }}".trim())
+        }
+    return artists + songs
+  }
+
+  private suspend fun buildFromSeeds(
+    seeds: List<Seed>,
+    hideExplicit: Boolean,
+  ): List<SimilarRecommendation> = coroutineScope {
+    seeds
+      .map { seed ->
+        async {
+          runCatching {
+              val spotifyId = resolveSeedId(seed)
+                ?: return@runCatching null
+              val recommendations =
+                Spotify.recommendations(seedArtistIds = listOf(spotifyId), limit = 8)
+                  .getOrNull()
+                  ?: return@runCatching null
+              val items: List<SongItem> =
+                resolver.resolveAndFilter(recommendations.tracks, hideExplicit)
+              if (items.isEmpty()) null
+              else SimilarRecommendation(title = seed.local, items = items)
             }
-          }
-          .awaitAll()
-          .filterNotNull()
-          .let { recommendations.addAll(it) }
-      }
-
-      if (recommendations.isEmpty()) {
-        val topArtists = Spotify.topArtists(limit = 3).getOrNull()?.items.orEmpty()
-        coroutineScope {
-          topArtists
-            .map { topArtist ->
-              async {
-                try {
-                  val result =
-                    Spotify.recommendations(seedArtistIds = listOf(topArtist.id), limit = 8)
-                      .getOrNull()
-                  val tracks = result?.tracks.orEmpty()
-                  if (tracks.isEmpty()) return@async null
-                  val resolved = spotifyPlaybackResolver.resolveAndFilter(tracks, hideExplicit)
-                  if (resolved.isEmpty()) return@async null
-
-                  val fakeArtist =
-                    com.revenge.music.db.entities.Artist(
-                      artist =
-                        com.revenge.music.db.entities.ArtistEntity(
-                          id = topArtist.id,
-                          name = topArtist.name,
-                          thumbnailUrl = topArtist.images?.firstOrNull()?.url,
-                        ),
-                      songCount = 0,
-                    )
-                  SimilarRecommendation(title = fakeArtist, items = resolved)
-                } catch (e: Exception) {
-                  null
-                }
-              }
-            }
-            .awaitAll()
-            .filterNotNull()
-            .let { recommendations.addAll(it) }
+            .getOrNull()
         }
       }
+      .awaitAll()
+      .filterNotNull()
+  }
 
-      return@withContext recommendations.takeIf { it.isNotEmpty() }
-    }
-
-  private suspend fun getSpotifyArtistId(artistName: String): String? {
-    return Spotify.search(artistName, listOf("artist"))
+  private suspend fun resolveSeedId(seed: Seed): String? {
+    val track = Spotify.search(seed.query, types = listOf("track"), limit = 1)
+      .getOrNull()
+      ?.tracks
+      ?.items
+      ?.firstOrNull()
+    if (track != null) return track.id
+    return Spotify.search(seed.query, types = listOf("artist"), limit = 1)
       .getOrNull()
       ?.artists
       ?.items
       ?.firstOrNull()
       ?.id
-  }
-
-  private suspend fun getSpotifyTrackId(title: String, artist: String?): String? {
-    val query = if (artist != null) "$title $artist" else title
-    return Spotify.search(query, listOf("track")).getOrNull()?.tracks?.items?.firstOrNull()?.id
   }
 }
