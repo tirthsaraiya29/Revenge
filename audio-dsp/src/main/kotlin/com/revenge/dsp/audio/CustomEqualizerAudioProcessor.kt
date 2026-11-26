@@ -5,177 +5,157 @@ import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.util.UnstableApi
 import com.revenge.dsp.core.BiquadFilter
 import com.revenge.dsp.core.models.ParametricEQ
-import com.revenge.dsp.core.models.ParametricEQBand
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.pow
-import timber.log.Timber
 
 /**
- * Parametric equaliser stage for the Media3 audio chain.
- *
- * The profile can arrive before the pipeline is configured (the controller may apply it while no
- * player exists), so the last requested profile is kept and (re)installed whenever a format is
- * known. Only 16-bit PCM with one or two channels is handled; anything else is rejected at
- * configure time so Media3 can pick another sink.
+ * Parametric EQ stage. The last requested profile is remembered; a profile that arrives before a
+ * sample rate is configured is installed the moment [configure] succeeds.
  */
 @UnstableApi
 class CustomEqualizerAudioProcessor : AudioProcessor {
 
-  private var sampleRate = 0
-  private var channelCount = 0
-  private var active = false
-  private var enabled = false
+    private var requestedProfile: ParametricEQ? = null
+    private val bands = ArrayList<BiquadFilter>()
 
-  private var outputBuffer: ByteBuffer = EMPTY_BUFFER
-  private var streamEnded = false
+    @Volatile
+    private var preampScale: Double = 1.0
 
-  private var filters: List<BiquadFilter> = emptyList()
-  private var preampLinear = 1.0
+    @Volatile
+    private var stageInstalled: Boolean = false
 
-  /** Last profile requested through [applyProfile]; null after [disable]. */
-  private var requestedProfile: ParametricEQ? = null
+    @Volatile
+    private var configuredRate: Int = 0
 
-  @Synchronized
-  fun applyProfile(parametricEQ: ParametricEQ) {
-    requestedProfile = parametricEQ
-    if (sampleRate == 0) {
-      Timber.tag(TAG)
-        .d("Holding EQ profile until configure: ${parametricEQ.bands.size} bands")
-      return
-    }
-    install(parametricEQ)
-  }
+    @Volatile
+    private var configuredChannels: Int = 0
 
-  @Synchronized
-  fun disable() {
-    requestedProfile = null
-    enabled = false
-    filters = emptyList()
-    preampLinear = 1.0
-    Timber.tag(TAG).d("Equalizer disabled")
-  }
+    private var produced: ByteBuffer = blankBuffer()
+    private var ended: Boolean = false
 
-  fun isEnabled(): Boolean = enabled
-
-  private fun install(profile: ParametricEQ) {
-    preampLinear = 10.0.pow(profile.preamp / 20.0)
-    filters = buildFilters(profile.bands)
-    enabled = true
-    Timber.tag(TAG)
-      .d("Installed EQ: ${filters.size}/${profile.bands.size} bands, preamp ${profile.preamp} dB")
-  }
-
-  private fun buildFilters(bands: List<ParametricEQBand>): List<BiquadFilter> {
-    val nyquist = sampleRate / 2.0
-    return bands
-      .filter { it.enabled && it.frequency > 0.0 && it.frequency < nyquist }
-      .map { band ->
-        BiquadFilter(
-          sampleRate = sampleRate,
-          frequency = band.frequency,
-          gain = band.gain,
-          q = band.q,
-          filterType = band.filterType,
-        )
-      }
-  }
-
-  override fun configure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
-    if (inputAudioFormat.encoding != C.ENCODING_PCM_16BIT || inputAudioFormat.channelCount > 2) {
-      throw AudioProcessor.UnhandledAudioFormatException(inputAudioFormat)
-    }
-
-    sampleRate = inputAudioFormat.sampleRate
-    channelCount = inputAudioFormat.channelCount
-    active = true
-
-    requestedProfile?.let { install(it) }
-    return inputAudioFormat
-  }
-
-  override fun isActive(): Boolean = active
-
-  override fun queueInput(inputBuffer: ByteBuffer) {
-    val size = inputBuffer.remaining()
-    if (size == 0) return
-
-    prepareOutput(size)
-    val bypass = !enabled || (filters.isEmpty() && preampLinear == 1.0) || channelCount == 0
-    if (bypass) {
-      outputBuffer.put(inputBuffer)
-    } else {
-      processPcm16(inputBuffer, outputBuffer)
-    }
-    outputBuffer.flip()
-  }
-
-  private fun prepareOutput(size: Int) {
-    if (outputBuffer.capacity() < size) {
-      outputBuffer = ByteBuffer.allocateDirect(size).order(ByteOrder.nativeOrder())
-    } else {
-      outputBuffer.clear()
-    }
-  }
-
-  private fun processPcm16(input: ByteBuffer, output: ByteBuffer) {
-    val frameBytes = 2 * channelCount
-    repeat(input.remaining() / frameBytes) {
-      if (channelCount == 1) {
-        var sample = input.getShort().toDouble() / PCM_SCALE
-        for (filter in filters) sample = filter.processSample(sample)
-        output.putShort(toPcm16(sample * preampLinear))
-      } else {
-        var left = input.getShort().toDouble() / PCM_SCALE
-        var right = input.getShort().toDouble() / PCM_SCALE
-        for (filter in filters) {
-          val processed = filter.processStereo(left, right)
-          left = processed.first
-          right = processed.second
+    @Synchronized
+    fun applyProfile(parametricEQ: ParametricEQ) {
+        requestedProfile = parametricEQ
+        if (configuredRate > 0) {
+            buildStage(parametricEQ)
         }
-        output.putShort(toPcm16(left * preampLinear))
-        output.putShort(toPcm16(right * preampLinear))
-      }
     }
-  }
 
-  override fun getOutput(): ByteBuffer {
-    val buffer = outputBuffer
-    outputBuffer = EMPTY_BUFFER
-    return buffer
-  }
+    @Synchronized
+    fun disable() {
+        requestedProfile = null
+        bands.clear()
+        preampScale = 1.0
+        stageInstalled = false
+    }
 
-  override fun isEnded(): Boolean = streamEnded && outputBuffer.remaining() == 0
+    fun isEnabled(): Boolean = stageInstalled
 
-  @Deprecated("Deprecated in Java")
-  override fun flush() {
-    outputBuffer = EMPTY_BUFFER
-    streamEnded = false
-    filters.forEach { it.reset() }
-  }
+    override fun configure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
+        if (inputAudioFormat.encoding != C.ENCODING_PCM_16BIT || inputAudioFormat.channelCount > 2) {
+            throw AudioProcessor.UnhandledAudioFormatException(inputAudioFormat)
+        }
+        configuredRate = inputAudioFormat.sampleRate
+        configuredChannels = inputAudioFormat.channelCount
+        requestedProfile?.let(::buildStage)
+        return inputAudioFormat
+    }
 
-  override fun reset() {
-    @Suppress("DEPRECATION") flush()
-    sampleRate = 0
-    channelCount = 0
-    active = false
-    enabled = false
-    filters = emptyList()
-    preampLinear = 1.0
-    // requestedProfile intentionally survives so a later configure restores the EQ.
-  }
+    override fun isActive(): Boolean = configuredRate > 0
 
-  override fun queueEndOfStream() {
-    streamEnded = true
-  }
+    override fun queueInput(inputBuffer: ByteBuffer) {
+        val available = inputBuffer.remaining()
+        if (available == 0) return
 
-  private companion object {
-    const val TAG = "CustomEQProcessor"
-    const val PCM_SCALE = 32768.0
-    val EMPTY_BUFFER: ByteBuffer =
-      ByteBuffer.allocateDirect(0).order(ByteOrder.nativeOrder())
+        val channels = configuredChannels
+        val rate = configuredRate
+        val applyStage = rate > 0 && stageInstalled && (bands.isNotEmpty() || preampScale != 1.0)
+        val destination = ByteBuffer.allocateDirect(available).order(ByteOrder.nativeOrder())
+        val source = inputBuffer.duplicate().order(inputBuffer.order())
 
-    fun toPcm16(value: Double): Short =
-      (value * PCM_SCALE).coerceIn(-32768.0, 32767.0).toInt().toShort()
-  }
+        if (!applyStage || channels <= 0) {
+            val untouched = ByteArray(available)
+            source.get(untouched)
+            destination.put(untouched)
+        } else if (channels == 1) {
+            while (source.remaining() >= SAMPLE_BYTES) {
+                var sample = source.getShort() / PCM_SCALE
+                for (band in bands) {
+                    sample = band.processSample(sample)
+                }
+                destination.putShort(toPcm16(sample * preampScale))
+            }
+        } else {
+            while (source.remaining() >= 2 * SAMPLE_BYTES) {
+                var left = source.getShort() / PCM_SCALE
+                var right = source.getShort() / PCM_SCALE
+                for (band in bands) {
+                    val filtered = band.processStereo(left, right)
+                    left = filtered.first
+                    right = filtered.second
+                }
+                destination.putShort(toPcm16(left * preampScale))
+                destination.putShort(toPcm16(right * preampScale))
+            }
+        }
+
+        inputBuffer.position(inputBuffer.limit())
+        destination.flip()
+        produced = destination
+    }
+
+    override fun getOutput(): ByteBuffer {
+        val delivered = produced
+        produced = blankBuffer()
+        return delivered
+    }
+
+    override fun isEnded(): Boolean = ended && !produced.hasRemaining()
+
+    override fun queueEndOfStream() {
+        ended = true
+    }
+
+    override fun flush() {
+        produced = blankBuffer()
+        ended = false
+        bands.forEach(BiquadFilter::reset)
+    }
+
+    override fun reset() {
+        produced = blankBuffer()
+        ended = false
+        configuredRate = 0
+        configuredChannels = 0
+        bands.clear()
+        preampScale = 1.0
+        stageInstalled = false
+    }
+
+    private fun buildStage(profile: ParametricEQ) {
+        bands.clear()
+        val nyquist = configuredRate / 2.0
+        for (band in profile.bands) {
+            if (band.enabled && band.frequency > 0.0 && band.frequency < nyquist) {
+                bands.add(BiquadFilter(configuredRate, band.frequency, band.gain, band.q, band.filterType))
+            }
+        }
+        preampScale = 10.0.pow(profile.preamp / 20.0)
+        stageInstalled = true
+    }
+
+    private fun toPcm16(normalised: Double): Short {
+        val bounded = (normalised * PCM_SCALE).coerceIn(PCM_MIN, PCM_MAX)
+        return bounded.toInt().toShort()
+    }
+
+    private fun blankBuffer(): ByteBuffer = ByteBuffer.allocateDirect(0).order(ByteOrder.nativeOrder())
+
+    private companion object {
+        const val SAMPLE_BYTES = 2
+        const val PCM_SCALE = 32768.0
+        const val PCM_MIN = -32768.0
+        const val PCM_MAX = 32767.0
+    }
 }

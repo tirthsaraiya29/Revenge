@@ -6,353 +6,331 @@ import android.media.AudioTrack
 import com.revenge.usbaudio.model.DacCapabilities
 
 /**
- * PCM transport for the USB audio path.
- *
- * Android exposes USB host devices but not isochronous URBs from the Java API, so this build
- * renders the stream through an [AudioTrack] owned by the process. Android routes media output to
- * a connected USB audio class device automatically, which makes the option audible; it does not
- * bypass the platform mixer. A native isochronous backend can replace the sink internals later
- * without changing this API.
- *
- * When an [AudioTrack] cannot be created (unit tests, unsupported PCM layout) the driver falls back
- * to a bounded ring buffer so callers and tests keep working.
+ * Software PCM transport for a USB audio device. Playback is rendered through a platform
+ * [AudioTrack] and routed by the platform mixer; a bounded byte FIFO is used when the platform
+ * track cannot be created. No native isochronous backend is present.
  */
 class UsbAudioDriver {
 
-  companion object {
-    private const val DRIVER_VERSION = "1.0.0-usbaudio"
-    private const val RING_CAPACITY_BYTES = 128 * 1024
-    private const val MICROFRAMES_PER_SECOND = 8000
-    private const val BUFFER_DURATION_MS = 100
+    private val ring = ByteArray(FIFO_CAPACITY)
+    private val ringLock = Any()
+    private var ringHead = 0
+    private var ringSize = 0
 
-    /** True only when a native isochronous transport is bundled. This build has none. */
-    val nativeLoaded: Boolean = false
-  }
+    @Volatile
+    private var fifoFramesPlayed = 0L
 
-  private val ring = ByteRingBuffer(RING_CAPACITY_BYTES)
-  private val lock = Any()
+    @Volatile
+    private var track: AudioTrack? = null
 
-  @Volatile private var sampleBytes = 0
-  @Volatile private var channels = 0
-  @Volatile private var sampleRate = 0
-  @Volatile private var softwareMultiplier = 1.0
-  @Volatile private var framesPlayed = 0L
-  @Volatile private var queuedFrames = 0L
+    @Volatile
+    private var softwareMultiplier = 1.0
 
-  @Volatile private var track: AudioTrack? = null
-  @Volatile private var trackBufferBytes = 0
-  @Volatile private var trackFrameBytes = 0
+    @Volatile
+    private var sampleBytes = 2
 
-  /** The software transport is always available. */
-  fun isLoaded(): Boolean = true
+    @Volatile
+    private var channels = 2
 
-  /** Version string reported by the driver. */
-  fun getNativeDriverVersion(): String = DRIVER_VERSION
+    @Volatile
+    private var frameSize = 4
 
-  // Test hooks keep the ring observable without exposing it in the public API.
+    @Volatile
+    private var platformFramesWritten = 0L
 
-  fun testRingBufferWrite(data: ByteArray): Int = ring.write(data, 0, data.size)
+    companion object {
+        val nativeLoaded: Boolean = false
+        private const val FIFO_CAPACITY = 131_072
+        private const val VERSION = "1.0.0-usbaudio"
+    }
 
-  fun testRingBufferRead(size: Int): ByteArray = ring.read(size)
+    fun isLoaded(): Boolean = true
 
-  fun testRingBufferFlush() {
-    ring.flush()
-  }
+    fun getNativeDriverVersion(): String = VERSION
 
-  /** Parses raw USB configuration descriptors exposed by a USB device connection. */
-  fun parseDescriptors(rawDescriptors: ByteArray): DacCapabilities =
-    UsbDescriptorParser.parse(rawDescriptors)
+    fun testRingBufferWrite(data: ByteArray): Int = synchronized(ringLock) {
+        appendLocked(data, data.size)
+    }
 
-  /** Nominal samples carried per 125 us microframe at [sampleRate]. */
-  fun calculateNominalPacketSamples(sampleRate: Int): Int =
-    if (sampleRate <= 0) 0 else sampleRate / MICROFRAMES_PER_SECOND
-
-  /**
-   * Starts a stream. Returns 0 on success.
-   *
-   * Only 16-bit mono/stereo is handed to [AudioTrack]; other layouts keep using the ring so the
-   * caller never receives silently corrupted audio.
-   */
-  fun startStream(
-    fd: Int,
-    interfaceNumber: Int = 0,
-    altSetting: Int = 1,
-    dataEp: Int,
-    syncEp: Int = -1,
-    sampleRate: Int,
-    bitDepth: Int = 16,
-    channels: Int = 2,
-  ): Int =
-    synchronized(lock) {
-      releaseTrack()
-      ring.flush()
-      sampleBytes = (bitDepth + 7) / 8
-      this.channels = if (channels > 0) channels else 1
-      this.sampleRate = sampleRate
-      framesPlayed = 0L
-      queuedFrames = 0L
-      trackFrameBytes = this.channels * sampleBytes
-
-      if (bitDepth == 16 && this.channels in 1..2 && sampleRate in 8_000..192_000) {
-        track = createTrack(sampleRate, this.channels, trackFrameBytes)
-        track?.let {
-          trackBufferBytes = it.bufferSizeInFrames * trackFrameBytes
-          try {
-            it.play()
-          } catch (_: IllegalStateException) {
-            releaseTrack()
-          }
+    fun testRingBufferRead(size: Int): ByteArray = synchronized(ringLock) {
+        val count = size.coerceIn(0, ringSize)
+        val result = ByteArray(count)
+        for (index in 0 until count) {
+            result[index] = ring[(ringHead + index) % FIFO_CAPACITY]
         }
-      }
-      0
+        ringHead = (ringHead + count) % FIFO_CAPACITY
+        ringSize -= count
+        result
     }
 
-  /** Stops the stream and discards queued audio. */
-  fun stopStream(): Int =
-    synchronized(lock) {
-      releaseTrack()
-      ring.flush()
-      framesPlayed = 0L
-      queuedFrames = 0L
-      0
+    fun testRingBufferFlush() {
+        synchronized(ringLock) {
+            ringHead = 0
+            ringSize = 0
+        }
     }
 
-  /**
-   * Queues [size] bytes of interleaved PCM, applying the current software attenuation.
-   * Returns the number of bytes accepted.
-   */
-  fun writeAudio(buffer: ByteArray, size: Int = buffer.size): Int {
-    val toQueue = minOf(size, buffer.size)
-    if (toQueue <= 0) return 0
-    val payload = if (softwareMultiplier == 1.0) buffer else applyAttenuation(buffer, toQueue)
-    val activeTrack = track
-    if (activeTrack != null) {
-      val written =
+    fun parseDescriptors(rawDescriptors: ByteArray): DacCapabilities =
+        UsbDescriptorParser.parse(rawDescriptors)
+
+    fun calculateNominalPacketSamples(sampleRate: Int): Int =
+        if (sampleRate <= 0) 0 else sampleRate / 8000
+
+    @Synchronized
+    fun startStream(
+        fd: Int,
+        interfaceNumber: Int = 0,
+        altSetting: Int = 1,
+        dataEp: Int,
+        syncEp: Int = -1,
+        sampleRate: Int,
+        bitDepth: Int = 16,
+        channels: Int = 2,
+    ): Int {
+        releaseTrack()
+        discardFifo()
+        sampleBytes = (bitDepth + 7) / 8
+        this.channels = if (channels > 0) channels else 1
+        frameSize = (sampleBytes * this.channels).coerceAtLeast(1)
+        platformFramesWritten = 0L
+        fifoFramesPlayed = 0L
+
+        val eligible = bitDepth == 16 && this.channels <= 2 && sampleRate in 8_000..192_000
+        if (eligible) {
+            track = openTrack(sampleRate, this.channels)
+        }
+        return 0
+    }
+
+    @Synchronized
+    fun stopStream(): Int {
+        releaseTrack()
+        discardFifo()
+        platformFramesWritten = 0L
+        fifoFramesPlayed = 0L
+        return 0
+    }
+
+    fun writeAudio(buffer: ByteArray, size: Int = buffer.size): Int {
+        val requested = minOf(size, buffer.size)
+        if (requested <= 0) return 0
+
+        val payload = buffer.copyOf(requested)
+        val multiplier = softwareMultiplier
+        if (multiplier != 1.0) {
+            attenuate(payload, sampleBytes, multiplier)
+        }
+
+        val active = track
+        if (active != null) {
+            return try {
+                val written = active.write(payload, 0, requested, AudioTrack.WRITE_NON_BLOCKING)
+                if (written < 0) {
+                    0
+                } else {
+                    platformFramesWritten += written / frameSize
+                    written
+                }
+            } catch (error: Exception) {
+                0
+            }
+        }
+
+        val copied = synchronized(ringLock) { appendLocked(payload, requested) }
+        fifoFramesPlayed += copied / frameSize
+        return copied
+    }
+
+    fun getAvailableWrite(): Int {
+        val active = track
+        if (active == null) {
+            return synchronized(ringLock) { (FIFO_CAPACITY - ringSize).coerceIn(0, Int.MAX_VALUE) }
+        }
+        return try {
+            val pendingBytes = pendingPlatformFrames(active) * frameSize
+            (active.bufferSizeInBytes - pendingBytes).coerceIn(0, Int.MAX_VALUE)
+        } catch (error: Exception) {
+            0
+        }
+    }
+
+    fun setSoftwareVolumeMultiplier(multiplier: Double) {
+        val bounded = multiplier.coerceIn(0.0, 1.0)
+        softwareMultiplier = bounded
         try {
-          activeTrack.write(payload, 0, toQueue, AudioTrack.WRITE_NON_BLOCKING)
-        } catch (_: IllegalStateException) {
-          -1
+            track?.setVolume(bounded.toFloat())
+        } catch (error: IllegalStateException) {
+            // The track may be released concurrently; the multiplier is still recorded.
         }
-      if (written > 0) {
-        synchronized(lock) {
-          if (trackFrameBytes > 0) queuedFrames += written / trackFrameBytes
+    }
+
+    @Synchronized
+    fun flushStream() {
+        val active = track
+        if (active != null) {
+            try {
+                active.pause()
+            } catch (error: Exception) {
+                // Ignore a track that lost its audio session.
+            }
+            try {
+                active.flush()
+            } catch (error: Exception) {
+                // Ignore a track that lost its audio session.
+            }
+            platformFramesWritten = 0L
+            try {
+                if (active.state == AudioTrack.STATE_UNINITIALIZED) {
+                    releaseTrack()
+                } else {
+                    active.play()
+                }
+            } catch (error: Exception) {
+                releaseTrack()
+            }
+        } else {
+            platformFramesWritten = 0L
         }
-      }
-      return written.coerceAtLeast(0)
+        discardFifo()
+        fifoFramesPlayed = 0L
     }
-    val written = ring.write(payload, 0, toQueue)
-    val frameBytes = sampleBytes * channels
-    if (frameBytes > 0) framesPlayed += written / frameBytes
-    return written
-  }
 
-  /** Bytes that can still be queued before backpressure. */
-  fun getAvailableWrite(): Int {
-    val activeTrack = track
-    if (activeTrack == null) return ring.availableWrite()
-    val played = playedFrames(activeTrack)
-    val pending = (queuedFrames - played).coerceAtLeast(0L)
-    val free = trackBufferBytes - pending * trackFrameBytes
-    return free.coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
-  }
-
-  /** Stores the linear software attenuation multiplier (0.0..1.0). */
-  fun setSoftwareVolumeMultiplier(multiplier: Double) {
-    softwareMultiplier = multiplier.coerceIn(0.0, 1.0)
-    try {
-      track?.setVolume(softwareMultiplier.toFloat())
-    } catch (_: IllegalStateException) {
-      // The track was released between the read and the call.
+    fun getFramesPlayed(): Long {
+        val active = track ?: return fifoFramesPlayed
+        return try {
+            active.playbackHeadPosition.toLong() and 0xFFFFFFFFL
+        } catch (error: Exception) {
+            0L
+        }
     }
-  }
 
-  /** Discards queued audio and restarts the frame clock. */
-  fun flushStream() {
-    synchronized(lock) {
-      track?.let {
+    fun hasPendingData(): Boolean {
+        synchronized(ringLock) {
+            if (ringSize > 0) return true
+        }
+        val active = track ?: return false
+        return try {
+            platformFramesWritten > (active.playbackHeadPosition.toLong() and 0xFFFFFFFFL)
+        } catch (error: Exception) {
+            false
+        }
+    }
+
+    private fun appendLocked(data: ByteArray, length: Int): Int {
+        val accepted = minOf(length, FIFO_CAPACITY - ringSize)
+        for (index in 0 until accepted) {
+            ring[(ringHead + ringSize + index) % FIFO_CAPACITY] = data[index]
+        }
+        ringSize += accepted
+        return accepted
+    }
+
+    private fun discardFifo() {
+        synchronized(ringLock) {
+            ringHead = 0
+            ringSize = 0
+        }
+    }
+
+    private fun pendingPlatformFrames(active: AudioTrack): Long {
+        val played = active.playbackHeadPosition.toLong() and 0xFFFFFFFFL
+        return (platformFramesWritten - played).coerceAtLeast(0L)
+    }
+
+    private fun openTrack(rate: Int, channelCount: Int): AudioTrack? {
+        return try {
+            val channelMask =
+                if (channelCount == 1) AudioFormat.CHANNEL_OUT_MONO else AudioFormat.CHANNEL_OUT_STEREO
+            val minimum = AudioTrack.getMinBufferSize(rate, channelMask, AudioFormat.ENCODING_PCM_16BIT)
+            val hundredMilliseconds = rate * frameSize / 10
+            val bufferBytes = maxOf(minimum, hundredMilliseconds, frameSize)
+            val attributes = AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_MEDIA)
+                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                .build()
+            val format = AudioFormat.Builder()
+                .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                .setSampleRate(rate)
+                .setChannelMask(channelMask)
+                .build()
+            val created = AudioTrack.Builder()
+                .setAudioAttributes(attributes)
+                .setAudioFormat(format)
+                .setBufferSizeInBytes(bufferBytes)
+                .setTransferMode(AudioTrack.MODE_STREAM)
+                .build()
+            created.play()
+            if (created.state != AudioTrack.STATE_INITIALIZED) {
+                created.release()
+                null
+            } else {
+                created
+            }
+        } catch (error: Exception) {
+            null
+        }
+    }
+
+    private fun releaseTrack() {
+        val active = track ?: return
+        track = null
         try {
-          it.pause()
-          it.flush()
-          queuedFrames = 0L
-          it.play()
-        } catch (_: IllegalStateException) {
-          releaseTrack()
+            active.pause()
+        } catch (error: Exception) {
+            // Best effort; the platform may already have invalidated the track.
         }
-      }
-      ring.flush()
-      framesPlayed = 0L
-    }
-  }
-
-  /** Frames rendered since the last start or flush. */
-  fun getFramesPlayed(): Long {
-    val activeTrack = track ?: return framesPlayed
-    return playedFrames(activeTrack)
-  }
-
-  /** Whether audio is still queued for the sink. */
-  fun hasPendingData(): Boolean {
-    val activeTrack = track
-    if (activeTrack == null) return ring.size() > 0
-    return queuedFrames > playedFrames(activeTrack)
-  }
-
-  private fun playedFrames(activeTrack: AudioTrack): Long =
-    try {
-      activeTrack.playbackHeadPosition.toLong() and 0xFFFFFFFFL
-    } catch (_: IllegalStateException) {
-      0L
-    }
-
-  private fun createTrack(rate: Int, channelCount: Int, frameBytes: Int): AudioTrack? =
-    try {
-      val channelMask =
-        if (channelCount == 1) AudioFormat.CHANNEL_OUT_MONO else AudioFormat.CHANNEL_OUT_STEREO
-      val minimum = AudioTrack.getMinBufferSize(rate, channelMask, AudioFormat.ENCODING_PCM_16BIT)
-      val requested = maxOf(minimum, rate / 1000 * BUFFER_DURATION_MS * frameBytes)
-      AudioTrack.Builder()
-        .setAudioAttributes(
-          AudioAttributes.Builder()
-            .setUsage(AudioAttributes.USAGE_MEDIA)
-            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-            .build()
-        )
-        .setAudioFormat(
-          AudioFormat.Builder()
-            .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-            .setSampleRate(rate)
-            .setChannelMask(channelMask)
-            .build()
-        )
-        .setTransferMode(AudioTrack.MODE_STREAM)
-        .setBufferSizeInBytes(requested)
-        .build()
-    } catch (_: Throwable) {
-      // No audio device on the JVM, or the platform rejected the format.
-      null
-    }
-
-  private fun releaseTrack() {
-    track?.let {
-      try {
-        it.pause()
-        it.flush()
-        it.stop()
-      } catch (_: IllegalStateException) {
-        // Already stopped.
-      }
-      it.release()
-    }
-    track = null
-    trackBufferBytes = 0
-  }
-
-  private fun applyAttenuation(source: ByteArray, length: Int): ByteArray {
-    val output = source.copyOf(length)
-    val bytes = sampleBytes
-    if (bytes !in 2..4) return output
-    val multiplier = softwareMultiplier
-    val usable = length - (length % bytes)
-    var offset = 0
-    while (offset < usable) {
-      when (bytes) {
-        2 -> {
-          val sample =
-            ((output[offset].toInt() and 0xFF) or (output[offset + 1].toInt() shl 8))
-              .toShort()
-              .toInt()
-          val scaled =
-            (sample * multiplier)
-              .toInt()
-              .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
-          output[offset] = scaled.toByte()
-          output[offset + 1] = (scaled shr 8).toByte()
+        try {
+            active.flush()
+        } catch (error: Exception) {
+            // Best effort.
         }
-        3 -> {
-          var sample =
-            (output[offset].toInt() and 0xFF) or
-              ((output[offset + 1].toInt() and 0xFF) shl 8) or
-              ((output[offset + 2].toInt() and 0xFF) shl 16)
-          if (sample and 0x00800000 != 0) sample = sample or 0xFF000000.toInt()
-          val scaled = (sample * multiplier).toInt().coerceIn(-8_388_608, 8_388_607)
-          output[offset] = scaled.toByte()
-          output[offset + 1] = (scaled shr 8).toByte()
-          output[offset + 2] = (scaled shr 16).toByte()
+        try {
+            active.release()
+        } catch (error: Exception) {
+            // Best effort.
         }
-        else -> {
-          val sample =
-            (output[offset].toInt() and 0xFF) or
-              ((output[offset + 1].toInt() and 0xFF) shl 8) or
-              ((output[offset + 2].toInt() and 0xFF) shl 16) or
-              (output[offset + 3].toInt() shl 24)
-          val scaled =
-            (sample.toDouble() * multiplier)
-              .coerceIn(Int.MIN_VALUE.toDouble(), Int.MAX_VALUE.toDouble())
-              .toInt()
-          output[offset] = scaled.toByte()
-          output[offset + 1] = (scaled shr 8).toByte()
-          output[offset + 2] = (scaled shr 16).toByte()
-          output[offset + 3] = (scaled shr 24).toByte()
+    }
+
+    private fun attenuate(data: ByteArray, bytesPerSample: Int, multiplier: Double) {
+        if (bytesPerSample < 2 || bytesPerSample > 4) return
+        val minimum = minimumValue(bytesPerSample)
+        val maximum = maximumValue(bytesPerSample)
+        var offset = 0
+        while (offset + bytesPerSample <= data.size) {
+            val value = readSample(data, offset, bytesPerSample)
+            val scaled = (value * multiplier).coerceIn(minimum.toDouble(), maximum.toDouble()).toInt()
+            writeSample(data, offset, bytesPerSample, scaled)
+            offset += bytesPerSample
         }
-      }
-      offset += bytes
     }
-    return output
-  }
-}
 
-/** Bounded single-producer/single-consumer byte buffer with wraparound. */
-private class ByteRingBuffer(private val capacity: Int) {
-  private val data = ByteArray(capacity)
-  private var readIndex = 0
-  private var writeIndex = 0
-  private var count = 0
-
-  @Synchronized
-  fun size(): Int = count
-
-  @Synchronized
-  fun availableWrite(): Int = capacity - count
-
-  @Synchronized
-  fun write(source: ByteArray, offset: Int, length: Int): Int {
-    if (length <= 0) return 0
-    val toWrite = minOf(length, capacity - count)
-    if (toWrite <= 0) return 0
-    var written = 0
-    while (written < toWrite) {
-      val chunk = minOf(toWrite - written, capacity - writeIndex)
-      System.arraycopy(source, offset + written, data, writeIndex, chunk)
-      writeIndex = (writeIndex + chunk) % capacity
-      written += chunk
+    private fun readSample(data: ByteArray, offset: Int, bytes: Int): Int = when (bytes) {
+        2 -> (data[offset].toInt() and 0xFF) or (data[offset + 1].toInt() shl 8)
+        3 -> (data[offset].toInt() and 0xFF) or
+            ((data[offset + 1].toInt() and 0xFF) shl 8) or
+            (data[offset + 2].toInt() shl 16)
+        else -> (data[offset].toInt() and 0xFF) or
+            ((data[offset + 1].toInt() and 0xFF) shl 8) or
+            ((data[offset + 2].toInt() and 0xFF) shl 16) or
+            ((data[offset + 3].toInt() and 0xFF) shl 24)
     }
-    count += written
-    return written
-  }
 
-  @Synchronized
-  fun read(length: Int): ByteArray {
-    val toRead = minOf(length.coerceAtLeast(0), count)
-    val result = ByteArray(toRead)
-    var copied = 0
-    while (copied < toRead) {
-      val chunk = minOf(toRead - copied, capacity - readIndex)
-      System.arraycopy(data, readIndex, result, copied, chunk)
-      readIndex = (readIndex + chunk) % capacity
-      copied += chunk
+    private fun writeSample(data: ByteArray, offset: Int, bytes: Int, value: Int) {
+        data[offset] = (value and 0xFF).toByte()
+        if (bytes >= 2) data[offset + 1] = ((value ushr 8) and 0xFF).toByte()
+        if (bytes >= 3) data[offset + 2] = ((value ushr 16) and 0xFF).toByte()
+        if (bytes >= 4) data[offset + 3] = ((value ushr 24) and 0xFF).toByte()
     }
-    count -= toRead
-    if (count == 0) {
-      readIndex = 0
-      writeIndex = 0
-    }
-    return result
-  }
 
-  @Synchronized
-  fun flush() {
-    readIndex = 0
-    writeIndex = 0
-    count = 0
-  }
+    private fun minimumValue(bytes: Int): Int = when (bytes) {
+        2 -> -32768
+        3 -> -8388608
+        else -> Int.MIN_VALUE
+    }
+
+    private fun maximumValue(bytes: Int): Int = when (bytes) {
+        2 -> 32767
+        3 -> 8388607
+        else -> Int.MAX_VALUE
+    }
 }

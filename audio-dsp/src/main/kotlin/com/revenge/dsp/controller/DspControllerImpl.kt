@@ -1,8 +1,8 @@
+@file:OptIn(androidx.media3.common.util.UnstableApi::class)
+
 package com.revenge.dsp.controller
 
-import androidx.annotation.OptIn
 import androidx.media3.common.audio.AudioProcessor
-import androidx.media3.common.util.UnstableApi
 import com.revenge.dsp.audio.AutomixDuckAudioProcessor
 import com.revenge.dsp.audio.CustomEqualizerAudioProcessor
 import com.revenge.dsp.audio.StereoWidenerAudioProcessor
@@ -16,145 +16,150 @@ import kotlinx.coroutines.flow.asStateFlow
 import timber.log.Timber
 
 @Singleton
-@OptIn(UnstableApi::class)
 class DspControllerImpl @Inject constructor() : DspController {
 
-  private val eqProcessors = CopyOnWriteArrayList<CustomEqualizerAudioProcessor>()
-  private val duckProcessors = CopyOnWriteArrayList<AutomixDuckAudioProcessor>()
-  private val widenerProcessors = CopyOnWriteArrayList<StereoWidenerAudioProcessor>()
+    private val equalizers = CopyOnWriteArrayList<CustomEqualizerAudioProcessor>()
+    private val ducks = CopyOnWriteArrayList<AutomixDuckAudioProcessor>()
+    private val wideners = CopyOnWriteArrayList<StereoWidenerAudioProcessor>()
 
-  private val _activeProfile = MutableStateFlow<SavedEQProfile?>(null)
-  override val activeProfile: StateFlow<SavedEQProfile?> = _activeProfile.asStateFlow()
+    private val activeProfileState = MutableStateFlow<SavedEQProfile?>(null)
+    override val activeProfile: StateFlow<SavedEQProfile?> = activeProfileState.asStateFlow()
 
-  private val _isEnabled = MutableStateFlow(false)
-  override val isEnabled: StateFlow<Boolean> = _isEnabled.asStateFlow()
+    private val enabledState = MutableStateFlow(false)
+    override val isEnabled: StateFlow<Boolean> = enabledState.asStateFlow()
 
-  private val _stereoWidth = MutableStateFlow(1f)
-  override val stereoWidth: StateFlow<Float> = _stereoWidth.asStateFlow()
+    private val widthState = MutableStateFlow(1f)
+    override val stereoWidth: StateFlow<Float> = widthState.asStateFlow()
 
-  /** Latest profile so processors registered later can be brought up to date immediately. */
-  @Volatile private var pendingProfile: SavedEQProfile? = null
-  @Volatile private var pendingDisable = false
+    private var retainedProfile: SavedEQProfile? = null
+    private var disableRetained: Boolean = false
 
-  override fun getAudioProcessors(): List<AudioProcessor> {
-    val processors = mutableListOf<AudioProcessor>()
-    eqProcessors.firstOrNull()?.let(processors::add)
-    duckProcessors.firstOrNull()?.let(processors::add)
-    widenerProcessors.firstOrNull()?.let(processors::add)
-    return processors
-  }
-
-  override fun createProcessors(): PlayerDspProcessors {
-    val equalizer = CustomEqualizerAudioProcessor()
-    val duck = AutomixDuckAudioProcessor()
-    val widener = StereoWidenerAudioProcessor()
-
-    addAudioProcessor(equalizer)
-    addDuckProcessor(duck)
-    addStereoWidener(widener)
-
-    return PlayerDspProcessors(
-      equalizer = equalizer,
-      duckProcessor = duck,
-      stereoWidener = widener,
-    )
-  }
-
-  override fun releaseProcessors(processors: PlayerDspProcessors) {
-    removeAudioProcessor(processors.equalizer)
-    removeDuckProcessor(processors.duckProcessor)
-    removeStereoWidener(processors.stereoWidener)
-  }
-
-  override fun addAudioProcessor(processor: CustomEqualizerAudioProcessor) {
-    eqProcessors.add(processor)
-    when {
-      pendingDisable -> processor.disable()
-      else -> pendingProfile?.let { processor.applyProfile(it.parametricEQ) }
-    }
-    Timber.tag(TAG).d("EQ processor registered (${eqProcessors.size} total)")
-  }
-
-  override fun removeAudioProcessor(processor: CustomEqualizerAudioProcessor) {
-    eqProcessors.remove(processor)
-  }
-
-  override fun addStereoWidener(processor: StereoWidenerAudioProcessor) {
-    processor.width = _stereoWidth.value
-    widenerProcessors.add(processor)
-  }
-
-  override fun removeStereoWidener(processor: StereoWidenerAudioProcessor) {
-    widenerProcessors.remove(processor)
-  }
-
-  override fun addDuckProcessor(processor: AutomixDuckAudioProcessor) {
-    duckProcessors.add(processor)
-  }
-
-  override fun removeDuckProcessor(processor: AutomixDuckAudioProcessor) {
-    duckProcessors.remove(processor)
-  }
-
-  override fun applyProfile(profile: SavedEQProfile): Result<Unit> {
-    pendingProfile = profile
-    pendingDisable = false
-    _activeProfile.value = profile
-    _isEnabled.value = true
-
-    if (eqProcessors.isEmpty()) {
-      Timber.tag(TAG).w("No EQ processor yet; profile stored for later: ${profile.name}")
-      return Result.success(Unit)
+    override fun getAudioProcessors(): List<AudioProcessor> {
+        val chain = ArrayList<AudioProcessor>(3)
+        equalizers.firstOrNull()?.let { chain.add(it) }
+        ducks.firstOrNull()?.let { chain.add(it) }
+        wideners.firstOrNull()?.let { chain.add(it) }
+        return chain
     }
 
-    var failure: Exception? = null
-    eqProcessors.forEach { processor ->
-      try {
-        processor.applyProfile(profile.parametricEQ)
-      } catch (e: Exception) {
-        if (failure == null) failure = e
-        Timber.tag(TAG).e(e, "EQ processor rejected profile ${profile.id}")
-      }
+    override fun createProcessors(): PlayerDspProcessors {
+        val equalizer = CustomEqualizerAudioProcessor()
+        val duck = AutomixDuckAudioProcessor()
+        val widener = StereoWidenerAudioProcessor()
+        addAudioProcessor(equalizer)
+        addDuckProcessor(duck)
+        addStereoWidener(widener)
+        return PlayerDspProcessors(equalizer, duck, widener)
     }
 
-    return failure?.let { Result.failure<Unit>(it) } ?: Result.success(Unit)
-  }
-
-  override fun disable() = disableEqualizer()
-
-  override fun disableEqualizer() {
-    pendingDisable = true
-    pendingProfile = null
-    _activeProfile.value = null
-    _isEnabled.value = false
-
-    eqProcessors.forEach { processor ->
-      runCatching { processor.disable() }
-        .onFailure { Timber.tag(TAG).e(it, "Failed to disable EQ processor") }
+    override fun releaseProcessors(processors: PlayerDspProcessors) {
+        equalizers.remove(processors.equalizer)
+        ducks.remove(processors.duckProcessor)
+        wideners.remove(processors.stereoWidener)
     }
-  }
 
-  override fun setStereoWidth(width: Float) {
-    val clamped = width.coerceIn(1f, 2f)
-    _stereoWidth.value = clamped
-    widenerProcessors.forEach { it.width = clamped }
-  }
+    @Synchronized
+    override fun addAudioProcessor(processor: CustomEqualizerAudioProcessor) {
+        if (!equalizers.contains(processor)) {
+            equalizers.add(processor)
+        }
+        when {
+            disableRetained -> {
+                runCatching { processor.disable() }.onFailure { Timber.e(it, "Failed to disable EQ") }
+            }
+            retainedProfile != null -> {
+                val profile = retainedProfile!!
+                runCatching { processor.applyProfile(profile) }
+                    .onFailure { Timber.e(it, "Failed to restore EQ profile") }
+            }
+        }
+    }
 
-  override fun setAutoMixDuck(duckFactor: Float) {
-    val clamped = duckFactor.coerceIn(0f, 1f)
-    duckProcessors.forEach { it.setMix(clamped) }
-  }
+    override fun removeAudioProcessor(processor: CustomEqualizerAudioProcessor) {
+        equalizers.remove(processor)
+    }
 
-  override fun isInitialized(): Boolean = eqProcessors.isNotEmpty()
+    @Synchronized
+    override fun addStereoWidener(processor: StereoWidenerAudioProcessor) {
+        if (!wideners.contains(processor)) {
+            wideners.add(processor)
+        }
+        processor.width = widthState.value
+    }
 
-  override fun release() {
-    eqProcessors.clear()
-    duckProcessors.clear()
-    widenerProcessors.clear()
-    Timber.tag(TAG).d("DSP processors released")
-  }
+    override fun removeStereoWidener(processor: StereoWidenerAudioProcessor) {
+        wideners.remove(processor)
+    }
 
-  private companion object {
-    const val TAG = "DspController"
-  }
+    @Synchronized
+    override fun addDuckProcessor(processor: AutomixDuckAudioProcessor) {
+        if (!ducks.contains(processor)) {
+            ducks.add(processor)
+        }
+    }
+
+    override fun removeDuckProcessor(processor: AutomixDuckAudioProcessor) {
+        ducks.remove(processor)
+    }
+
+    @Synchronized
+    override fun applyProfile(profile: SavedEQProfile): Result<Unit> {
+        retainedProfile = profile
+        disableRetained = false
+        activeProfileState.value = profile
+        enabledState.value = true
+
+        var firstFailure: Throwable? = null
+        for (processor in equalizers) {
+            runCatching { processor.applyProfile(profile) }.onFailure { error ->
+                Timber.e(error, "Failed to apply EQ profile")
+                if (firstFailure == null) firstFailure = error
+            }
+        }
+        return if (firstFailure != null) {
+            Result.failure(firstFailure!!)
+        } else {
+            Result.success(Unit)
+        }
+    }
+
+    override fun disable() {
+        disableEqualizer()
+    }
+
+    @Synchronized
+    override fun disableEqualizer() {
+        disableRetained = true
+        retainedProfile = null
+        activeProfileState.value = null
+        enabledState.value = false
+        for (processor in equalizers) {
+            runCatching { processor.disable() }.onFailure { Timber.e(it, "Failed to disable EQ") }
+        }
+    }
+
+    @Synchronized
+    override fun setStereoWidth(width: Float) {
+        val bounded = width.coerceIn(1f, 2f)
+        widthState.value = bounded
+        for (processor in wideners) {
+            processor.width = bounded
+        }
+    }
+
+    @Synchronized
+    override fun setAutoMixDuck(duckFactor: Float) {
+        val bounded = duckFactor.coerceIn(0f, 1f)
+        for (processor in ducks) {
+            processor.setMix(bounded)
+        }
+    }
+
+    override fun isInitialized(): Boolean = equalizers.isNotEmpty()
+
+    override fun release() {
+        equalizers.clear()
+        ducks.clear()
+        wideners.clear()
+    }
 }

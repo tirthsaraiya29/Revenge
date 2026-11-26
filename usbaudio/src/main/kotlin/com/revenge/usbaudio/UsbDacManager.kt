@@ -14,200 +14,187 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-/** Lifecycle state of the currently selected USB DAC. */
 sealed class DacDeviceState {
-  object Disconnected : DacDeviceState()
-
-  data class PermissionRequired(val device: UsbDevice) : DacDeviceState()
-
-  data class Connected(
-    val device: UsbDevice,
-    val connection: UsbDeviceConnection,
-    val capabilities: DacCapabilities,
-    val fileDescriptor: Int,
-  ) : DacDeviceState()
-
-  data class Error(val message: String) : DacDeviceState()
+    object Disconnected : DacDeviceState()
+    data class PermissionRequired(val device: UsbDevice) : DacDeviceState()
+    data class Connected(
+        val device: UsbDevice,
+        val connection: UsbDeviceConnection,
+        val capabilities: DacCapabilities,
+        val fileDescriptor: Int,
+    ) : DacDeviceState()
+    data class Error(val message: String) : DacDeviceState()
 }
 
-/**
- * Owns USB host discovery and permission negotiation for a DAC.
- *
- * Call [register] when playback starts and [unregister] when it stops. Attachment, detachment and
- * permission grants are delivered through a broadcast receiver and published on [activeDacFlow].
- */
 class UsbDacManager(
-  private val context: Context,
-  private val driver: UsbAudioDriver = UsbAudioDriver(),
-  private val detector: UsbDeviceDetector = UsbDeviceDetector(),
+    private val context: Context,
+    private val driver: UsbAudioDriver = UsbAudioDriver(),
+    private val detector: UsbDeviceDetector = UsbDeviceDetector(),
 ) {
-  companion object {
-    const val ACTION_USB_PERMISSION = "com.revenge.usbaudio.USB_PERMISSION"
-  }
+    companion object {
+        const val ACTION_USB_PERMISSION = "com.revenge.usbaudio.USB_PERMISSION"
+    }
 
-  private val usbManager = context.getSystemService(Context.USB_SERVICE) as? UsbManager
+    private val state = MutableStateFlow<DacDeviceState>(DacDeviceState.Disconnected)
+    val activeDacFlow: StateFlow<DacDeviceState> = state.asStateFlow()
 
-  private val _activeDacFlow = MutableStateFlow<DacDeviceState>(DacDeviceState.Disconnected)
-  val activeDacFlow: StateFlow<DacDeviceState> = _activeDacFlow.asStateFlow()
+    var onDeviceDetachedCallback: (() -> Unit)? = null
 
-  /** Invoked after the active DAC is detached and disconnected. */
-  var onDeviceDetachedCallback: (() -> Unit)? = null
+    private var registered = false
 
-  private var receiverRegistered = false
-
-  private val usbReceiver =
-    object : BroadcastReceiver() {
-      override fun onReceive(receiverContext: Context?, intent: Intent?) {
-        when (intent?.action) {
-          UsbManager.ACTION_USB_DEVICE_ATTACHED ->
-            intent.deviceExtra()?.let(::onDeviceAttached)
-
-          UsbManager.ACTION_USB_DEVICE_DETACHED ->
-            intent.deviceExtra()?.let(::onDeviceDetached)
-
-          ACTION_USB_PERMISSION -> {
-            val device = intent.deviceExtra()
-            val granted =
-              intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)
-            if (device != null && granted) {
-              connect(device)
-            } else {
-              _activeDacFlow.value = DacDeviceState.Error("USB permission denied")
+    private val receiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val action = intent?.action ?: return
+            when (action) {
+                UsbManager.ACTION_USB_DEVICE_ATTACHED -> {
+                    val device = intent.deviceExtra() ?: return
+                    onAttached(device)
+                }
+                UsbManager.ACTION_USB_DEVICE_DETACHED -> {
+                    val device = intent.deviceExtra() ?: return
+                    onDetached(device)
+                }
+                ACTION_USB_PERMISSION -> {
+                    val device = intent.deviceExtra() ?: return
+                    val granted = intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)
+                    onPermissionResult(device, granted)
+                }
             }
-          }
         }
-      }
     }
 
-  /** Starts listening for USB events and adopts an already-attached DAC, if any. */
-  fun register() {
-    if (receiverRegistered) {
-      scanExistingDevices()
-      return
-    }
-    val filter =
-      IntentFilter().apply {
-        addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED)
-        addAction(UsbManager.ACTION_USB_DEVICE_DETACHED)
-        addAction(ACTION_USB_PERMISSION)
-      }
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-      context.registerReceiver(usbReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
-    } else {
-      context.registerReceiver(usbReceiver, filter)
-    }
-    receiverRegistered = true
-    scanExistingDevices()
-  }
-
-  /** Stops listening and closes the active connection. */
-  fun unregister() {
-    if (receiverRegistered) {
-      try {
-        context.unregisterReceiver(usbReceiver)
-      } catch (_: IllegalArgumentException) {
-        // Already unregistered by the framework.
-      }
-      receiverRegistered = false
-    }
-    disconnect()
-  }
-
-  /** Adopts the first attached USB audio device that is not already handled. */
-  fun scanExistingDevices() {
-    val manager = usbManager ?: return
-    for (device in manager.deviceList.values) {
-      if (detector.isUsbAudioDevice(device)) {
-        onDeviceAttached(device)
-        return
-      }
-    }
-  }
-
-  /** Requests the standard USB permission dialog for [device]. */
-  fun requestPermission(device: UsbDevice) {
-    val manager = usbManager ?: return
-    val flags =
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-      } else {
-        PendingIntent.FLAG_UPDATE_CURRENT
-      }
-    val permissionIntent =
-      PendingIntent.getBroadcast(
-        context,
-        0,
-        Intent(ACTION_USB_PERMISSION).setPackage(context.packageName),
-        flags,
-      )
-    manager.requestPermission(device, permissionIntent)
-  }
-
-  private fun onDeviceAttached(device: UsbDevice) {
-    if (!detector.isUsbAudioDevice(device)) return
-    val manager = usbManager ?: return
-    if (manager.hasPermission(device)) {
-      connect(device)
-    } else {
-      _activeDacFlow.value = DacDeviceState.PermissionRequired(device)
-      requestPermission(device)
-    }
-  }
-
-  private fun onDeviceDetached(device: UsbDevice) {
-    val current = _activeDacFlow.value
-    if (current is DacDeviceState.Connected && current.device.deviceId == device.deviceId) {
-      disconnect()
-      onDeviceDetachedCallback?.invoke()
-    }
-  }
-
-  private fun connect(device: UsbDevice) {
-    val current = _activeDacFlow.value
-    if (current is DacDeviceState.Connected) {
-      if (current.device.deviceId == device.deviceId) return
-      disconnect()
+    @Synchronized
+    fun register() {
+        if (registered) {
+            scanExistingDevices()
+            return
+        }
+        val filter = IntentFilter().apply {
+            addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED)
+            addAction(UsbManager.ACTION_USB_DEVICE_DETACHED)
+            addAction(ACTION_USB_PERMISSION)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            context.registerReceiver(receiver, filter)
+        }
+        registered = true
+        scanExistingDevices()
     }
 
-    val manager = usbManager ?: return
-    val connection = manager.openDevice(device)
-    if (connection == null) {
-      _activeDacFlow.value = DacDeviceState.Error("Failed to open USB device connection")
-      return
+    @Synchronized
+    fun unregister() {
+        if (registered) {
+            try {
+                context.unregisterReceiver(receiver)
+            } catch (error: IllegalArgumentException) {
+                // Receiver was already unregistered by the framework.
+            }
+            registered = false
+        }
+        disconnect()
     }
 
-    val descriptors = connection.rawDescriptors ?: ByteArray(0)
-    _activeDacFlow.value =
-      DacDeviceState.Connected(
-        device = device,
-        connection = connection,
-        capabilities = driver.parseDescriptors(descriptors),
-        fileDescriptor = connection.fileDescriptor,
-      )
-  }
-
-  private fun disconnect() {
-    val current = _activeDacFlow.value
-    if (current is DacDeviceState.Connected) {
-      try {
-        driver.stopStream()
-      } catch (_: Exception) {
-        // The transport is best-effort during teardown.
-      }
-      try {
-        current.connection.close()
-      } catch (_: Exception) {
-        // The device may already be gone.
-      }
+    fun scanExistingDevices() {
+        val manager = usbManager() ?: return
+        for (device in manager.deviceList.values) {
+            if (!detector.isUsbAudioDevice(device)) continue
+            adopt(manager, device)
+            return
+        }
     }
-    _activeDacFlow.value = DacDeviceState.Disconnected
-  }
 
-  @Suppress("DEPRECATION")
-  private fun Intent.deviceExtra(): UsbDevice? =
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-      getParcelableExtra(UsbManager.EXTRA_DEVICE, UsbDevice::class.java)
-    } else {
-      getParcelableExtra(UsbManager.EXTRA_DEVICE)
+    fun requestPermission(device: UsbDevice) {
+        val manager = usbManager() ?: return
+        val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        } else {
+            PendingIntent.FLAG_UPDATE_CURRENT
+        }
+        val intent = Intent(ACTION_USB_PERMISSION).apply { setPackage(context.packageName) }
+        val pendingIntent = PendingIntent.getBroadcast(context, 0, intent, flags)
+        manager.requestPermission(device, pendingIntent)
     }
+
+    private fun onAttached(device: UsbDevice) {
+        if (!detector.isUsbAudioDevice(device)) return
+        val manager = usbManager() ?: return
+        adopt(manager, device)
+    }
+
+    private fun onPermissionResult(device: UsbDevice, granted: Boolean) {
+        val manager = usbManager()
+        if (granted && manager != null && isPresent(manager, device)) {
+            connect(device)
+        } else {
+            state.value = DacDeviceState.Error("USB permission denied")
+        }
+    }
+
+    private fun onDetached(device: UsbDevice) {
+        val current = state.value
+        if (current is DacDeviceState.Connected && current.device.deviceId == device.deviceId) {
+            disconnect()
+            onDeviceDetachedCallback?.invoke()
+        }
+    }
+
+    private fun adopt(manager: UsbManager, device: UsbDevice) {
+        if (manager.hasPermission(device)) {
+            connect(device)
+        } else {
+            state.value = DacDeviceState.PermissionRequired(device)
+            requestPermission(device)
+        }
+    }
+
+    private fun connect(device: UsbDevice) {
+        val manager = usbManager() ?: return
+        val current = state.value
+        if (current is DacDeviceState.Connected) {
+            if (current.device.deviceId == device.deviceId) return
+            disconnect()
+        }
+        val connection = manager.openDevice(device)
+        if (connection == null) {
+            state.value = DacDeviceState.Error("Failed to open USB device connection")
+            return
+        }
+        val descriptors = connection.rawDescriptors ?: ByteArray(0)
+        val capabilities = driver.parseDescriptors(descriptors)
+        state.value = DacDeviceState.Connected(
+            device = device,
+            connection = connection,
+            capabilities = capabilities,
+            fileDescriptor = connection.fileDescriptor,
+        )
+    }
+
+    private fun disconnect() {
+        val current = state.value
+        if (current is DacDeviceState.Connected) {
+            try {
+                driver.stopStream()
+            } catch (error: Exception) {
+                // The device may already have gone away.
+            }
+            try {
+                current.connection.close()
+            } catch (error: Exception) {
+                // The device may already have gone away.
+            }
+            state.value = DacDeviceState.Disconnected
+        }
+    }
+
+    private fun isPresent(manager: UsbManager, device: UsbDevice): Boolean =
+        manager.deviceList.values.any { it.deviceId == device.deviceId }
+
+    private fun usbManager(): UsbManager? =
+        context.getSystemService(Context.USB_SERVICE) as? UsbManager
+
+    @Suppress("DEPRECATION")
+    private fun Intent.deviceExtra(): UsbDevice? =
+        getParcelableExtra(UsbManager.EXTRA_DEVICE)
 }

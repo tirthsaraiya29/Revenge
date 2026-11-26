@@ -4,197 +4,119 @@ import com.revenge.dsp.core.models.FilterType
 import com.revenge.dsp.core.models.ParametricEQ
 import com.revenge.dsp.core.models.ParametricEQBand
 import java.io.File
-import java.nio.charset.Charset
 import java.util.Locale
 
-/**
- * Stateless reader/writer for AutoEQ-style parametric EQ text.
- *
- * Parsing is tolerant: classification never throws, and a line that cannot produce a usable
- * entity is discarded rather than partially applied.
- */
 object ParametricEQParser {
 
-    private const val PREAMP_KEYWORD = "Preamp:"
-    private const val FILTER_KEYWORD = "Filter"
-    private const val ENABLED_MARKER = "ON"
-
-    private val NEWLINE: String = System.lineSeparator()
-
-    private val PREAMP_PATTERN = Regex("""\bPreamp:\s*([-+]?\d+\.?\d*)\s*dB""", RegexOption.IGNORE_CASE)
-    private val FREQUENCY_PATTERN = Regex("""\bFc\s+([-+]?\d+\.?\d*)\s*Hz""", RegexOption.IGNORE_CASE)
-    private val GAIN_PATTERN = Regex("""\bGain\s+([-+]?\d+\.?\d*)\s*dB""", RegexOption.IGNORE_CASE)
-    private val QUALITY_PATTERN = Regex("""\bQ\s+([-+]?\d+\.?\d*)""", RegexOption.IGNORE_CASE)
-
-    /** Normative resolution order when a band line contains several type tokens. */
-    private val TYPE_PRECEDENCE = listOf(
-        FilterType.LSC,
-        FilterType.HSC,
-        FilterType.PK,
-        FilterType.LPQ,
-        FilterType.HPQ,
-    )
-
-    // ----------------------------------------------------------------- file I/O
+    private val PREAMP_PATTERN = Regex("""([-+]?\d+(?:\.\d+)?)\s*dB""", RegexOption.IGNORE_CASE)
+    private val TYPE_PATTERN = Regex("""\b(LSC|HSC|LPQ|HPQ|PK)\b""", RegexOption.IGNORE_CASE)
+    private val ENABLED_PATTERN = Regex("""\bON\b""", RegexOption.IGNORE_CASE)
+    private val FREQUENCY_PATTERN = Regex("""\bFc\s+([-+]?\d+(?:\.\d+)?)\s*Hz""", RegexOption.IGNORE_CASE)
+    private val GAIN_PATTERN = Regex("""\bGain\s+([-+]?\d+(?:\.\d+)?)\s*dB""", RegexOption.IGNORE_CASE)
+    private val Q_PATTERN = Regex("""\bQ\s+([-+]?\d+(?:\.\d+)?)""", RegexOption.IGNORE_CASE)
 
     fun parseFile(file: File): ParametricEQ {
-        require(file.exists()) { "File does not exist: ${file.absolutePath}" }
-        return parseText(file.readText(Charset.defaultCharset()))
+        require(file.exists()) { "EQ profile file not found: ${file.absolutePath}" }
+        return parseText(file.readText())
     }
 
     fun parseFile(filePath: String): ParametricEQ = parseFile(File(filePath))
 
-    // ------------------------------------------------------------------- parsing
-
     fun parseText(content: String): ParametricEQ {
         var preamp = 0.0
-        val bands = mutableListOf<ParametricEQBand>()
+        val bands = ArrayList<ParametricEQBand>()
         val metadata = LinkedHashMap<String, String>()
 
         for (rawLine in content.lineSequence()) {
-            when (val entity = classify(rawLine)) {
-                is Entity.Preamp -> preamp = entity.decibels
-                is Entity.Band -> bands += entity.band
-                is Entity.Metadata -> metadata[entity.key] = entity.value
-                Entity.Discard -> Unit
+            val line = rawLine.trim()
+            if (line.isEmpty()) continue
+            when {
+                line.startsWith(PREAMP_DIRECTIVE, ignoreCase = true) -> {
+                    preamp = PREAMP_PATTERN.find(line)?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0
+                }
+                line.startsWith(FILTER_DIRECTIVE, ignoreCase = true) -> {
+                    parseBand(line)?.let(bands::add)
+                }
+                line.contains(':') -> {
+                    val separator = line.indexOf(':')
+                    metadata[line.substring(0, separator).trim()] = line.substring(separator + 1).trim()
+                }
             }
         }
-
         return ParametricEQ(preamp = preamp, bands = bands, metadata = metadata)
     }
 
-    /** What one trimmed source line contributes to the result. */
-    private sealed interface Entity {
-        data class Preamp(val decibels: Double) : Entity
-        data class Band(val band: ParametricEQBand) : Entity
-        data class Metadata(val key: String, val value: String) : Entity
-        object Discard : Entity
+    fun toString(eq: ParametricEQ): String = buildString {
+        append("Preamp: ${eq.preamp} dB")
+        eq.bands.forEachIndexed { index, band ->
+            append('\n')
+            append("Filter ${index + 1}: ${band.filterType}")
+            append(" Fc ${band.frequency} Hz")
+            append(" Gain ${band.gain} dB")
+            append(" Q ${band.q}")
+        }
     }
 
-    private fun classify(rawLine: String): Entity {
-        val line = rawLine.trim()
-        if (line.isEmpty()) return Entity.Discard
-
-        if (line.startsWith(PREAMP_KEYWORD, ignoreCase = true)) {
-            // Preamp lines are never metadata; an unreadable one just contributes nothing.
-            val dB = numberAfter(PREAMP_PATTERN, line) ?: return Entity.Discard
-            return Entity.Preamp(dB)
+    fun toFileFormat(eq: ParametricEQ): String = buildString {
+        append("Preamp: ${eq.preamp} dB")
+        eq.bands.forEachIndexed { index, band ->
+            append('\n')
+            append("Filter ${index + 1}: ON ${band.filterType}")
+            append(" Fc ${band.frequency.toInt()} Hz")
+            append(" Gain ${band.gain} dB")
+            append(" Q ${String.format(Locale.ROOT, "%.2f", band.q)}")
         }
-        if (line.startsWith(FILTER_KEYWORD, ignoreCase = true)) {
-            // Filter lines are all-or-nothing and are never metadata either.
-            return parseBand(line)?.let(Entity::Band) ?: Entity.Discard
-        }
+    }
 
-        val colon = line.indexOf(':')
-        if (colon < 0) return Entity.Discard
-        return Entity.Metadata(line.substring(0, colon).trim(), line.substring(colon + 1).trim())
+    fun validate(eq: ParametricEQ): List<String> {
+        val problems = ArrayList<String>()
+        if (eq.preamp < PREAMP_MIN || eq.preamp > PREAMP_MAX) {
+            problems.add("Preamp must be between $PREAMP_MIN and $PREAMP_MAX dB")
+        }
+        if (eq.bands.isEmpty()) {
+            problems.add("EQ profile must have at least one band")
+        }
+        if (eq.bands.size > ParametricEQ.MAX_BANDS) {
+            problems.add("Too many bands: maximum is ${ParametricEQ.MAX_BANDS}")
+        }
+        eq.bands.forEachIndexed { index, band ->
+            val position = index + 1
+            if (band.frequency <= 0.0 || band.frequency > MAX_FREQUENCY) {
+                problems.add("Band $position: Frequency must be greater than 0 and at most $MAX_FREQUENCY Hz")
+            }
+            if (band.gain < MIN_GAIN || band.gain > MAX_GAIN) {
+                problems.add("Band $position: Gain must be between $MIN_GAIN and $MAX_GAIN dB")
+            }
+            if (band.q <= 0.0 || band.q > MAX_Q) {
+                problems.add("Band $position: Q factor must be greater than 0 and at most $MAX_Q")
+            }
+        }
+        return problems
     }
 
     private fun parseBand(line: String): ParametricEQBand? {
-        if (!line.contains(ENABLED_MARKER, ignoreCase = true)) return null
-        val filterType = TYPE_PRECEDENCE.firstOrNull { line.contains(it.name, ignoreCase = true) }
+        if (!ENABLED_PATTERN.containsMatchIn(line)) return null
+        val typeMatch = TYPE_PATTERN.find(line) ?: return null
+        val frequency = FREQUENCY_PATTERN.find(line)?.groupValues?.get(1)?.toDoubleOrNull() ?: return null
+        val gain = GAIN_PATTERN.find(line)?.groupValues?.get(1)?.toDoubleOrNull() ?: return null
+        val q = Q_PATTERN.find(line)?.groupValues?.get(1)?.toDoubleOrNull() ?: return null
+        val filterType = FilterType.entries.firstOrNull { it.name.equals(typeMatch.value, ignoreCase = true) }
             ?: return null
         return ParametricEQBand(
-            frequency = numberAfter(FREQUENCY_PATTERN, line) ?: return null,
-            gain = numberAfter(GAIN_PATTERN, line) ?: return null,
-            q = numberAfter(QUALITY_PATTERN, line) ?: return null,
+            frequency = frequency,
+            gain = gain,
+            q = q,
             filterType = filterType,
+            enabled = true,
         )
     }
 
-    private fun numberAfter(pattern: Regex, line: String): Double? =
-        pattern.find(line)?.groupValues?.get(1)?.toDoubleOrNull()
-
-    // ------------------------------------------------------------------- writing
-
-    fun toString(eq: ParametricEQ): String =
-        terminatedLines(
-            listOf(preampLine(eq.preamp)) +
-                eq.bands.mapIndexed { index, band -> displayBandLine(index + 1, band) },
-        )
-
-    fun toFileFormat(eq: ParametricEQ): String =
-        terminatedLines(
-            listOf(preampLine(eq.preamp)) +
-                eq.bands.mapIndexed { index, band -> fileBandLine(index + 1, band) },
-        )
-
-    /** Every emitted line, including the last, ends with the platform separator. */
-    private fun terminatedLines(lines: List<String>): String =
-        lines.joinToString(separator = NEWLINE, postfix = NEWLINE)
-
-    private fun preampLine(preamp: Double): String = "Preamp: $preamp dB"
-
-    private fun displayBandLine(position: Int, band: ParametricEQBand): String =
-        "Filter $position: ${band.filterType} Fc ${band.frequency} Hz Gain ${band.gain} dB Q ${band.q}"
-
-    private fun fileBandLine(position: Int, band: ParametricEQBand): String {
-        val formattedQ = String.format(Locale.ROOT, "%.2f", band.q)
-        return "Filter $position: ON ${band.filterType} Fc ${band.frequency.toInt()} Hz Gain ${band.gain} dB Q $formattedQ"
-    }
-
-    // ---------------------------------------------------------------- validation
-
-    /**
-     * Message templates are kept together so the wire format lives in one place; the rules
-     * below only decide whether each template applies.
-     */
-    private object Messages {
-        const val PREAMP = "Preamp value %s dB is out of range (-50 to +50 dB)"
-        const val NO_BANDS = "EQ profile must have at least one band"
-        const val BAND_COUNT = "EQ profile has %d bands, maximum is %d"
-        const val FREQUENCY = "Band %d: Frequency %s Hz is out of range (1 to 100000 Hz)"
-        const val GAIN = "Band %d: Gain %s dB is out of range (-30 to +30 dB)"
-        const val QUALITY = "Band %d: Q factor %s is out of range (0.01 to 20)"
-    }
-
-    private const val PREAMP_BOUND = 50.0
-    private const val FREQUENCY_MAX = 100_000.0
-    private const val GAIN_BOUND = 30.0
-    private const val QUALITY_MAX = 20.0
-
-    private val PROFILE_RULES: List<(ParametricEQ) -> String?> = listOf(
-        ::preampViolation,
-        ::missingBandsViolation,
-        ::excessBandsViolation,
-    )
-
-    private val BAND_RULES: List<(Int, ParametricEQBand) -> String?> = listOf(
-        ::frequencyViolation,
-        ::gainViolation,
-        ::qualityViolation,
-    )
-
-    fun validate(eq: ParametricEQ): List<String> {
-        val errors = mutableListOf<String>()
-        for (rule in PROFILE_RULES) rule(eq)?.let(errors::add)
-        eq.bands.forEachIndexed { index, band ->
-            val position = index + 1
-            for (rule in BAND_RULES) rule(position, band)?.let(errors::add)
-        }
-        return errors
-    }
-
-    private fun preampViolation(eq: ParametricEQ): String? =
-        if (eq.preamp in -PREAMP_BOUND..PREAMP_BOUND) null
-        else String.format(Locale.ROOT, Messages.PREAMP, eq.preamp)
-
-    private fun missingBandsViolation(eq: ParametricEQ): String? =
-        if (eq.bands.isNotEmpty()) null else Messages.NO_BANDS
-
-    private fun excessBandsViolation(eq: ParametricEQ): String? =
-        if (eq.bands.size <= ParametricEQ.MAX_BANDS) null
-        else String.format(Locale.ROOT, Messages.BAND_COUNT, eq.bands.size, ParametricEQ.MAX_BANDS)
-
-    private fun frequencyViolation(position: Int, band: ParametricEQBand): String? =
-        if (band.frequency > 0.0 && band.frequency <= FREQUENCY_MAX) null
-        else String.format(Locale.ROOT, Messages.FREQUENCY, position, band.frequency)
-
-    private fun gainViolation(position: Int, band: ParametricEQBand): String? =
-        if (band.gain in -GAIN_BOUND..GAIN_BOUND) null
-        else String.format(Locale.ROOT, Messages.GAIN, position, band.gain)
-
-    private fun qualityViolation(position: Int, band: ParametricEQBand): String? =
-        if (band.q > 0.0 && band.q <= QUALITY_MAX) null
-        else String.format(Locale.ROOT, Messages.QUALITY, position, band.q)
+    private const val PREAMP_DIRECTIVE = "Preamp:"
+    private const val FILTER_DIRECTIVE = "Filter"
+    private const val PREAMP_MIN = -50.0
+    private const val PREAMP_MAX = 50.0
+    private const val MAX_FREQUENCY = 100000.0
+    private const val MIN_GAIN = -30.0
+    private const val MAX_GAIN = 30.0
+    private const val MAX_Q = 20.0
 }

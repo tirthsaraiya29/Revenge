@@ -4,268 +4,246 @@ import com.revenge.usbaudio.model.DacCapabilities
 import com.revenge.usbaudio.model.DacFormat
 
 /**
- * Parses a raw USB configuration descriptor blob into [DacCapabilities].
- *
- * The parser walks every descriptor, tracking the current interface so class-specific Audio
- * Control and Audio Streaming descriptors can be attributed correctly. It understands UAC 1
- * Format Type I descriptors (discrete and continuous sample-rate ranges) and UAC 2 clock sources.
- * The input is untrusted: every length is validated and malformed data stops the walk instead of
- * reading out of bounds.
+ * Best-effort reader for a raw USB configuration descriptor blob. Every read is bounded by the
+ * record length, and malformed input yields whatever was decoded up to that point.
  */
 internal object UsbDescriptorParser {
 
-  private const val DT_INTERFACE = 0x04
-  private const val DT_ENDPOINT = 0x05
-  private const val DT_CS_INTERFACE = 0x24
+    private const val TYPE_INTERFACE = 0x04
+    private const val TYPE_ENDPOINT = 0x05
+    private const val TYPE_CS_INTERFACE = 0x24
 
-  private const val CLASS_AUDIO = 0x01
-  private const val SUBCLASS_AUDIOCONTROL = 0x01
-  private const val SUBCLASS_AUDIOSTREAMING = 0x02
+    private const val CLASS_AUDIO = 0x01
+    private const val SUBCLASS_AUDIO_CONTROL = 0x01
+    private const val SUBCLASS_AUDIO_STREAMING = 0x02
+    private const val PROTOCOL_UAC2 = 0x20
 
-  private const val PROTOCOL_UAC1 = 0x00
-  private const val PROTOCOL_UAC2 = 0x20
+    private const val CS_AS_GENERAL = 0x01
+    private const val CS_FORMAT_TYPE = 0x02
+    private const val CS_FEATURE_UNIT = 0x06
+    private const val CS_CLOCK_SOURCE = 0x0A
 
-  private const val SUBTYPE_AS_GENERAL = 0x01
-  private const val SUBTYPE_FORMAT_TYPE = 0x02
-  private const val SUBTYPE_FEATURE_UNIT = 0x06
-  private const val SUBTYPE_CLOCK_SOURCE = 0x0A
-  private const val FORMAT_TYPE_I = 0x01
+    private const val FORMAT_TYPE_I = 0x01
+    private const val ISOCHRONOUS_TRANSFER = 0x01
+    private const val ENDPOINT_IN_BIT = 0x80
 
-  private const val ATTRIBUTE_TRANSFER_TYPE_MASK = 0x03
-  private const val ATTRIBUTE_ISOCHRONOUS = 0x01
-  private const val ENDPOINT_DIRECTION_IN = 0x80
+    private val UAC1_STANDARD_RATES = intArrayOf(44100, 48000, 88200, 96000, 176400, 192000)
 
-  private const val UAC2_DEFAULT_RATE = 48_000
-
-  private val UAC1_CONTINUOUS_RATES =
-    intArrayOf(44_100, 48_000, 88_200, 96_000, 176_400, 192_000)
-
-  private class PendingFormat(val interfaceNumber: Int, val altSetting: Int) {
-    var endpointAddress = 0
-    var syncEndpointAddress: Int? = null
-    var bitDepth = 16
-    var subslotBytes = 2
-    var channels = 2
-    val sampleRates = LinkedHashSet<Int>()
-
-    fun toFormat(): DacFormat =
-      DacFormat(
-        interfaceNumber = interfaceNumber,
-        altSetting = altSetting,
-        endpointAddress = endpointAddress,
-        syncEndpointAddress = syncEndpointAddress,
-        bitDepth = bitDepth,
-        subslotBytes = subslotBytes,
-        channels = channels,
-        sampleRates = sampleRates.toList(),
-      )
-  }
-
-  fun parse(data: ByteArray): DacCapabilities {
-    if (data.size < 2) return DacCapabilities(uacVersion = 1)
-
-    var uacVersion = 1
-    var clockSourceId: Int? = null
-    var hasHardwareVolume = false
-    var volumeFeatureUnitId: Int? = null
-    val formats = ArrayList<DacFormat>()
-    val allRates = sortedSetOf<Int>()
-
-    var interfaceClass = -1
-    var interfaceSubclass = -1
-    var pending: PendingFormat? = null
-
-    fun finishPending() {
-      val format = pending ?: return
-      if (format.sampleRates.isNotEmpty() || uacVersion == 2) {
-        formats.add(format.toFormat())
-      }
-      pending = null
+    private class OpenFormat(val interfaceNumber: Int, val altSetting: Int) {
+        var endpointAddress: Int = 0
+        var syncEndpointAddress: Int? = null
+        var bitDepth: Int = 0
+        var subslotBytes: Int = 0
+        var channels: Int = 0
+        val sampleRates: MutableList<Int> = mutableListOf()
     }
 
-    var offset = 0
-    while (offset + 2 <= data.size) {
-      val length = data[offset].toInt() and 0xFF
-      if (length < 2 || offset + length > data.size) break
-      val type = data[offset + 1].toInt() and 0xFF
+    fun parse(data: ByteArray): DacCapabilities {
+        var uacVersion = 1
+        var clockSourceId: Int? = null
+        var hasHardwareVolume = false
+        var volumeFeatureUnitId: Int? = null
+        val formats = mutableListOf<DacFormat>()
+        val clockRates = linkedSetOf<Int>()
+        var currentSubclass = 0
+        var open: OpenFormat? = null
 
-      when (type) {
-        DT_INTERFACE -> {
-          if (length >= 9) {
-            val number = data[offset + 2].toInt() and 0xFF
-            val altSetting = data[offset + 3].toInt() and 0xFF
-            interfaceClass = data[offset + 5].toInt() and 0xFF
-            interfaceSubclass = data[offset + 6].toInt() and 0xFF
-            val protocol = data[offset + 7].toInt() and 0xFF
+        fun closeOpen() {
+            val format = open ?: return
+            open = null
+            if (format.sampleRates.isEmpty() && uacVersion != 2) return
+            formats.add(
+                DacFormat(
+                    interfaceNumber = format.interfaceNumber,
+                    altSetting = format.altSetting,
+                    endpointAddress = format.endpointAddress,
+                    syncEndpointAddress = format.syncEndpointAddress,
+                    bitDepth = format.bitDepth,
+                    subslotBytes = format.subslotBytes,
+                    channels = format.channels,
+                    sampleRates = format.sampleRates.toList(),
+                )
+            )
+        }
 
-            if (
-              interfaceClass == CLASS_AUDIO && interfaceSubclass == SUBCLASS_AUDIOCONTROL
-            ) {
-              when (protocol) {
-                PROTOCOL_UAC2 -> uacVersion = 2
-                PROTOCOL_UAC1 -> uacVersion = 1
-              }
+        var cursor = 0
+        while (cursor + 2 <= data.size) {
+            val length = data[cursor].toInt() and 0xFF
+            val descriptorType = data[cursor + 1].toInt() and 0xFF
+            if (length < 2) break
+            if (cursor + length > data.size) break
+            val recordEnd = cursor + length
+
+            when (descriptorType) {
+                TYPE_INTERFACE -> {
+                    if (length >= 9) {
+                        val interfaceNumber = data[cursor + 2].toInt() and 0xFF
+                        val altSetting = data[cursor + 3].toInt() and 0xFF
+                        val interfaceClass = data[cursor + 5].toInt() and 0xFF
+                        val interfaceSubclass = data[cursor + 6].toInt() and 0xFF
+                        val interfaceProtocol = data[cursor + 7].toInt() and 0xFF
+
+                        currentSubclass = if (interfaceClass == CLASS_AUDIO) interfaceSubclass else 0
+                        if (interfaceClass == CLASS_AUDIO && interfaceSubclass == SUBCLASS_AUDIO_CONTROL) {
+                            uacVersion = if (interfaceProtocol == PROTOCOL_UAC2) 2 else 1
+                        }
+                        closeOpen()
+                        if (interfaceClass == CLASS_AUDIO &&
+                            interfaceSubclass == SUBCLASS_AUDIO_STREAMING &&
+                            altSetting > 0
+                        ) {
+                            open = OpenFormat(interfaceNumber, altSetting)
+                        }
+                    } else {
+                        closeOpen()
+                        currentSubclass = 0
+                    }
+                }
+
+                TYPE_CS_INTERFACE -> {
+                    if (length >= 3) {
+                        val subtype = data[cursor + 2].toInt() and 0xFF
+                        readCsInterface(
+                            data = data,
+                            cursor = cursor,
+                            length = length,
+                            subtype = subtype,
+                            subclass = currentSubclass,
+                            uacVersion = uacVersion,
+                            open = open,
+                            onClockSource = { identifier ->
+                                clockSourceId = identifier
+                                clockRates.add(UAC2_SEED_RATE)
+                            },
+                            onFeatureUnit = { identifier ->
+                                hasHardwareVolume = true
+                                volumeFeatureUnitId = identifier
+                            },
+                        )
+                    }
+                }
+
+                TYPE_ENDPOINT -> {
+                    if (length >= 7) {
+                        val format = open
+                        if (format != null) {
+                            val transferType = data[cursor + 3].toInt() and 0x03
+                            if (transferType == ISOCHRONOUS_TRANSFER) {
+                                val address = data[cursor + 2].toInt() and 0xFF
+                                if (address and ENDPOINT_IN_BIT != 0) {
+                                    format.syncEndpointAddress = address
+                                } else {
+                                    format.endpointAddress = address
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            cursor = recordEnd
+        }
+        closeOpen()
+
+        if (uacVersion == 2 && clockRates.isNotEmpty()) {
+            for (index in formats.indices) {
+                val format = formats[index]
+                if (format.sampleRates.isEmpty()) {
+                    formats[index] = format.copy(sampleRates = clockRates.toList())
+                }
+            }
+        }
+
+        val union = formats.flatMap { it.sampleRates }.toSortedSet().toList()
+        return DacCapabilities(
+            uacVersion = uacVersion,
+            supportedFormats = formats,
+            supportedSampleRates = union,
+            clockSourceId = clockSourceId,
+            hasHardwareVolume = hasHardwareVolume,
+            volumeFeatureUnitId = volumeFeatureUnitId,
+        )
+    }
+
+    private fun readCsInterface(
+        data: ByteArray,
+        cursor: Int,
+        length: Int,
+        subtype: Int,
+        subclass: Int,
+        uacVersion: Int,
+        open: OpenFormat?,
+        onClockSource: (Int) -> Unit,
+        onFeatureUnit: (Int) -> Unit,
+    ) {
+        when (subclass) {
+            SUBCLASS_AUDIO_CONTROL -> {
+                when {
+                    subtype == CS_CLOCK_SOURCE && uacVersion == 2 && length >= 8 -> {
+                        onClockSource(data[cursor + 3].toInt() and 0xFF)
+                    }
+                    subtype == CS_FEATURE_UNIT && length >= 6 -> {
+                        onFeatureUnit(data[cursor + 3].toInt() and 0xFF)
+                    }
+                }
             }
 
-            finishPending()
+            SUBCLASS_AUDIO_STREAMING -> {
+                val format = open ?: return
+                when (subtype) {
+                    CS_AS_GENERAL -> {
+                        if (uacVersion == 2 && length >= 11) {
+                            format.channels = data[cursor + 10].toInt() and 0xFF
+                        }
+                    }
 
-            if (
-              interfaceClass == CLASS_AUDIO &&
-                interfaceSubclass == SUBCLASS_AUDIOSTREAMING &&
-                altSetting > 0
-            ) {
-              pending = PendingFormat(number, altSetting)
+                    CS_FORMAT_TYPE -> {
+                        if (length >= 4 && (data[cursor + 3].toInt() and 0xFF) == FORMAT_TYPE_I) {
+                            if (uacVersion == 2) {
+                                if (length >= 7) {
+                                    format.subslotBytes = data[cursor + 4].toInt() and 0xFF
+                                    format.bitDepth = data[cursor + 5].toInt() and 0xFF
+                                }
+                            } else if (length >= 8) {
+                                format.channels = data[cursor + 4].toInt() and 0xFF
+                                format.subslotBytes = data[cursor + 5].toInt() and 0xFF
+                                format.bitDepth = data[cursor + 6].toInt() and 0xFF
+                                val rateCount = data[cursor + 7].toInt() and 0xFF
+                                if (rateCount > 0) {
+                                    val available = (length - 8) / 3
+                                    val read = minOf(rateCount, available)
+                                    for (index in 0 until read) {
+                                        val rate = readRate24(data, cursor + 8 + index * 3)
+                                        if (rate > 0) format.sampleRates.add(rate)
+                                    }
+                                } else if (length >= 14) {
+                                    val minimum = readRate24(data, cursor + 8)
+                                    val maximum = readRate24(data, cursor + 11)
+                                    if (maximum >= minimum) {
+                                        val matched = UAC1_STANDARD_RATES.filter { it in minimum..maximum }
+                                        if (matched.isNotEmpty()) {
+                                            format.sampleRates.addAll(matched)
+                                        } else {
+                                            format.sampleRates.add(minimum)
+                                            if (maximum != minimum && minimum > 0) {
+                                                format.sampleRates.add(maximum)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
-          }
         }
-
-        DT_CS_INTERFACE -> {
-          if (length >= 3) {
-            val subtype = data[offset + 2].toInt() and 0xFF
-            if (interfaceClass == CLASS_AUDIO && interfaceSubclass == SUBCLASS_AUDIOCONTROL) {
-              if (
-                uacVersion == 2 && subtype == SUBTYPE_CLOCK_SOURCE && length >= 8
-              ) {
-                clockSourceId = data[offset + 3].toInt() and 0xFF
-                // UAC 2 rates live behind a control request; assume 48 kHz until queried.
-                allRates.add(UAC2_DEFAULT_RATE)
-              } else if (subtype == SUBTYPE_FEATURE_UNIT && length >= 6) {
-                hasHardwareVolume = true
-                volumeFeatureUnitId = data[offset + 3].toInt() and 0xFF
-              }
-            } else if (
-              interfaceClass == CLASS_AUDIO && interfaceSubclass == SUBCLASS_AUDIOSTREAMING
-            ) {
-              val format = pending
-              if (format != null) {
-                readStreamingDescriptor(data, offset, length, subtype, uacVersion, format, allRates)
-              }
-            }
-          }
-        }
-
-        DT_ENDPOINT -> {
-          val format = pending
-          if (format != null && length >= 7) {
-            val attributes = data[offset + 3].toInt() and ATTRIBUTE_TRANSFER_TYPE_MASK
-            if (attributes == ATTRIBUTE_ISOCHRONOUS) {
-              val address = data[offset + 2].toInt() and 0xFF
-              if (address and ENDPOINT_DIRECTION_IN == 0) {
-                format.endpointAddress = address
-              } else {
-                format.syncEndpointAddress = address
-              }
-            }
-          }
-        }
-      }
-
-      offset += length
     }
 
-    finishPending()
-
-    if (uacVersion == 2) {
-      val inherited = allRates.toList()
-      for (index in formats.indices) {
-        val format = formats[index]
-        if (format.sampleRates.isEmpty()) {
-          formats[index] = format.copy(sampleRates = inherited)
-        }
-      }
+    private fun readRate24(data: ByteArray, offset: Int): Int {
+        if (offset + 2 >= data.size) return 0
+        return (data[offset].toInt() and 0xFF) or
+            ((data[offset + 1].toInt() and 0xFF) shl 8) or
+            ((data[offset + 2].toInt() and 0xFF) shl 16)
     }
 
-    return DacCapabilities(
-      uacVersion = uacVersion,
-      supportedFormats = formats,
-      supportedSampleRates = allRates.toList(),
-      clockSourceId = clockSourceId,
-      hasHardwareVolume = hasHardwareVolume,
-      volumeFeatureUnitId = volumeFeatureUnitId,
-    )
-  }
-
-  private fun readStreamingDescriptor(
-    data: ByteArray,
-    offset: Int,
-    length: Int,
-    subtype: Int,
-    uacVersion: Int,
-    format: PendingFormat,
-    allRates: MutableSet<Int>,
-  ) {
-    when {
-      subtype == SUBTYPE_AS_GENERAL -> {
-        // UAC 2 AS General: bNrChannels sits at byte 10.
-        if (uacVersion == 2 && length >= 11) {
-          format.channels = data[offset + 10].toInt() and 0xFF
-        }
-      }
-
-      subtype == SUBTYPE_FORMAT_TYPE && length >= 4 -> {
-        val formatType = data[offset + 3].toInt() and 0xFF
-        if (formatType != FORMAT_TYPE_I) return
-
-        if (uacVersion == 2) {
-          if (length >= 7) {
-            format.subslotBytes = data[offset + 4].toInt() and 0xFF
-            format.bitDepth = data[offset + 5].toInt() and 0xFF
-          }
-        } else if (length >= 8) {
-          format.channels = data[offset + 4].toInt() and 0xFF
-          format.subslotBytes = data[offset + 5].toInt() and 0xFF
-          format.bitDepth = data[offset + 6].toInt() and 0xFF
-          val rateCount = data[offset + 7].toInt() and 0xFF
-
-          if (rateCount > 0) {
-            val available = (length - 8) / 3
-            repeat(minOf(rateCount, available)) { index ->
-              val rateOffset = offset + 8 + index * 3
-              val rate = readUint24(data, rateOffset)
-              if (rate > 0) {
-                format.sampleRates.add(rate)
-                allRates.add(rate)
-              }
-            }
-          } else if (length >= 14) {
-            readContinuousRange(data, offset + 8, format, allRates)
-          }
-        }
-      }
-    }
-  }
-
-  private fun readContinuousRange(
-    data: ByteArray,
-    rangeOffset: Int,
-    format: PendingFormat,
-    allRates: MutableSet<Int>,
-  ) {
-    val minRate = readUint24(data, rangeOffset)
-    val maxRate = readUint24(data, rangeOffset + 3)
-    if (maxRate < minRate) return
-
-    val matching = UAC1_CONTINUOUS_RATES.filter { it in minRate..maxRate }
-    if (matching.isNotEmpty()) {
-      for (rate in matching) {
-        format.sampleRates.add(rate)
-        allRates.add(rate)
-      }
-      return
-    }
-
-    if (minRate > 0) {
-      format.sampleRates.add(minRate)
-      allRates.add(minRate)
-      if (maxRate != minRate) {
-        format.sampleRates.add(maxRate)
-        allRates.add(maxRate)
-      }
-    }
-  }
-
-  private fun readUint24(data: ByteArray, offset: Int): Int =
-    (data[offset].toInt() and 0xFF) or
-      ((data[offset + 1].toInt() and 0xFF) shl 8) or
-      ((data[offset + 2].toInt() and 0xFF) shl 16)
+    private const val UAC2_SEED_RATE = 48000
 }

@@ -2,7 +2,6 @@ package com.revenge.dsp.core.models
 
 import kotlinx.serialization.Serializable
 
-/** One parametric band: [frequency] in Hz, [gain] in dB, [q] dimensionless. */
 @Serializable
 data class ParametricEQBand(
     val frequency: Double,
@@ -12,10 +11,6 @@ data class ParametricEQBand(
     val enabled: Boolean = true,
 )
 
-/**
- * A complete equalizer definition. [bands] order is meaningful and preserved; [metadata]
- * holds free-form text collected from an import file.
- */
 @Serializable
 data class ParametricEQ(
     val preamp: Double,

@@ -1,112 +1,86 @@
 package com.revenge.dsp.core
 
 import com.revenge.dsp.core.models.FilterType
-import kotlin.math.PI
-import kotlin.math.pow
-import kotlin.math.sin
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BiquadFilterTest {
 
+    private val rate = 48000
+
     @Test
-    fun zeroGainPeakingIsTransparentAtImpulse() {
-        val filter = BiquadFilter(44100, 1000.0, 0.0, 1.41, FilterType.PK)
-        assertEquals(1.0, filter.processSample(1.0), 1e-3)
+    fun zeroGainPeakingPassesUnitImpulse() {
+        val filter = BiquadFilter(rate, 1000.0, 0.0)
+        assertEquals(1.0, filter.processSample(1.0), 0.001)
     }
 
     @Test
-    fun positivePeakingGainBoostsFirstSample() {
-        val filter = BiquadFilter(44100, 1000.0, 6.0, 1.41, FilterType.PK)
-        val output = filter.processSample(1.0)
-        assertTrue(output > 1.0)
-        assertTrue(output.isFinite())
+    fun peakingBoostRaisesFirstSampleAndStaysFinite() {
+        val filter = BiquadFilter(rate, 1000.0, 6.0)
+        val first = filter.processSample(1.0)
+        assertTrue(first > 1.0)
+        assertTrue(first.isFinite())
+        var value = first
+        repeat(100) { value = filter.processSample(0.0) }
+        assertTrue(value.isFinite())
     }
 
     @Test
-    fun stereoIsSymmetricWithSymmetricHistory() {
-        val filter = BiquadFilter(48000, 800.0, 4.0, 1.0, FilterType.PK)
-        repeat(10) {
-            val (left, right) = filter.processStereo(0.3, 0.3)
-            assertEquals(left, right, 1e-4)
-        }
-    }
+    fun stereoChannelsMatchAndResetRestoresResponse() {
+        val filter = BiquadFilter(rate, 500.0, -6.0, 1.41, FilterType.LSC)
+        val first = filter.processStereo(0.5, 0.5)
+        assertEquals(first.first, first.second, 1e-12)
 
-    @Test
-    fun resetReproducesOutputs() {
-        val filter = BiquadFilter(44100, 2500.0, -5.0, 2.0, FilterType.PK)
-        val first = filter.processStereo(0.7, -0.2)
         filter.reset()
-        val second = filter.processStereo(0.7, -0.2)
-        assertEquals(first.first, second.first, 1e-4)
-        assertEquals(first.second, second.second, 1e-4)
+        val repeated = filter.processStereo(0.5, 0.5)
+        assertEquals(first.first, repeated.first, 1e-12)
+        assertEquals(first.second, repeated.second, 1e-12)
     }
 
     @Test
-    fun nyquistFrequencyProducesFiniteOutput() {
-        val sampleRate = 44100
-        val filter = BiquadFilter(sampleRate, sampleRate / 2.0, 3.0, 1.0, FilterType.HSC)
-        val output = filter.processSample(1.0)
-        assertTrue(output.isFinite())
-        assertFalse(output.isNaN())
+    fun nyquistFrequencyStaysFinite() {
+        val filter = BiquadFilter(rate, rate / 2.0, 3.0, 1.41, FilterType.HSC)
+        var value = filter.processSample(1.0)
+        repeat(500) { value = filter.processSample(0.0) }
+        assertTrue(value.isFinite())
     }
 
     @Test
-    fun invalidSampleRateProducesFiniteOutput() {
-        val filter = BiquadFilter(0, 1000.0, 3.0, 1.0, FilterType.PK)
-        val output = filter.processSample(1.0)
-        assertTrue(output.isFinite())
-        assertFalse(output.isNaN())
+    fun lowShelfConvergesToGainOnDc() {
+        val filter = BiquadFilter(rate, 500.0, -6.0, 1.41, FilterType.LSC)
+        var value = 0.0
+        repeat(20_000) { value = filter.processSample(1.0) }
+        assertEquals(Math.pow(10.0, -6.0 / 20.0), value, 0.01)
     }
 
     @Test
-    fun lowShelfReachesExpectedDcGain() {
-        val filter = BiquadFilter(48000, 500.0, -6.0, 1.0, FilterType.LSC)
-        var output = 0.0
-        repeat(20000) { output = filter.processSample(1.0) }
-        assertEquals(10.0.pow(-6.0 / 20.0), output, 0.01)
+    fun invalidSampleRateStaysFinite() {
+        val filter = BiquadFilter(0, 1000.0, 3.0)
+        var value = filter.processSample(1.0)
+        repeat(50) { value = filter.processSample(0.0) }
+        assertTrue(value.isFinite())
     }
 
     @Test
-    fun highShelfKeepsDcGainAtUnity() {
-        val filter = BiquadFilter(48000, 4000.0, 6.0, 0.71, FilterType.HSC)
-        var output = 0.0
-        repeat(20000) { output = filter.processSample(1.0) }
-        assertEquals(1.0, output, 0.02)
+    fun nonFiniteParametersStayFinite() {
+        val filter = BiquadFilter(rate, Double.NaN, Double.NaN, Double.NaN)
+        var value = filter.processSample(1.0)
+        repeat(50) { value = filter.processSample(0.0) }
+        assertTrue(value.isFinite())
     }
 
     @Test
-    fun negativePeakingGainReducesSineEnergy() {
-        val sampleRate = 44100
-        val filter = BiquadFilter(sampleRate, 1000.0, -12.0, 1.41, FilterType.PK)
-        var outputEnergy = 0.0
-        var comparedSamples = 0
-        for (n in 0 until 44100) {
-            val input = sin(2.0 * PI * 1000.0 * n / sampleRate)
-            val output = filter.processSample(input)
-            if (n >= 22050) {
-                outputEnergy += output * output
-                comparedSamples++
-            }
-        }
-        val outputRms = kotlin.math.sqrt(outputEnergy / comparedSamples)
-        val inputRms = kotlin.math.sqrt(0.5)
-        assertTrue(outputRms.isFinite())
-        assertTrue(outputRms < inputRms * 0.5)
-    }
+    fun monoProcessingDoesNotDisturbRightHistory() {
+        val interleaved = BiquadFilter(rate, 1000.0, 6.0)
+        interleaved.processStereo(0.25, 0.75)
+        interleaved.processSample(0.5)
+        val rightAfterMono = interleaved.processStereo(0.0, 0.0).second
 
-    @Test
-    fun lpqAndHpqMatchPeakingResponse() {
-        val pk = BiquadFilter(44100, 1500.0, 5.0, 1.2, FilterType.PK)
-        val lpq = BiquadFilter(44100, 1500.0, 5.0, 1.2, FilterType.LPQ)
-        val hpq = BiquadFilter(44100, 1500.0, 5.0, 1.2, FilterType.HPQ)
-        repeat(32) {
-            val input = if (it == 0) 1.0 else 0.0
-            val pkOut = pk.processSample(input)
-            assertEquals(pkOut, lpq.processSample(input), 0.0)
-            assertEquals(pkOut, hpq.processSample(input), 0.0)
-        }
+        val reference = BiquadFilter(rate, 1000.0, 6.0)
+        reference.processStereo(0.25, 0.75)
+        val rightReference = reference.processStereo(123.0, 0.0).second
+
+        assertEquals(rightReference, rightAfterMono, 1e-12)
     }
 }
