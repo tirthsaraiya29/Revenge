@@ -17,7 +17,7 @@ object LyricsUtils {
 
     val TIME_REGEX: Regex = Regex("""\[(\d{2}):(\d{2})\.(\d{2,3})]""")
 
-    val LINE_REGEX: Regex = Regex("""^(?:\[(\d{2}):(\d{2})\.(\d{2,3})]\s?)+.+$""")
+    val LINE_REGEX: Regex = Regex("""^(?>\[\d{2}:\d{2}\.\d{2,3}]\s?)+.+$""")
 
     private val richLineRegex = Regex("""^\[(\d{1,2}):(\d{2})\.(\d{2,3})](.*)$""")
     private val wordTagRegex = Regex("""<(\d{1,2}):(\d{2})\.(\d{2,3})>""")
@@ -110,11 +110,11 @@ object LyricsUtils {
         var text = input
         text = numericHexRegex.replace(text) { match ->
             val code = match.groupValues[1].toIntOrNull(16)
-            if (code != null && code in 0..0x10FFFF) String(Character.toChars(code)) else match.value
+            if (code != null && code in 0..0x10FFFF) String(java.lang.Character.toChars(code)) else match.value
         }
         text = numericDecRegex.replace(text) { match ->
             val code = match.groupValues[1].toIntOrNull()
-            if (code != null && code in 0..0x10FFFF) String(Character.toChars(code)) else match.value
+            if (code != null && code in 0..0x10FFFF) String(java.lang.Character.toChars(code)) else match.value
         }
         text = text
             .replace("&apos;", "'")

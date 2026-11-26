@@ -20,8 +20,8 @@ private const val FALLBACK_BASE_URL = "https://vivi-yt-music-server.onrender.com
 private const val USER_AGENT = "SimpMusicLyrics/1.0"
 private const val LYRICS_UNAVAILABLE = "Lyrics unavailable"
 
+@OptIn(ExperimentalSerializationApi::class)
 object SimpMusicLyrics {
-  @OptIn(ExperimentalSerializationApi::class)
   private val json = Json {
     isLenient = true
     ignoreUnknownKeys = true

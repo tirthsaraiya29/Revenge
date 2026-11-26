@@ -29,3 +29,7 @@ data class LyricsEntry(
         val HEAD_LYRICS_ENTRY = LyricsEntry(0L, "")
     }
 }
+
+/** Package-level alias so both `HEAD_LYRICS_ENTRY` and `LyricsEntry.HEAD_LYRICS_ENTRY` resolve. */
+val HEAD_LYRICS_ENTRY: LyricsEntry
+    get() = LyricsEntry.HEAD_LYRICS_ENTRY

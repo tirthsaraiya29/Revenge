@@ -161,7 +161,7 @@ internal object PaxsenixCore {
   fun lrcFromContent(content: List<LyricsContent>): String {
     val builder = StringBuilder()
     for (line in content) {
-      val words = line.text.filter { it.text.isNotBlank() }
+      val words = line.text
       val lineText = words.joinToString(" ") { it.text }
       if (lineText.isBlank()) continue
 
@@ -175,7 +175,7 @@ internal object PaxsenixCore {
       )
       builder.append(lineText).append('\n')
 
-      if (words.isNotEmpty()) {
+      if (words.any { it.text.isNotBlank() }) {
         builder.append('<')
         words.forEachIndexed { index, word ->
           if (index > 0) builder.append('|')

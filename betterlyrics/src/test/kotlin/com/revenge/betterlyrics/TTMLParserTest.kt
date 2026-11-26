@@ -261,7 +261,7 @@ class TTMLParserTest {
         """{"ttml":"<tt xmlns=\"http://www.w3.org/ns/ttml\"><body><p begin=\"0.0\" end=\"1.0\">ok</p></body></tt>"}""",
       )
     }
-    BetterLyrics.testClient = HttpClient(okEngine)
+    BetterLyrics.testClient = HttpClient(okEngine) { }
 
     val delivered = ArrayList<String>()
     BetterLyrics.getAllLyrics("Song", "Artist", 100) { delivered.add(it) }
@@ -269,7 +269,7 @@ class TTMLParserTest {
     assertEquals(listOf("[00:00.00]ok\n"), delivered)
 
     val failed = ArrayList<String>()
-    BetterLyrics.testClient = HttpClient(FakeEngine { data -> reply(data, HttpStatusCode.Forbidden, "") })
+    BetterLyrics.testClient = HttpClient(FakeEngine { data -> reply(data, HttpStatusCode.Forbidden, "") }) { }
     BetterLyrics.getAllLyrics("Song", "Artist", 100) { failed.add(it) }
 
     assertTrue(failed.isEmpty())

@@ -17,9 +17,10 @@ class LyricsParsingFixturesTest {
         val entry = parsed.single()
         assertEquals("Hello", entry.text)
         assertEquals(2, entry.words?.size)
-        assertEquals(12.34, entry.words!![0].startTime, 0.001)
-        assertEquals(12.80, entry.words[1].startTime, 0.001)
-        assertEquals(12.84, entry.words[1].endTime, 0.001)
+        val words = entry.words!!
+        assertEquals(12.34, words[0].startTime, 0.001)
+        assertEquals(12.80, words[1].startTime, 0.001)
+        assertEquals(12.84, words[1].endTime, 0.001)
     }
 
     @Test
