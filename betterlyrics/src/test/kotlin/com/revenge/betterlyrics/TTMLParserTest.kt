@@ -13,6 +13,7 @@ import io.ktor.util.date.GMTDate
 import io.ktor.utils.io.ByteReadChannel
 import io.ktor.utils.io.InternalAPI
 import java.util.concurrent.CopyOnWriteArrayList
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -43,7 +44,7 @@ private fun reply(data: HttpRequestData, status: HttpStatusCode, body: String): 
     headersOf(HttpHeaders.ContentType, "application/json"),
     HttpProtocolVersion.HTTP_1_1,
     ByteReadChannel(body),
-    data.executionContext,
+    Job(),
   )
 
 private fun wrapParagraph(attributes: String, content: String): String =

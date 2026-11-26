@@ -18,6 +18,7 @@ import io.ktor.util.date.GMTDate
 import io.ktor.utils.io.ByteReadChannel
 import io.ktor.utils.io.InternalAPI
 import java.util.concurrent.CopyOnWriteArrayList
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import org.junit.After
@@ -48,7 +49,7 @@ private fun reply(data: HttpRequestData, status: HttpStatusCode, body: String): 
     headersOf(HttpHeaders.ContentType, "application/json"),
     HttpProtocolVersion.HTTP_1_1,
     ByteReadChannel(body),
-    data.executionContext,
+    Job(),
   )
 
 private val json = Json {

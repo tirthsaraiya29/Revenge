@@ -45,7 +45,7 @@ private fun reply(data: HttpRequestData, status: HttpStatusCode, body: String): 
     headersOf(HttpHeaders.ContentType, "application/json"),
     HttpProtocolVersion.HTTP_1_1,
     ByteReadChannel(body),
-    data.executionContext,
+    Job(),
   )
 
 private fun entryJson(id: Long, lyrics: String, confidence: String = "\"high\""): String =
