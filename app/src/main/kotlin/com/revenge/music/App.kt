@@ -1,190 +1,386 @@
 package com.revenge.music
 
+import android.app.ActivityManager
 import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.os.Process
+import android.util.Base64
+import android.util.Log
 import android.widget.Toast
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.emptyPreferences
+import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
 import coil3.ImageLoader
-import coil3.PlatformContext
 import coil3.SingletonImageLoader
 import coil3.disk.DiskCache
-import coil3.disk.directory
 import coil3.memory.MemoryCache
-import coil3.request.CachePolicy
 import coil3.request.allowHardware
 import coil3.request.crossfade
+import com.revenge.core.constants.AppLanguageKey
+import com.revenge.core.constants.ContentCountryKey
+import com.revenge.core.constants.ContentLanguageKey
+import com.revenge.core.constants.CountryCodeToName
+import com.revenge.core.constants.DataSyncIdKey
+import com.revenge.core.constants.IpVersionKey
+import com.revenge.core.constants.InnerTubeCookieKey
+import com.revenge.core.constants.LanguageCodeToName
+import com.revenge.core.constants.MaxImageCacheSizeKey
+import com.revenge.core.constants.PlaybackEngineKey
+import com.revenge.core.constants.ProxyEnabledKey
+import com.revenge.core.constants.ProxyPasswordKey
+import com.revenge.core.constants.ProxyTypeKey
+import com.revenge.core.constants.ProxyUrlKey
+import com.revenge.core.constants.ProxyUsernameKey
+import com.revenge.core.constants.SYSTEM_DEFAULT
+import com.revenge.core.constants.UseLoginForBrowse
+import com.revenge.core.constants.VisitorDataKey
+import com.revenge.core.constants.toEnum
+import com.revenge.core.di.ApplicationScope
+import com.revenge.core.utils.dataStore
+import com.revenge.core.utils.reportException
 import com.revenge.innertube.YouTube
 import com.revenge.innertube.models.IpVersion
 import com.revenge.innertube.models.YouTubeLocale
 import com.revenge.kugou.KuGou
-import com.revenge.core.constants.*
-import com.revenge.core.di.ApplicationScope
-import com.revenge.core.extensions.toEnum
-import com.revenge.core.extensions.toInetSocketAddress
 import com.revenge.music.utils.AppContextHolder
 import com.revenge.music.utils.CrashHandler
+import com.revenge.music.utils.InnerTubeXResolver
 import com.revenge.music.utils.LocalAlbumArtFetcher
 import com.revenge.music.utils.NewEpisodesWorker
+import com.revenge.music.utils.YTPlayerUtils
 import com.revenge.music.utils.YouTubeThumbnailFallbackInterceptor
-import com.revenge.core.utils.dataStore
-import com.revenge.core.utils.reportException
+import com.revenge.music.utils.cipher.CipherDeobfuscator
+import com.revenge.music.utils.lastfm.LastFM
 import dagger.hilt.android.HiltAndroidApp
 import java.net.Authenticator
+import java.net.InetAddress
+import java.net.InetSocketAddress
 import java.net.PasswordAuthentication
 import java.net.Proxy
+import java.net.URI
 import java.util.Locale
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
-import okhttp3.Credentials
 import timber.log.Timber
 
+/**
+ * Application entry point. Process routing is significant: the crash process and the secondary
+ * Cast SDK process must never touch application state, workers or the settings DataStore.
+ */
 @HiltAndroidApp
 class App : Application(), SingletonImageLoader.Factory, Configuration.Provider {
 
   @Inject @ApplicationScope lateinit var applicationScope: CoroutineScope
 
-  override val workManagerConfiguration: Configuration
-    get() =
-      Configuration.Builder()
-        .setMinimumLoggingLevel(
-          if (BuildConfig.DEBUG) android.util.Log.DEBUG else android.util.Log.ERROR,
-        )
-        .build()
+  @Inject lateinit var workerFactory: HiltWorkerFactory
 
-  override fun startForegroundService(service: Intent): android.content.ComponentName? {
-    return try {
-      super.startForegroundService(service)
-    } catch (e: Exception) {
-      if (
-        Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-          e is android.app.ForegroundServiceStartNotAllowedException
-      ) {
-        Timber.e(e, "Suppressed ForegroundServiceStartNotAllowedException in App")
-        null
-      } else {
-        throw e
-      }
-    }
-  }
-
-  private fun getCurrentProcessName(): String? {
-    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-      Application.getProcessName()
-    } else {
-      val pid = android.os.Process.myPid()
-      val manager = getSystemService(Context.ACTIVITY_SERVICE) as? android.app.ActivityManager
-      manager?.runningAppProcesses?.firstOrNull { it.pid == pid }?.processName
-    }
-  }
-
-  private fun isCrashProcess(): Boolean {
-    return getCurrentProcessName() == "$packageName:crash"
-  }
-
-  private fun isMainProcess(): Boolean {
-    val processName = getCurrentProcessName()
-    return processName == null || processName == packageName
-  }
+  @Volatile private var imageCacheSizeMiB: Int? = null
 
   override fun onCreate() {
     super.onCreate()
 
-    if (isCrashProcess()) {
-      CrashHandler.install(this)
-      return
-    }
-
-    // Removed destructive database deletion to preserve user data
-
-    CrashHandler.install(this)
-
-    if (!isMainProcess()) {
-      return
+    when (processKind()) {
+      ProcessKind.CRASH -> {
+        CrashHandler.install(this)
+        return
+      }
+      ProcessKind.SECONDARY -> {
+        CrashHandler.install(this)
+        return
+      }
+      ProcessKind.MAIN -> CrashHandler.install(this)
     }
 
     AppContextHolder.initialize(this)
-    NewEpisodesWorker.enqueue(this)
-    com.revenge.music.utils.cipher.CipherDeobfuscator.initialize(this)
-    com.revenge.music.utils.YTPlayerUtils.initialize()
+    NewEpisodesWorker.schedule(this)
+    CipherDeobfuscator.initialize(this)
+    YTPlayerUtils.initialize()
 
     if (BuildConfig.DEBUG) {
       Timber.plant(Timber.DebugTree())
     }
 
     applicationScope.launch(Dispatchers.IO) {
-      cachedCoilCacheSize =
-        dataStore.data
-          .map {
-            (try {
-              it[MaxImageCacheSizeKey]
-            } catch (e: Exception) {
-              null
-            }) ?: 512
-          }
-          .first()
+      imageCacheSizeMiB =
+        runCatching { dataStore[MaxImageCacheSizeKey] ?: DEFAULT_IMAGE_CACHE_SIZE_MIB }
+          .getOrDefault(DEFAULT_IMAGE_CACHE_SIZE_MIB)
     }
 
     applicationScope.launch(Dispatchers.IO) {
-      try {
-        java.net.InetAddress.getByName("music.youtube.com")
-        java.net.InetAddress.getByName("youtubei.googleapis.com")
-        java.net.InetAddress.getByName("googlevideo.com")
-      } catch (e: Exception) {
-        // Ignore
-      }
+      WARM_UP_HOSTS.forEach { host -> runCatching { InetAddress.getByName(host) } }
     }
 
     applicationScope.launch {
       initializeSettings()
-
-      com.revenge.music.utils.InnerTubeXResolver.init(this@App)
+      InnerTubeXResolver.init(this@App)
       observeSettingsChanges()
     }
   }
 
-  private suspend fun initializeSettings() {
-    val settings = dataStore.data.first()
-    val locale = Locale.getDefault()
-    val languageTag = locale.language
+  override val workManagerConfiguration: Configuration
+    get() =
+      Configuration.Builder()
+        .setMinimumLoggingLevel(if (BuildConfig.DEBUG) Log.DEBUG else Log.ERROR)
+        .setWorkerFactory(workerFactory)
+        .build()
 
-    YouTube.locale =
-      YouTubeLocale(
-        gl =
-          settings[ContentCountryKey]?.takeIf { it != SYSTEM_DEFAULT }
-            ?: locale.country.takeIf { it in CountryCodeToName }
-            ?: "US",
-        hl =
-          settings[ContentLanguageKey]?.takeIf { it != SYSTEM_DEFAULT }
-            ?: locale.language.takeIf { it in LanguageCodeToName }
-            ?: languageTag.takeIf { it in LanguageCodeToName }
-            ?: "en",
+  override fun startForegroundService(service: Intent): ComponentName? {
+    return try {
+      super.startForegroundService(service)
+    } catch (exception: Exception) {
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+        exception is android.app.ForegroundServiceStartNotAllowedException
+      ) {
+        Timber.w(exception, "Foreground service start was not allowed")
+        null
+      } else {
+        throw exception
+      }
+    }
+  }
+
+  override fun newImageLoader(context: Context): ImageLoader {
+    val cacheSizeMiB =
+      imageCacheSizeMiB
+        ?: runCatching { context.dataStore[MaxImageCacheSizeKey] ?: DEFAULT_IMAGE_CACHE_SIZE_MIB }
+          .getOrDefault(DEFAULT_IMAGE_CACHE_SIZE_MIB)
+
+    val builder =
+      ImageLoader.Builder(this)
+        .crossfade(true)
+        .components {
+          add(YouTubeThumbnailFallbackInterceptor())
+          add(LocalAlbumArtFetcher.Factory())
+        }
+        .memoryCache { MemoryCache.Builder(this@App).maxSizePercent(0.25).build() }
+
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+      builder.allowHardware(true)
+    }
+
+    if (cacheSizeMiB <= 0) {
+      builder.diskCache(null)
+    } else {
+      builder.diskCache(
+        DiskCache.Builder()
+          .directory(cacheDir.resolve("coil"))
+          .maxSizeBytes(cacheSizeMiB.toLong() * 1024L * 1024L)
+          .build(),
       )
+    }
 
-    if (languageTag == "zh-TW") {
+    return builder.build()
+  }
+
+  private fun processKind(): ProcessKind {
+    val name = currentProcessName()
+    return when {
+      name == "$packageName:crash" -> ProcessKind.CRASH
+      name == null || name == packageName -> ProcessKind.MAIN
+      else -> ProcessKind.SECONDARY
+    }
+  }
+
+  @Suppress("DEPRECATION")
+  private fun currentProcessName(): String? {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+      return Application.getProcessName()
+    }
+    val pid = Process.myPid()
+    return (getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager)
+      ?.runningAppProcesses
+      ?.firstOrNull { it.pid == pid }
+      ?.processName
+  }
+
+  private suspend fun initializeSettings() {
+    val preferences = runCatching { dataStore.data.first() }.getOrNull()
+
+    val contentCountry = preferences?.get(ContentCountryKey)
+    val contentLanguage = preferences?.get(ContentLanguageKey)
+    val appLanguage = preferences?.get(AppLanguageKey)
+    YouTube.locale = resolveLocale(contentCountry, contentLanguage, appLanguage)
+
+    if (isTraditionalChineseDevice()) {
       KuGou.useTraditionalChinese = true
     }
 
-    if (settings[ProxyEnabledKey] == true) {
-      val username = settings[ProxyUsernameKey].orEmpty()
-      val password = settings[ProxyPasswordKey].orEmpty()
-      val type = settings[ProxyTypeKey].toEnum(defaultValue = Proxy.Type.HTTP)
+    if (preferences != null && preferences[ProxyEnabledKey] == true) {
+      applyProxy(
+        type = parseProxyType(preferences[ProxyTypeKey]),
+        url = preferences[ProxyUrlKey],
+        username = preferences[ProxyUsernameKey],
+        password = preferences[ProxyPasswordKey],
+      )
+    } else {
+      YouTube.proxy = null
+      YouTube.proxyAuth = null
+    }
 
-      if (username.isNotEmpty() || password.isNotEmpty()) {
-        if (type == Proxy.Type.HTTP) {
-          YouTube.proxyAuth = Credentials.basic(username, password)
-        } else {
+    YouTube.useLoginForBrowse = preferences?.get(UseLoginForBrowse) ?: true
+    YouTube.ipVersion = (preferences?.get(IpVersionKey)).toEnum(IpVersion.AUTO)
+    YTPlayerUtils.playbackEngine =
+      (preferences?.get(PlaybackEngineKey)).toEnum(com.revenge.core.constants.PlaybackEngine.AUTO)
+
+    createUpdateNotificationChannel()
+  }
+
+  private fun observeSettingsChanges() {
+    val settings =
+      dataStore.data.catch { throwable ->
+        Timber.w(throwable, "Settings read failed; treating values as absent")
+        emit(emptyPreferences())
+      }
+
+    applicationScope.launch(Dispatchers.IO) {
+      settings
+        .map { it[VisitorDataKey] }
+        .distinctUntilChanged()
+        .collect { raw ->
+          runCatching {
+            val value = raw?.takeIf { it.isNotBlank() && it != "null" }
+            if (value != null) {
+              YouTube.visitorData = value
+            } else {
+              YouTube.visitorData().getOrNull()?.let { refreshed ->
+                YouTube.visitorData = refreshed
+                dataStore.edit { it[VisitorDataKey] = refreshed }
+              }
+            }
+          }.onFailure { Timber.w(it, "visitorData observer failed") }
+        }
+    }
+
+    applicationScope.launch(Dispatchers.IO) {
+      settings
+        .map { it[DataSyncIdKey] }
+        .distinctUntilChanged()
+        .collect { raw ->
+          runCatching { YouTube.dataSyncId = normalizeDataSyncId(raw) }
+            .onFailure { Timber.w(it, "dataSyncId observer failed") }
+        }
+    }
+
+    applicationScope.launch(Dispatchers.IO) {
+      settings
+        .map { it[InnerTubeCookieKey] }
+        .distinctUntilChanged()
+        .collect { raw ->
+          try {
+            YouTube.cookie = raw
+          } catch (throwable: Throwable) {
+            Timber.e(throwable, "Stored cookie could not be parsed")
+            forgetAccount(this@App)
+          }
+        }
+    }
+
+    applicationScope.launch(Dispatchers.IO) {
+      combine(
+          settings.map { it[ContentCountryKey] },
+          settings.map { it[ContentLanguageKey] },
+          settings.map { it[AppLanguageKey] },
+        ) { country, language, appLanguage ->
+          Triple(country, language, appLanguage)
+        }
+        .distinctUntilChanged()
+        .collect { (country, language, appLanguage) ->
+          runCatching { YouTube.locale = resolveLocale(country, language, appLanguage) }
+            .onFailure { Timber.w(it, "locale observer failed") }
+        }
+    }
+
+    applicationScope.launch(Dispatchers.IO) {
+      settings
+        .map { it[IpVersionKey] }
+        .distinctUntilChanged()
+        .collect { raw ->
+          runCatching { YouTube.ipVersion = raw.toEnum(IpVersion.AUTO) }
+            .onFailure { Timber.w(it, "ipVersion observer failed") }
+        }
+    }
+
+    LastFM.initialize(
+      apiKey = BuildConfig.LASTFM_API_KEY,
+      secret = BuildConfig.LASTFM_SECRET,
+    )
+  }
+
+  private fun createUpdateNotificationChannel() {
+    runCatching {
+      val manager = getSystemService(NotificationManager::class.java) ?: return
+      val channel =
+        NotificationChannel(
+            UPDATE_CHANNEL_ID,
+            getString(R.string.update_channel_name),
+            NotificationManager.IMPORTANCE_DEFAULT,
+          )
+          .apply { description = getString(R.string.update_channel_desc) }
+      manager.createNotificationChannel(channel)
+    }.onFailure { Timber.w(it, "Could not create update notification channel") }
+  }
+
+  private fun resolveLocale(
+    storedCountry: String?,
+    storedLanguage: String?,
+    appLanguage: String?,
+  ): YouTubeLocale {
+    val systemLocale =
+      appLanguage
+        ?.takeIf { it.isNotBlank() && it != SYSTEM_DEFAULT }
+        ?.let { Locale.forLanguageTag(it) }
+        ?: Locale.getDefault()
+
+    val country =
+      storedCountry?.takeIf { it.isNotBlank() && it != SYSTEM_DEFAULT }
+        ?: systemLocale.country.takeIf { it in CountryCodeToName }
+        ?: FALLBACK_COUNTRY
+
+    val language =
+      storedLanguage?.takeIf { it.isNotBlank() && it != SYSTEM_DEFAULT }
+        ?: systemLocale.language.takeIf { it in LanguageCodeToName }
+        ?: systemLocale.toLanguageTag().takeIf { it in LanguageCodeToName }
+        ?: FALLBACK_LANGUAGE
+
+    return YouTubeLocale(gl = country, hl = language)
+  }
+
+  private fun isTraditionalChineseDevice(): Boolean {
+    val locale = Locale.getDefault()
+    return locale.language == "zh" &&
+      (locale.country == "TW" || locale.toLanguageTag().equals("zh-TW", ignoreCase = true))
+  }
+
+  private suspend fun applyProxy(
+    type: Proxy.Type,
+    url: String?,
+    username: String?,
+    password: String?,
+  ) {
+    if (url.isNullOrBlank()) return
+    try {
+      YouTube.proxy = buildProxy(type, url)
+      when {
+        type == Proxy.Type.HTTP && !username.isNullOrBlank() -> {
+          YouTube.proxyAuth =
+            "Basic " +
+              Base64.encodeToString("$username:${password.orEmpty()}".toByteArray(), Base64.NO_WRAP)
+        }
+        type != Proxy.Type.HTTP && !username.isNullOrBlank() && password != null -> {
           Authenticator.setDefault(
             object : Authenticator() {
               override fun getPasswordAuthentication(): PasswordAuthentication =
@@ -193,243 +389,80 @@ class App : Application(), SingletonImageLoader.Factory, Configuration.Provider 
           )
         }
       }
-      try {
-        settings[ProxyUrlKey]?.let { YouTube.proxy = Proxy(type, it.toInetSocketAddress()) }
-      } catch (e: Exception) {
-        withContext(Dispatchers.Main) {
-          Toast.makeText(this@App, getString(R.string.failed_to_parse_proxy), Toast.LENGTH_SHORT)
-            .show()
-        }
-        reportException(e)
+    } catch (throwable: Throwable) {
+      withContext(Dispatchers.Main) {
+        Toast.makeText(this@App, R.string.failed_to_parse_proxy, Toast.LENGTH_SHORT).show()
       }
-    }
-
-    YouTube.useLoginForBrowse = settings[UseLoginForBrowse] ?: true
-    YouTube.ipVersion =
-      settings[IpVersionKey]?.toEnum(defaultValue = IpVersion.AUTO) ?: IpVersion.AUTO
-
-    // Set playback engine preference
-    val engineName = settings[com.revenge.core.constants.PlaybackEngineKey]
-    com.revenge.music.utils.YTPlayerUtils.playbackEngine =
-      try {
-        if (engineName != null) com.revenge.core.constants.PlaybackEngine.valueOf(engineName)
-        else com.revenge.core.constants.PlaybackEngine.AUTO
-      } catch (_: Exception) {
-        com.revenge.core.constants.PlaybackEngine.AUTO
-      }
-
-    val channel =
-      NotificationChannel(
-          "updates",
-          getString(R.string.update_channel_name),
-          NotificationManager.IMPORTANCE_DEFAULT,
-        )
-        .apply { description = getString(R.string.update_channel_desc) }
-    val nm = getSystemService(NotificationManager::class.java)
-    nm.createNotificationChannel(channel)
-  }
-
-  private fun observeSettingsChanges() {
-    applicationScope.launch(Dispatchers.IO) {
-      dataStore.data
-        .map {
-          (try {
-            it[VisitorDataKey]
-          } catch (e: Exception) {
-            null
-          })
-        }
-        .distinctUntilChanged()
-        .collect { visitorData ->
-          YouTube.visitorData =
-            visitorData?.takeIf { it != "null" }
-              ?: YouTube.visitorData().getOrNull()?.also { newVisitorData ->
-                dataStore.edit { settings -> settings[VisitorDataKey] = newVisitorData }
-              }
-        }
-    }
-
-    com.revenge.music.utils.lastfm.LastFM.initialize(
-      apiKey = BuildConfig.LASTFM_API_KEY.takeIf { it.isNotEmpty() } ?: "",
-      secret = BuildConfig.LASTFM_SECRET.takeIf { it.isNotEmpty() } ?: "",
-    )
-
-    applicationScope.launch(Dispatchers.IO) {
-      dataStore.data
-        .map {
-          (try {
-            it[DataSyncIdKey]
-          } catch (e: Exception) {
-            null
-          })
-        }
-        .distinctUntilChanged()
-        .collect { dataSyncId ->
-          YouTube.dataSyncId = dataSyncId?.let {
-            it.takeIf { !it.contains("||") }
-              ?: it.takeIf { it.endsWith("||") }?.substringBefore("||")
-              ?: it.substringAfter("||")
-          }
-        }
-    }
-
-    applicationScope.launch(Dispatchers.IO) {
-      dataStore.data
-        .map {
-          (try {
-            it[InnerTubeCookieKey]
-          } catch (e: Exception) {
-            null
-          })
-        }
-        .distinctUntilChanged()
-        .collect { cookie ->
-          try {
-            YouTube.cookie = cookie
-          } catch (e: Exception) {
-            Timber.e(e, "Could not parse cookie. Clearing existing cookie.")
-            forgetAccount(this@App)
-          }
-        }
-    }
-
-    applicationScope.launch(Dispatchers.IO) {
-      dataStore.data
-        .map {
-          Triple(
-            (try {
-              it[ContentCountryKey]
-            } catch (e: Exception) {
-              null
-            }),
-            (try {
-              it[ContentLanguageKey]
-            } catch (e: Exception) {
-              null
-            }),
-            (try {
-              it[AppLanguageKey]
-            } catch (e: Exception) {
-              null
-            }),
-          )
-        }
-        .distinctUntilChanged()
-        .collect { (contentCountry, contentLanguage, appLanguage) ->
-          val systemLocale = Locale.getDefault()
-          val effectiveAppLocale =
-            appLanguage?.takeUnless { it == SYSTEM_DEFAULT }?.let { Locale.forLanguageTag(it) }
-              ?: systemLocale
-
-          YouTube.locale =
-            YouTubeLocale(
-              gl =
-                contentCountry?.takeIf { it != SYSTEM_DEFAULT }
-                  ?: effectiveAppLocale.country.takeIf { it in CountryCodeToName }
-                  ?: systemLocale.country.takeIf { it in CountryCodeToName }
-                  ?: "US",
-              hl =
-                contentLanguage?.takeIf { it != SYSTEM_DEFAULT }
-                  ?: effectiveAppLocale.toLanguageTag().takeIf { it in LanguageCodeToName }
-                  ?: effectiveAppLocale.language.takeIf { it in LanguageCodeToName }
-                  ?: "en",
-            )
-        }
-    }
-
-    applicationScope.launch(Dispatchers.IO) {
-      dataStore.data
-        .map {
-          (try {
-            it[IpVersionKey]
-          } catch (e: Exception) {
-            null
-          })
-        }
-        .distinctUntilChanged()
-        .collect { ipVersion ->
-          YouTube.ipVersion = ipVersion?.toEnum(defaultValue = IpVersion.AUTO) ?: IpVersion.AUTO
-        }
+      reportException(throwable)
     }
   }
 
-  @Volatile private var cachedCoilCacheSize: Int? = null
+  private fun parseProxyType(raw: String?): Proxy.Type {
+    return raw?.trim()?.takeIf { it.isNotEmpty() }?.let {
+      runCatching { Proxy.Type.valueOf(it.uppercase(Locale.US)) }.getOrNull()
+    } ?: Proxy.Type.HTTP
+  }
 
-  override fun newImageLoader(context: PlatformContext): ImageLoader {
-    val cacheSize =
-      cachedCoilCacheSize
-        ?: runBlocking {
-          dataStore.data
-            .map {
-              (try {
-                it[MaxImageCacheSizeKey]
-              } catch (e: Exception) {
-                null
-              }) ?: 512
-            }
-            .first()
-        }
-    return ImageLoader.Builder(this)
-      .apply {
-        crossfade(true)
-        allowHardware(Build.VERSION.SDK_INT >= Build.VERSION_CODES.P)
-        components {
-          add(YouTubeThumbnailFallbackInterceptor())
-          add(LocalAlbumArtFetcher.Factory())
-        }
+  private fun buildProxy(type: Proxy.Type, rawUrl: String): Proxy {
+    val normalized = if (rawUrl.contains("://")) rawUrl else "http://$rawUrl"
+    val uri = URI(normalized)
+    val host = uri.host ?: throw IllegalArgumentException("Proxy URL has no host")
+    val port = if (uri.port > 0) uri.port else DEFAULT_PROXY_PORT
+    return Proxy(type, InetSocketAddress(host, port))
+  }
 
-        memoryCache { MemoryCache.Builder().maxSizePercent(context, 0.25).build() }
-        if (cacheSize == 0) {
-          diskCachePolicy(CachePolicy.DISABLED)
-        } else {
-          diskCache(
-            DiskCache.Builder()
-              .directory(cacheDir.resolve("coil"))
-              .maxSizeBytes(cacheSize * 1024 * 1024L)
-              .build(),
-          )
-        }
-      }
-      .build()
+  private fun normalizeDataSyncId(raw: String?): String? {
+    if (raw == null || !raw.contains(DATA_SYNC_SEPARATOR)) return raw
+    return if (raw.endsWith(DATA_SYNC_SEPARATOR)) {
+      raw.substringBefore(DATA_SYNC_SEPARATOR)
+    } else {
+      raw.substringAfter(DATA_SYNC_SEPARATOR)
+    }
+  }
+
+  private enum class ProcessKind {
+    MAIN,
+    CRASH,
+    SECONDARY,
   }
 
   companion object {
+    private const val DEFAULT_IMAGE_CACHE_SIZE_MIB = 512
+    private const val DEFAULT_PROXY_PORT = 8080
+    private const val UPDATE_CHANNEL_ID = "updates"
+    private const val DATA_SYNC_SEPARATOR = "||"
+    private const val FALLBACK_COUNTRY = "US"
+    private const val FALLBACK_LANGUAGE = "en"
+
+    private val WARM_UP_HOSTS =
+      listOf("music.youtube.com", "youtubei.googleapis.com", "googlevideo.com")
+
+    /**
+     * Removes all persisted account identity and clears the in-memory session. Safe to call from
+     * any dispatcher; never throws.
+     */
     suspend fun forgetAccount(context: Context) {
-      Timber.d("forgetAccount: Starting logout process")
-
-      Timber.d("forgetAccount: Clearing DataStore preferences")
-      context.dataStore.edit { settings ->
-        settings.remove(InnerTubeCookieKey)
-        settings.remove(VisitorDataKey)
-        settings.remove(DataSyncIdKey)
-        settings.remove(AccountNameKey)
-        settings.remove(AccountEmailKey)
-        settings.remove(AccountChannelHandleKey)
-      }
-      Timber.d("forgetAccount: DataStore preferences cleared")
-
-      Timber.d("forgetAccount: Clearing YouTube object auth state")
-      Timber.d(
-        "forgetAccount: Before - cookie=${YouTube.cookie?.take(50)}, visitorData=${YouTube.visitorData?.take(20)}, dataSyncId=${YouTube.dataSyncId?.take(20)}",
-      )
-      YouTube.cookie = null
-      YouTube.visitorData = null
-      YouTube.dataSyncId = null
-      com.revenge.music.utils.InnerTubeXResolver.onSessionChanged()
-      Timber.d(
-        "forgetAccount: After - cookie=${YouTube.cookie}, visitorData=${YouTube.visitorData}, dataSyncId=${YouTube.dataSyncId}",
-      )
-
-      Timber.d("forgetAccount: Clearing WebView CookieManager")
-      withContext(Dispatchers.Main) {
-        android.webkit.CookieManager.getInstance().apply {
-          removeAllCookies { removed ->
-            Timber.d("forgetAccount: CookieManager.removeAllCookies callback: removed=$removed")
-          }
-          flush()
+      runCatching {
+        context.dataStore.edit { preferences ->
+          preferences.remove(InnerTubeCookieKey)
+          preferences.remove(VisitorDataKey)
+          preferences.remove(DataSyncIdKey)
+          preferences.remove(com.revenge.core.constants.AccountNameKey)
+          preferences.remove(com.revenge.core.constants.AccountEmailKey)
+          preferences.remove(com.revenge.core.constants.AccountChannelHandleKey)
         }
-      }
-      Timber.d("forgetAccount: Logout process complete")
+
+        YouTube.cookie = null
+        YouTube.visitorData = null
+        YouTube.dataSyncId = null
+
+        InnerTubeXResolver.onSessionChanged()
+
+        withContext(Dispatchers.Main) {
+          android.webkit.CookieManager.getInstance().removeAllCookies(null)
+          android.webkit.CookieManager.getInstance().flush()
+        }
+      }.onFailure { Timber.w(it, "forgetAccount failed") }
     }
   }
 }

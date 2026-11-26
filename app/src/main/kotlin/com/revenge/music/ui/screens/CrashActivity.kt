@@ -1,11 +1,13 @@
 package com.revenge.music.ui.screens
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Intent
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
@@ -16,7 +18,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
@@ -24,16 +25,15 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
@@ -45,6 +45,11 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+/**
+ * Rendered in the dedicated `:crash` process. It deliberately does not use Hilt: the crash process
+ * has no application DI graph, and showing a crash report must remain possible even when start-up
+ * dependencies are broken.
+ */
 class CrashActivity : ComponentActivity() {
 
   override fun onCreate(savedInstanceState: Bundle?) {
@@ -55,78 +60,80 @@ class CrashActivity : ComponentActivity() {
       intent.getStringExtra(CrashHandler.EXTRA_CRASH_LOG) ?: getString(R.string.crash_no_log)
 
     setContent {
-      val darkTheme = isSystemInDarkTheme()
-      revengeTheme(darkTheme = darkTheme) {
+      revengeTheme(darkTheme = isSystemInDarkTheme()) {
         CrashScreen(
           crashLog = crashLog,
           onClose = { finishAffinity() },
           onShare = { shareCrashLog(crashLog) },
-          onCopy = { copyToClipboard(crashLog) },
+          onCopy = { copyCrashLog(crashLog) },
         )
       }
     }
   }
 
-  private fun copyToClipboard(crashLog: String) {
-    val cm =
-      getSystemService(android.content.Context.CLIPBOARD_SERVICE)
-        as android.content.ClipboardManager
-    val clip = android.content.ClipData.newPlainText("CrashLog", crashLog)
-    cm.setPrimaryClip(clip)
-    android.widget.Toast.makeText(
-        this,
-        R.string.copied_to_clipboard,
-        android.widget.Toast.LENGTH_SHORT,
-      )
-      .show()
+  private fun copyCrashLog(crashLog: String) {
+    val clipboard = getSystemService(ClipboardManager::class.java) ?: return
+    clipboard.setPrimaryClip(ClipData.newPlainText(CLIP_LABEL, crashLog))
+    Toast.makeText(this, R.string.copied_to_clipboard, Toast.LENGTH_SHORT).show()
   }
 
   private fun shareCrashLog(crashLog: String) {
-    try {
-
-      val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-      val fileName = "revenge_crash_$timestamp.txt"
-      val crashFile = File(cacheDir, fileName)
-      crashFile.writeText(crashLog)
-
-      val uri = FileProvider.getUriForFile(this, "${packageName}.FileProvider", crashFile)
-
-      val shareIntent =
-        Intent(Intent.ACTION_SEND).apply {
-          type = "text/plain"
-          putExtra(Intent.EXTRA_STREAM, uri)
-          putExtra(Intent.EXTRA_SUBJECT, getString(R.string.crash_report_subject))
-          addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-
-      startActivity(Intent.createChooser(shareIntent, getString(R.string.crash_share_title)))
-    } catch (e: Exception) {
-
-      val shareIntent =
-        Intent(Intent.ACTION_SEND).apply {
-          type = "text/plain"
-          putExtra(Intent.EXTRA_TEXT, crashLog)
-          putExtra(Intent.EXTRA_SUBJECT, getString(R.string.crash_report_subject))
-        }
-      startActivity(Intent.createChooser(shareIntent, getString(R.string.crash_share_title)))
+    val sharedAsFile = runCatching { shareCrashLogAsFile(crashLog) }.getOrDefault(false)
+    if (!sharedAsFile) {
+      runCatching { shareCrashLogAsText(crashLog) }
     }
+  }
+
+  private fun shareCrashLogAsFile(crashLog: String): Boolean {
+    val file = File(cacheDir, "revenge_crash_${crashFileTimestamp()}.txt")
+    file.writeText(crashLog)
+
+    val uri = FileProvider.getUriForFile(this, "$packageName.FileProvider", file)
+    val send =
+      Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_STREAM, uri)
+        putExtra(Intent.EXTRA_SUBJECT, getString(R.string.crash_report_subject))
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+      }
+    startActivity(Intent.createChooser(send, getString(R.string.crash_share_title)))
+    return true
+  }
+
+  private fun shareCrashLogAsText(crashLog: String) {
+    val send =
+      Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_TEXT, crashLog)
+        putExtra(Intent.EXTRA_SUBJECT, getString(R.string.crash_report_subject))
+      }
+    startActivity(Intent.createChooser(send, getString(R.string.crash_share_title)))
+  }
+
+  private fun crashFileTimestamp(): String =
+    SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+
+  private companion object {
+    const val CLIP_LABEL = "CrashLog"
   }
 }
 
+/**
+ * Crash report viewer. The crash log is plain text semantics, never a content description, and both
+ * scroll axes are reachable so an arbitrarily long report is never truncated.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CrashScreen(crashLog: String, onClose: () -> Unit, onShare: () -> Unit, onCopy: () -> Unit) {
-  val context = LocalContext.current
-
+fun CrashScreen(
+  crashLog: String,
+  onClose: () -> Unit,
+  onShare: () -> Unit,
+  onCopy: () -> Unit,
+) {
   Scaffold(
     topBar = {
       TopAppBar(
-        title = {
-          Text(
-            text = stringResource(R.string.crash_title),
-            style = MaterialTheme.typography.headlineSmall,
-          )
-        },
+        title = { Text(stringResource(R.string.crash_title)) },
         actions = {
           IconButton(onClick = onCopy) {
             Icon(
@@ -141,57 +148,77 @@ fun CrashScreen(crashLog: String, onClose: () -> Unit, onShare: () -> Unit, onCo
             )
           }
         },
-        colors =
-          TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
       )
     },
     floatingActionButton = {
       ExtendedFloatingActionButton(
-        onClick = onShare,
-        icon = { Icon(painter = painterResource(R.drawable.share), contentDescription = null) },
+        icon = {
+          Icon(
+            painter = painterResource(R.drawable.share),
+            contentDescription = null,
+          )
+        },
         text = { Text(stringResource(R.string.crash_share_logs)) },
-        containerColor = MaterialTheme.colorScheme.primaryContainer,
-        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        onClick = onShare,
       )
     },
-    containerColor = MaterialTheme.colorScheme.surface,
-  ) { paddingValues ->
+  ) { contentPadding ->
     Column(
       modifier =
         Modifier.fillMaxSize()
-          .padding(paddingValues)
-          .padding(horizontal = 16.dp)
-          .verticalScroll(rememberScrollState()),
+          .padding(contentPadding)
+          .padding(horizontal = 16.dp, vertical = 12.dp),
     ) {
       Text(
         text = stringResource(R.string.crash_description),
         style = MaterialTheme.typography.bodyLarge,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
       )
-
-      Spacer(modifier = Modifier.height(16.dp))
-
-      Box(
-        modifier =
-          Modifier.fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(MaterialTheme.colorScheme.surfaceContainerHighest)
-            .padding(16.dp),
+      Spacer(Modifier.height(12.dp))
+      Surface(
+        modifier = Modifier.fillMaxWidth().weight(1f),
+        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+        shape = MaterialTheme.shapes.medium,
       ) {
-        Text(
-          text = crashLog,
-          style =
-            MaterialTheme.typography.bodySmall.copy(
+        Box(
+          modifier =
+            Modifier.fillMaxSize()
+              .verticalScroll(rememberScrollState())
+              .padding(12.dp),
+        ) {
+          Box(modifier = Modifier.horizontalScroll(rememberScrollState())) {
+            Text(
+              text = crashLog,
               fontFamily = FontFamily.Monospace,
               fontSize = 11.sp,
-              lineHeight = 16.sp,
-            ),
-          color = MaterialTheme.colorScheme.onSurface,
-          modifier = Modifier.horizontalScroll(rememberScrollState()),
-        )
+            )
+          }
+        }
       }
-
-      Spacer(modifier = Modifier.height(88.dp))
     }
+  }
+}
+
+private const val PREVIEW_LOG =
+  """
+  java.lang.IllegalStateException: Sample crash
+    at com.revenge.music.Sample.fail(Sample.kt:42)
+    at com.revenge.music.Sample.run(Sample.kt:17)
+  Caused by: java.lang.RuntimeException: demo
+    at com.revenge.music.Sample.<init>(Sample.kt:9)
+  """
+
+@Preview(showBackground = true)
+@Composable
+private fun CrashScreenLightPreview() {
+  revengeTheme(darkTheme = false) {
+    CrashScreen(crashLog = PREVIEW_LOG, onClose = {}, onShare = {}, onCopy = {})
+  }
+}
+
+@Preview(showBackground = true)
+@Composable
+private fun CrashScreenDarkPreview() {
+  revengeTheme(darkTheme = true, pureBlack = true) {
+    CrashScreen(crashLog = PREVIEW_LOG, onClose = {}, onShare = {}, onCopy = {})
   }
 }
