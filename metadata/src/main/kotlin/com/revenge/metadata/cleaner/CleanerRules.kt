@@ -30,6 +30,13 @@ object CleanerRules {
     private fun wordMatcher(words: List<String>): Regex =
         Regex(EDGE_BEFORE + "(?:" + alternatives(words) + ")" + EDGE_AFTER, CASE)
 
+    /** Like [wordMatcher] but also accepts caller-supplied raw pattern fragments. */
+    private fun versionMatcher(words: List<String>, raw: List<String> = emptyList()): Regex {
+        val alternation =
+            alternatives(words) + raw.joinToString(separator = "", prefix = if (raw.isEmpty()) "" else "|")
+        return Regex(EDGE_BEFORE + "(?:" + alternation + ")" + EDGE_AFTER, CASE)
+    }
+
     // ---------------------------------------------------------------------
     // Vocabulary
     // ---------------------------------------------------------------------
@@ -102,21 +109,27 @@ object CleanerRules {
      * Version-marker precedence table. The list order is the precedence order:
      * the first matching pair wins.
      */
-    val VERSION_PATTERNS: List<Pair<Regex, VersionType>> = listOf(
-        listOf("remix", "flip", "bootleg", "vip", "re-edit", "club mix", "dub")
-            to VersionType.REMIX,
-        listOf("live", "live at", "session", "unplugged", "in concert")
-            to VersionType.LIVE,
-        listOf("acoustic", "orchestral", "symphonic") to VersionType.ACOUSTIC,
-        listOf("remaster", "remastered", "deluxe", "anniversary")
-            to VersionType.REMASTER,
-        listOf("instrumental", "karaoke") to VersionType.INSTRUMENTAL,
-        listOf("cover") to VersionType.COVER,
-        listOf("radio edit", "edit") to VersionType.RADIO_EDIT,
-        listOf("extended", "extended mix") to VersionType.EXTENDED,
-        listOf("slowed", "reverb") to VersionType.SLOWED,
-        listOf("sped up", "nightcore") to VersionType.SPED_UP,
-    ).map { (words, type) -> wordMatcher(words) to type }
+    val VERSION_PATTERNS: List<Pair<Regex, VersionType>> =
+        listOf(
+            wordMatcher(listOf("remix", "flip", "bootleg", "vip", "re-edit", "club mix", "dub")) to
+                VersionType.REMIX,
+            versionMatcher(
+                listOf("live", "session", "unplugged", "in concert"),
+                raw = listOf("""live at [\p{L}\p{N} ]+"""),
+            ) to VersionType.LIVE,
+            wordMatcher(listOf("acoustic", "orchestral", "symphonic")) to VersionType.ACOUSTIC,
+            wordMatcher(listOf("remaster", "remastered", "deluxe", "anniversary")) to
+                VersionType.REMASTER,
+            wordMatcher(listOf("instrumental", "karaoke")) to VersionType.INSTRUMENTAL,
+            wordMatcher(listOf("cover")) to VersionType.COVER,
+            wordMatcher(listOf("radio edit", "edit")) to VersionType.RADIO_EDIT,
+            wordMatcher(listOf("extended", "extended mix")) to VersionType.EXTENDED,
+            versionMatcher(
+                listOf("slowed", "reverb"),
+                raw = listOf("""slowed\s*\+\s*reverb"""),
+            ) to VersionType.SLOWED,
+            wordMatcher(listOf("sped up", "nightcore")) to VersionType.SPED_UP,
+        )
 
     /** Exact-substring multi-artist delimiters; order and content are API. */
     val ARTIST_SEPARATORS: List<String> = listOf(

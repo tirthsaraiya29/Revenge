@@ -320,7 +320,7 @@ class MetadataCleanerTest {
             VersionType.REMIX to listOf(
                 "remix", "flip", "bootleg", "vip", "re-edit", "club mix", "dub",
             ),
-            VersionType.LIVE to listOf("live", "session", "unplugged", "in concert"),
+            VersionType.LIVE to listOf("live", "live at Wembley", "session", "unplugged", "in concert"),
             VersionType.ACOUSTIC to listOf("acoustic", "orchestral", "symphonic"),
             VersionType.REMASTER to listOf("remaster", "remastered", "deluxe", "anniversary"),
             VersionType.INSTRUMENTAL to listOf("instrumental", "karaoke"),
@@ -336,5 +336,23 @@ class MetadataCleanerTest {
                 assertEquals("keyword $keyword", type, result.version!!.type)
             }
         }
+    }
+
+    @Test
+    fun `version-only right hand side is not peeled`() {
+        assertEquals(
+            "Artist - Live at Wembley",
+            MetadataCleaner.clean("Artist - Live at Wembley", "Artist").cleanTitle,
+        )
+        assertEquals(
+            "Artist - Slowed + Reverb",
+            MetadataCleaner.clean("Artist - Slowed + Reverb", "Artist").cleanTitle,
+        )
+    }
+
+    @Test
+    fun `live at and slowed plus reverb are whole-entry version entries`() {
+        assertTrue(CleanerRules.VERSION_PATTERNS.any { it.first.matches("Live at Wembley") })
+        assertTrue(CleanerRules.VERSION_PATTERNS.any { it.first.matches("Slowed + Reverb") })
     }
 }
