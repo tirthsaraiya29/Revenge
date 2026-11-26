@@ -1,203 +1,210 @@
 package com.revenge.canvas
 
-import io.ktor.client.HttpClient
-import io.ktor.client.call.body
-import io.ktor.client.engine.okhttp.OkHttp
-import io.ktor.client.plugins.HttpTimeout
-import io.ktor.client.plugins.cache.HttpCache
-import io.ktor.client.plugins.compression.ContentEncoding
-import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
-import io.ktor.client.request.get
-import io.ktor.client.request.header
-import io.ktor.client.request.parameter
-import io.ktor.http.HttpStatusCode
-import io.ktor.serialization.kotlinx.json.json
-import java.util.Locale
-import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Resolves video covers ("canvases") from the public Tidal v1 API, which exposes them on album
- * and track metadata as `videoCover`.
+ * Resolves TIDAL track/album search results into an animated artwork.
  *
- * Lookups are cached in memory for 24 hours. Network failures, malformed payloads and
- * non-200 responses all resolve to `null` so callers can fall back to other providers.
+ * Process-wide singleton: the in-memory cache and the resolved country code live for the whole
+ * process. Both entry points suspend on the caller's context and never switch dispatchers.
  */
 object TidalCanvasProvider {
-  private const val BASE_URL = "https://api.tidal.com/v1/"
-  private const val API_TOKEN = "vNVdglQOjFJJGG2U"
-  private const val VIDEO_FILENAME = "1280x1280.mp4"
-  private const val CACHE_TTL_MS = 24L * 60 * 60 * 1000
+    private const val SEARCH_URL = "https://api.tidal.com/v1/search"
+    private const val CLIENT_TOKEN = "CzET4vdadNUFQ5JU"
+    private const val CACHE_TTL_MS = 86_400_000L
+    private const val MAX_RESULTS = "10"
 
-  private val json = Json {
-    ignoreUnknownKeys = true
-    isLenient = true
-    explicitNulls = false
-  }
+    private data class Entry(val artwork: CanvasArtwork, val expiresAt: Long)
 
-  private val client by lazy {
-    HttpClient(OkHttp) {
-      install(ContentNegotiation) { json(json) }
-      install(HttpTimeout) {
-        connectTimeoutMillis = 15_000
-        requestTimeoutMillis = 30_000
-        socketTimeoutMillis = 30_000
-      }
-      install(ContentEncoding) {
-        gzip()
-        deflate()
-      }
-      install(HttpCache)
-      expectSuccess = false
+    private val cache = ConcurrentHashMap<String, Entry>()
+    private val json = Json {
+        ignoreUnknownKeys = true
+        isLenient = true
+        explicitNulls = false
     }
-  }
 
-  private data class CacheEntry(val artwork: CanvasArtwork?, val expiresAtMs: Long)
+    @Volatile
+    internal var transport: CanvasTransport = ktorCanvasTransport(10, 15, 15)
 
-  private val cache = ConcurrentHashMap<String, CacheEntry>()
+    @Volatile
+    internal var clock: () -> Long = System::currentTimeMillis
 
-  private val countryCode: String by lazy {
-    Locale.getDefault().country?.uppercase(Locale.ROOT)?.takeIf { it.length == 2 } ?: "US"
-  }
+    internal val countryCode: String =
+        Locale.getDefault().country.takeIf { it.length == 2 }?.uppercase(Locale.ROOT) ?: "US"
 
-  suspend fun getBySongArtist(song: String, artist: String, album: String? = null): CanvasArtwork? {
-    if (song.isBlank() || artist.isBlank()) return null
-    val key = cacheKey("song", song, artist, album.orEmpty())
-    cached(key)?.let { return it }
+    internal fun resetForTests() {
+        cache.clear()
+        transport = ktorCanvasTransport(10, 15, 15)
+        clock = System::currentTimeMillis
+    }
 
-    val query = if (album.isNullOrBlank()) "$artist $song" else "$album $artist $song"
-    return search(query, "TRACKS", song, artist, album).also { store(key, it) }
-  }
+    suspend fun getBySongArtist(song: String, artist: String, album: String? = null): CanvasArtwork? {
+        if (song.isBlank() || artist.isBlank()) return null
 
-  suspend fun getByAlbumArtist(album: String, artist: String): CanvasArtwork? {
-    if (album.isBlank() || artist.isBlank()) return null
-    val key = cacheKey("album", album, artist)
-    cached(key)?.let { return it }
+        val key = "song|" + normalized(song) + "|" + normalized(artist) + "|" + normalized(album.orEmpty())
+        freshEntry(key)?.let { return it }
 
-    return search("$album $artist", "ALBUMS", null, artist, album).also { store(key, it) }
-  }
+        val query = if (album.isNullOrBlank()) "$artist $song" else "$album $artist $song"
+        val artwork = search(query, "TRACKS", artist, song, albumOnly = false) ?: return null
+        store(key, artwork)
+        return artwork
+    }
 
-  private fun cached(key: String): CanvasArtwork? =
-    cache[key]?.takeIf { it.expiresAtMs > System.currentTimeMillis() }?.artwork
+    suspend fun getByAlbumArtist(album: String, artist: String): CanvasArtwork? {
+        if (album.isBlank() || artist.isBlank()) return null
 
-  private fun store(key: String, artwork: CanvasArtwork?) {
-    if (artwork != null) cache[key] = CacheEntry(artwork, System.currentTimeMillis() + CACHE_TTL_MS)
-  }
+        val key = "album|" + normalized(album) + "|" + normalized(artist)
+        freshEntry(key)?.let { return it }
 
-  private suspend fun search(
-    query: String,
-    types: String,
-    song: String?,
-    artist: String,
-    album: String?,
-  ): CanvasArtwork? {
-    return try {
-      val response =
-        client.get("$BASE_URL/search") {
-          header("X-Tidal-Token", API_TOKEN)
-          parameter("query", query)
-          parameter("limit", "10")
-          parameter("types", types)
-          parameter("countryCode", countryCode)
+        val artwork = search("$album $artist", "ALBUMS", artist, album, albumOnly = true) ?: return null
+        store(key, artwork)
+        return artwork
+    }
+
+    private suspend fun search(
+        query: String,
+        types: String,
+        requestedArtist: String,
+        requestedTitle: String,
+        albumOnly: Boolean,
+    ): CanvasArtwork? = try {
+        val response = transport.get(
+            SEARCH_URL,
+            listOf(
+                "query" to query,
+                "limit" to MAX_RESULTS,
+                "types" to types,
+                "countryCode" to countryCode,
+            ),
+            mapOf("X-Tidal-Token" to CLIENT_TOKEN),
+        )
+        if (response.status != 200) {
+            null
+        } else {
+            val payload = json.parseToJsonElement(response.body)
+            val items = locateItems(payload, types.lowercase(Locale.ROOT))
+            items.firstNotNullOfOrNull { element ->
+                mapCandidate(element as? JsonObject, requestedArtist, requestedTitle, albumOnly)
+            }
         }
-      if (response.status != HttpStatusCode.OK) return null
-
-      val items = response.body<JsonObject>().itemsFor(types) ?: return null
-      items.firstNotNullOfOrNull { element ->
-        (element as? JsonObject)?.let { parseItem(it, types, song, artist, album) }
-      }
     } catch (e: CancellationException) {
-      throw e
+        throw e
     } catch (e: Exception) {
-      null
-    }
-  }
-
-  private fun parseItem(
-    item: JsonObject,
-    types: String,
-    song: String?,
-    artist: String,
-    album: String?,
-  ): CanvasArtwork? {
-    val title = item.textValue("title")
-
-    if (types == "TRACKS" && song != null && title != null && !title.contains(song, true)) {
-      return null
-    }
-    if (
-      types == "ALBUMS" &&
-        album != null &&
-        title != null &&
-        !title.contains(album, true) &&
-        !album.contains(title, true)
-    ) {
-      return null
+        null
     }
 
-    val primaryArtist =
-      item.objectValue("artist")?.textValue("name")
-        ?: item.arrayValue("artists")?.firstOrNull()?.let { (it as? JsonObject)?.textValue("name") }
+    private fun mapCandidate(
+        item: JsonObject?,
+        requestedArtist: String,
+        requestedTitle: String,
+        albumOnly: Boolean,
+    ): CanvasArtwork? {
+        if (item == null) return null
 
-    if (primaryArtist != null && !artistsMatch(artist, primaryArtist)) return null
+        val title = tidalString(item["title"])
+        if (title != null) {
+            val titleAccepted = if (albumOnly) {
+                title.contains(requestedTitle, ignoreCase = true) || requestedTitle.contains(title, ignoreCase = true)
+            } else {
+                title.contains(requestedTitle, ignoreCase = true)
+            }
+            if (!titleAccepted) return null
+        }
 
-    val owner = if (types == "TRACKS") item.objectValue("album") else item
-    val coverId = owner?.textValue("videoCover") ?: return null
-    val videoUrl = formatVideoUrl(coverId) ?: return null
+        val primaryArtist = tidalString(item["artist"].let { (it as? JsonObject)?.get("name") })
+            ?: (item["artists"] as? JsonArray)
+                ?.firstOrNull()
+                ?.let { tidalString((it as? JsonObject)?.get("name")) }
+        if (primaryArtist != null && !artistsMatch(requestedArtist, primaryArtist)) return null
 
-    return CanvasArtwork(
-      name = title ?: song ?: album ?: "",
-      artist = primaryArtist ?: artist,
-      videoUrl = videoUrl,
-      albumName = if (types == "TRACKS") owner.textValue("title") else title,
-    )
-  }
+        val owner = if (albumOnly) item else (item["album"] as? JsonObject ?: return null)
+        val cover = tidalString(owner["videoCover"])
+        if (cover.isNullOrBlank()) return null
+        val videoUrl = tidalCoverUrl(cover) ?: return null
 
-  private fun JsonObject.itemsFor(types: String): JsonArray? =
-    objectValue(types.lowercase(Locale.ROOT))?.arrayValue("items") ?: findItemsSection(this)
-
-  private fun findItemsSection(element: JsonElement): JsonArray? =
-    when (element) {
-      is JsonArray -> element.firstNotNullOfOrNull(::findItemsSection)
-      is JsonObject ->
-        element.arrayValue("items") ?: element.values.firstNotNullOfOrNull(::findItemsSection)
-      else -> null
+        return CanvasArtwork(
+            name = title ?: requestedTitle,
+            artist = primaryArtist ?: requestedArtist,
+            videoUrl = videoUrl,
+            albumName = if (albumOnly) title else tidalString(owner["title"]),
+        )
     }
 
-  /**
-   * Tidal cover IDs are five dash-separated path segments, e.g. `1a2b-3c4d-5e6f-7a8b-9c0d`.
-   * Returns the public 1280x1280 progressive MP4 for that cover, or null when malformed.
-   */
-  internal fun formatVideoUrl(id: String): String? {
-    val parts = id.split('-')
-    if (parts.size != 5 || parts.any { it.isBlank() }) return null
-    return "https://resources.tidal.com/videos/${parts.joinToString("/")}/$VIDEO_FILENAME"
-  }
+    private fun locateItems(element: JsonElement, section: String): JsonArray? {
+        val root = element as? JsonObject
+        if (root != null) {
+            val sectionObject = root.entries
+                .firstOrNull { it.key.lowercase(Locale.ROOT) == section }
+                ?.value as? JsonObject
+            (sectionObject?.get("items") as? JsonArray)?.let { return it }
+        }
+        return firstItemsArray(element)
+    }
 
-  /** True when any requested artist name overlaps the returned billing name. */
-  internal fun artistsMatch(requested: String, returned: String): Boolean {
-    val requestedParts = splitArtists(requested)
-    val returnedParts = splitArtists(returned)
-    return requestedParts.any { req -> returnedParts.any { res -> res.contains(req) || req.contains(res) } }
-  }
+    private fun firstItemsArray(element: JsonElement): JsonArray? {
+        when (element) {
+            is JsonArray -> {
+                for (child in element) {
+                    firstItemsArray(child)?.let { return it }
+                }
+            }
+            is JsonObject -> {
+                (element["items"] as? JsonArray)?.let { return it }
+                for (child in element.values) {
+                    firstItemsArray(child)?.let { return it }
+                }
+            }
+            else -> Unit
+        }
+        return null
+    }
 
-  private fun splitArtists(raw: String): List<String> =
-    raw.split(ARTIST_SEPARATOR)
-      .map { it.replace(WHITESPACE, " ").trim().lowercase(Locale.ROOT) }
-      .filter { it.isNotBlank() }
+    private fun freshEntry(key: String): CanvasArtwork? {
+        val entry = cache[key] ?: return null
+        if (entry.expiresAt > clock()) return entry.artwork
+        cache.remove(key)
+        return null
+    }
 
-  private fun cacheKey(prefix: String, vararg parts: String): String =
-    "$prefix|" + parts.joinToString("|") { it.trim().lowercase(Locale.ROOT) }
+    private fun store(key: String, artwork: CanvasArtwork) {
+        cache[key] = Entry(artwork, clock() + CACHE_TTL_MS)
+    }
 
-  private val WHITESPACE = Regex("\\s+")
-
-  private val ARTIST_SEPARATOR =
-    Regex(
-      """(?:\s*,\s*|\s*&\s*|\s+×\s+|\s+x\s+|\bfeat\.?\b|\bft\.?\b|\bfeaturing\b|\bwith\b)""",
-      RegexOption.IGNORE_CASE,
-    )
+    private fun normalized(value: String): String = value.trim().lowercase(Locale.ROOT)
 }
+
+/** Formats a five-segment TIDAL video cover id, or returns null when the id is malformed. */
+internal fun tidalCoverUrl(coverId: String): String? {
+    val segments = coverId.split('-')
+    if (segments.size != 5 || segments.any { it.isBlank() }) return null
+    return "https://resources.tidal.com/videos/${segments[0]}/${segments[1]}/${segments[2]}/${segments[3]}/${segments[4]}/1280x1280.mp4"
+}
+
+/** Artist-equivalence rule used for both TIDAL search entry points. */
+internal fun artistsMatch(requested: String?, returned: String?): Boolean {
+    val left = splitArtistNames(requested)
+    val right = splitArtistNames(returned)
+    if (left.isEmpty() || right.isEmpty()) return false
+    return left.any { a -> right.any { b -> a.contains(b) || b.contains(a) } }
+}
+
+private val ARTIST_SEPARATOR = Regex(
+    """\s*(?:,|&|×|\s+x\s+|\b(?:feat|ft)\.?\s+|\bfeaturing\b|\bwith\b)\s*""",
+    RegexOption.IGNORE_CASE,
+)
+
+private fun splitArtistNames(raw: String?): List<String> =
+    raw?.split(ARTIST_SEPARATOR)
+        ?.map { it.trim().replace(Regex("\\s+"), " ").lowercase(Locale.ROOT) }
+        ?.filter { it.isNotEmpty() }
+        .orEmpty()
+
+private fun tidalString(element: JsonElement?): String? =
+    (element as? JsonPrimitive)?.takeIf { it.isString }?.content

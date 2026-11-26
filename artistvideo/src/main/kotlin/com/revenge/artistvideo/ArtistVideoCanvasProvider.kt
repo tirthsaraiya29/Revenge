@@ -1,125 +1,70 @@
 package com.revenge.artistvideo
 
-import io.ktor.client.HttpClient
-import io.ktor.client.call.body
-import io.ktor.client.engine.okhttp.OkHttp
-import io.ktor.client.plugins.HttpTimeout
-import io.ktor.client.plugins.cache.HttpCache
-import io.ktor.client.plugins.compression.ContentEncoding
-import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
-import io.ktor.client.request.get
-import io.ktor.client.request.parameter
-import io.ktor.http.HttpStatusCode
-import io.ktor.serialization.kotlinx.json.json
+import kotlinx.coroutines.CancellationException
+import kotlinx.serialization.json.Json
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
-import kotlin.coroutines.cancellation.CancellationException
-import kotlinx.serialization.SerialName
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
 
 /**
- * Looks up the animated artist artwork ("artist video") for a track.
- *
- * Results, including negative ones, are cached briefly so the same artist page does not hammer the
- * endpoint while the user scrolls. Any transport or decoding failure yields `null`; callers treat a
- * missing video as "show the still cover" rather than a hard error.
+ * Looks up artist videos in the third-party archive. Both hits and misses are cached for a
+ * short window to bound retry pressure; blank inputs are intentionally not filtered.
  */
 object ArtistVideoCanvasProvider {
-  private const val BASE_URL = "https://artwork-archivetune.koiiverse.cloud/"
-  private const val CACHE_TTL_MS = 60_000L
+    private const val BASE_URL = "https://artwork-archivetune.koiiverse.cloud/"
+    private const val CACHE_TTL_MS = 60_000L
 
-  private val json =
-    Json {
-      ignoreUnknownKeys = true
-      isLenient = true
-      explicitNulls = false
+    private data class Entry(val value: ArtistVideoResponse?, val expiresAt: Long)
+
+    private val cache = ConcurrentHashMap<String, Entry>()
+    private val json = Json {
+        ignoreUnknownKeys = true
+        isLenient = true
+        explicitNulls = false
     }
 
-  private val client by lazy {
-    HttpClient(OkHttp) {
-      expectSuccess = false
-      install(ContentNegotiation) { json(json) }
-      install(HttpTimeout) {
-        connectTimeoutMillis = 15_000
-        requestTimeoutMillis = 30_000
-        socketTimeoutMillis = 30_000
-      }
-      install(ContentEncoding) {
-        gzip()
-        deflate()
-      }
-      install(HttpCache)
-    }
-  }
+    @Volatile internal var transport: ArtistVideoTransport = ktorArtistVideoTransport()
+    @Volatile internal var clock: () -> Long = System::currentTimeMillis
 
-  private data class CacheEntry(val value: ArtistVideoResponse?, val expiresAtMs: Long)
-
-  private val cache = ConcurrentHashMap<String, CacheEntry>()
-
-  suspend fun getBySongArtist(
-    song: String,
-    artist: String,
-    album: String? = null,
-    duration: Int? = null,
-  ): ArtistVideoResponse? {
-    val key = cacheKey(song, artist, album.orEmpty(), duration?.toString().orEmpty())
-
-    cache[key]?.let { entry ->
-      if (entry.expiresAtMs > System.currentTimeMillis()) return entry.value
-      cache.remove(key)
+    internal fun resetForTests() {
+        cache.clear()
+        transport = ktorArtistVideoTransport()
+        clock = System::currentTimeMillis
     }
 
-    val result = fetch(song, artist, album, duration)
-    cache[key] = CacheEntry(result, System.currentTimeMillis() + CACHE_TTL_MS)
-    return result
-  }
+    suspend fun getBySongArtist(
+        song: String,
+        artist: String,
+        album: String? = null,
+        duration: Int? = null,
+    ): ArtistVideoResponse? {
+        val key = buildKey(song, artist, album, duration)
+        val now = clock()
+        cache[key]?.let { if (it.expiresAt > now) return it.value }
 
-  private suspend fun fetch(
-    song: String,
-    artist: String,
-    album: String?,
-    duration: Int?,
-  ): ArtistVideoResponse? {
-    return try {
-      val response =
-        client.get(BASE_URL) {
-          parameter("s", song)
-          parameter("a", artist)
-          if (album != null) parameter("al", album)
-          if (duration != null && duration > 0) parameter("d", duration)
-        }
-      if (response.status == HttpStatusCode.OK) {
-        try {
-          response.body<ArtistVideoResponse>()
+        val result = try {
+            val params = buildList {
+                add("s" to song)
+                add("a" to artist)
+                if (album != null) add("al" to album)
+                if (duration != null && duration > 0) add("d" to duration.toString())
+            }
+            val response = transport.get(BASE_URL, params, emptyMap())
+            if (response.status != 200) {
+                null
+            } else {
+                json.decodeFromString(ArtistVideoResponse.serializer(), response.body)
+            }
         } catch (e: CancellationException) {
-          throw e
+            throw e
         } catch (e: Exception) {
-          null
+            null
         }
-      } else {
-        null
-      }
-    } catch (e: CancellationException) {
-      throw e
-    } catch (e: Exception) {
-      null
+
+        cache[key] = Entry(result, clock() + CACHE_TTL_MS)
+        return result
     }
-  }
 
-  private fun cacheKey(vararg parts: String): String =
-    parts.joinToString("|") { it.trim().lowercase(Locale.ROOT) }
-}
-
-@Serializable
-data class ArtistVideoResponse(
-  val name: String? = null,
-  val artist: String? = null,
-  @SerialName("albumId") val albumId: String? = null,
-  val static: String? = null,
-  val animated: String? = null,
-  val videoUrl: String? = null,
-) {
-  val preferredAnimationUrl: String?
-    get() = animated ?: videoUrl
+    private fun buildKey(song: String, artist: String, album: String?, duration: Int?): String =
+        listOf(song, artist, album.orEmpty(), duration?.toString().orEmpty())
+            .joinToString("|") { it.trim().lowercase(Locale.ROOT) }
 }

@@ -8,94 +8,91 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CanvasArtworkTest {
+    private val json = Json {
+        ignoreUnknownKeys = true
+        explicitNulls = false
+        isLenient = true
+    }
 
-  private val json = Json {
-    ignoreUnknownKeys = true
-    explicitNulls = false
-  }
+    @Test
+    fun ca1_prefersAnimatedOverVideo() {
+        val artwork = CanvasArtwork(animated = "https://cdn/a.mp4", videoUrl = "https://cdn/v.mp4")
+        assertEquals("https://cdn/a.mp4", artwork.preferredAnimationUrl)
+    }
 
-  @Test
-  fun preferredAnimationUrlPrefersAnimated() {
-    assertEquals(
-      "https://cdn/animated.mp4",
-      CanvasArtwork(animated = "https://cdn/animated.mp4", videoUrl = "https://cdn/fallback.mp4")
-        .preferredAnimationUrl,
-    )
-  }
+    @Test
+    fun ca2_fallsBackToVideoAndEmptyIsNull() {
+        assertEquals("https://cdn/v.mp4", CanvasArtwork(videoUrl = "https://cdn/v.mp4").preferredAnimationUrl)
+        assertNull(CanvasArtwork().preferredAnimationUrl)
+    }
 
-  @Test
-  fun preferredAnimationUrlFallsBackToVideoUrl() {
-    assertEquals("https://cdn/fallback.mp4", CanvasArtwork(videoUrl = "https://cdn/fallback.mp4").preferredAnimationUrl)
-    assertNull(CanvasArtwork().preferredAnimationUrl)
-  }
+    @Test
+    fun ca3_blankAnimatedStillWins() {
+        assertEquals("", CanvasArtwork(animated = "", videoUrl = "v").preferredAnimationUrl)
+    }
 
-  @Test
-  fun clipBoundariesMarkYoutubeSnippet() {
-    assertTrue(CanvasArtwork(clipStartMs = 1_000L).isYouTubeSnippet)
-    assertTrue(CanvasArtwork(clipEndMs = 2_000L).isYouTubeSnippet)
-  }
+    @Test
+    fun ca4_clipWindowMarksYouTubeSnippet() {
+        assertTrue(CanvasArtwork(clipStartMs = 1000).isYouTubeSnippet)
+        assertTrue(CanvasArtwork(clipEndMs = 2000).isYouTubeSnippet)
+    }
 
-  @Test
-  fun youtubeHostedUrlsMarkSnippet() {
-    assertTrue(CanvasArtwork(videoUrl = "https://rr1.googlevideo.com/videoplayback").isYouTubeSnippet)
-    assertTrue(CanvasArtwork(animated = "https://www.youtube.com/watch?v=x").isYouTubeSnippet)
-    assertFalse(CanvasArtwork(animated = "https://resources.tidal.com/videos/a/b/c/d/e.mp4").isYouTubeSnippet)
-  }
+    @Test
+    fun ca5_youtubeHostsMarkSnippet() {
+        assertTrue(CanvasArtwork(videoUrl = "https://rr1.googlevideo.com/videoplayback").isYouTubeSnippet)
+        assertTrue(CanvasArtwork(animated = "https://www.youtube.com/watch?v=x").isYouTubeSnippet)
+    }
 
-  @Test
-  fun decodesPersistedFieldNames() {
-    val decoded =
-      json.decodeFromString<CanvasArtwork>(
-        """
-        {
-          "name": "Song",
-          "artist": "Artist",
-          "albumId": "123",
-          "albumName": "Album",
-          "static": "https://cdn/cover.jpg",
-          "animated": "https://cdn/canvas.mp4",
-          "clipStartMs": 500,
-          "clipEndMs": 5500
-        }
-        """
-          .trimIndent(),
-      )
+    @Test
+    fun ca6_tidalHostIsNotSnippet() {
+        assertFalse(CanvasArtwork(animated = "https://resources.tidal.com/videos/a/b/c/d/e.mp4").isYouTubeSnippet)
+    }
 
-    assertEquals("Song", decoded.name)
-    assertEquals("Artist", decoded.artist)
-    assertEquals("123", decoded.albumId)
-    assertEquals("Album", decoded.albumName)
-    assertEquals(500L, decoded.clipStartMs ?: 0L)
-    assertEquals(5_500L, decoded.clipEndMs ?: 0L)
-    assertEquals("https://cdn/canvas.mp4", decoded.preferredAnimationUrl)
-  }
+    @Test
+    fun ca7_decodesEveryDocumentedKey() {
+        val payload = """
+            {"name":"N","artist":"A","albumId":"42","albumName":"AN","static":"s",
+             "animated":"an","videoUrl":"v","clipStartMs":1,"clipEndMs":2}
+        """.trimIndent()
 
-  @Test
-  fun roundTripPreservesFields() {
-    val original =
-      CanvasArtwork(
-        name = "Song",
-        artist = "Artist",
-        albumId = "42",
-        albumName = "Album",
-        static = "s",
-        animated = "a",
-        videoUrl = "v",
-        clipStartMs = 1L,
-        clipEndMs = 2L,
-      )
-    val decoded =
-      json.decodeFromString<CanvasArtwork>(json.encodeToString(CanvasArtwork.serializer(), original))
+        val artwork = json.decodeFromString(CanvasArtwork.serializer(), payload)
 
-    assertEquals(original, decoded)
-  }
+        assertEquals("N", artwork.name)
+        assertEquals("A", artwork.artist)
+        assertEquals("42", artwork.albumId)
+        assertEquals("AN", artwork.albumName)
+        assertEquals("s", artwork.static)
+        assertEquals("an", artwork.animated)
+        assertEquals("v", artwork.videoUrl)
+        assertEquals(1L, artwork.clipStartMs)
+        assertEquals(2L, artwork.clipEndMs)
+    }
 
-  @Test
-  fun missingFieldsDecodeToDefaults() {
-    val decoded = json.decodeFromString<CanvasArtwork>("{}")
+    @Test
+    fun ca8_roundTripsFullyPopulatedInstance() {
+        val artwork = CanvasArtwork(
+            name = "N", artist = "A", albumId = "42", albumName = "AN", static = "s",
+            animated = "an", videoUrl = "v", clipStartMs = 1L, clipEndMs = 2L,
+        )
+        val encoded = json.encodeToString(CanvasArtwork.serializer(), artwork)
+        assertEquals(artwork, json.decodeFromString(CanvasArtwork.serializer(), encoded))
+    }
 
-    assertNull(decoded.name)
-    assertNull(decoded.animated)
-    assertNull(decoded.clipStartMs)
-  }
+    @Test
+    fun ca9_emptyObjectYieldsAllNulls() {
+        val artwork = json.decodeFromString(CanvasArtwork.serializer(), "{}")
+        assertEquals(CanvasArtwork(), artwork)
+        assertNull(artwork.name)
+        assertNull(artwork.albumId)
+    }
+
+    @Test
+    fun ca10_toleratesUnknownKeysAndExplicitNulls() {
+        val artwork = json.decodeFromString(
+            CanvasArtwork.serializer(),
+            """{"name":null,"static":null,"mystery":{"deep":true},"extra":[1,2]}""",
+        )
+        assertNull(artwork.name)
+        assertNull(artwork.static)
+    }
 }
