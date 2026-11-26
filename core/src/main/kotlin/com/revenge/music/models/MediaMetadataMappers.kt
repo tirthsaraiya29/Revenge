@@ -5,8 +5,23 @@ import com.revenge.music.db.entities.Song
 import com.revenge.music.db.entities.SongEntity
 import com.revenge.music.ui.utils.resize
 
-fun MediaMetadata.toSongEntity() =
-  SongEntity(
+private const val MUSIC_VIDEO_TYPE_OMV = "MUSIC_VIDEO_TYPE_OMV"
+
+fun Song.toMediaMetadata(): MediaMetadata = MediaMetadata(
+    id = id,
+    title = title,
+    artists = artists.map { MediaMetadata.Artist(it.id, it.name) },
+    duration = song.duration,
+    thumbnailUrl = thumbnailUrl,
+    album = album?.let { MediaMetadata.Album(it.id, it.title) }
+        ?: song.albumId?.let { MediaMetadata.Album(it, song.albumName.orEmpty()) },
+    musicVideoType = if (song.isVideo) MUSIC_VIDEO_TYPE_OMV else null,
+    explicit = song.explicit,
+    source = QueueItemSource.USER,
+    suggestedBy = null,
+)
+
+fun MediaMetadata.toSongEntity(): SongEntity = SongEntity(
     id = id,
     title = title,
     duration = duration,
@@ -20,39 +35,20 @@ fun MediaMetadata.toSongEntity() =
     libraryAddToken = libraryAddToken,
     libraryRemoveToken = libraryRemoveToken,
     isVideo = isVideoSong,
-  )
+)
 
-fun Song.toMediaMetadata() =
-  MediaMetadata(
-    id = song.id,
-    title = song.title,
-    artists = artists.map { MediaMetadata.Artist(id = it.id, name = it.name) },
-    duration = song.duration,
-    thumbnailUrl = song.thumbnailUrl,
-    album =
-      album?.let { MediaMetadata.Album(id = it.id, title = it.title) }
-        ?: song.albumId?.let { albumId ->
-          MediaMetadata.Album(id = albumId, title = song.albumName.orEmpty())
-        },
-    explicit = song.explicit,
-    musicVideoType = if (song.isVideo) "MUSIC_VIDEO_TYPE_OMV" else null,
-    suggestedBy = null,
-    source = QueueItemSource.USER,
-  )
-
-fun SongItem.toMediaMetadata() =
-  MediaMetadata(
+fun SongItem.toMediaMetadata(): MediaMetadata = MediaMetadata(
     id = id,
     title = title,
-    artists = artists.map { MediaMetadata.Artist(id = it.id, name = it.name) },
+    artists = artists.map { MediaMetadata.Artist(it.id, it.name) },
     duration = duration ?: -1,
     thumbnailUrl = thumbnail.resize(1200, 1200),
-    album = album?.let { MediaMetadata.Album(id = it.id, title = it.name) },
-    explicit = explicit,
+    album = album?.let { MediaMetadata.Album(it.id, it.name) },
     setVideoId = setVideoId,
     musicVideoType = musicVideoType,
+    explicit = explicit,
     libraryAddToken = libraryAddToken,
     libraryRemoveToken = libraryRemoveToken,
-    suggestedBy = null,
     source = QueueItemSource.USER,
-  )
+    suggestedBy = null,
+)

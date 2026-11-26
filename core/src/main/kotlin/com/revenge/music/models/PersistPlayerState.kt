@@ -2,7 +2,7 @@ package com.revenge.music.models
 
 import java.io.Serializable
 
-/** Snapshot of the player's transport state, written to disk on shutdown. */
+/** Serializable snapshot of transport state used to resume playback after process death. */
 data class PersistPlayerState(
   val playWhenReady: Boolean,
   val repeatMode: Int,

@@ -2,29 +2,23 @@ package com.revenge.music.models
 
 import java.io.Serializable
 
-/** Queue snapshot written to disk so playback survives a process restart. */
-data class PersistQueue(
-  val title: String?,
-  val items: List<MediaMetadata>,
-  val mediaItemIndex: Int,
-  val position: Long,
-  val queueType: QueueType = QueueType.LIST,
-  val queueData: QueueData? = null,
-  val shuffledIndices: List<Int>? = null,
-) : Serializable
-
+/** Identifies which queue flavour produced a persisted snapshot. */
 sealed class QueueType : Serializable {
-  object LIST : QueueType()
+  data object LIST : QueueType()
 
-  object YOUTUBE : QueueType()
+  data object YOUTUBE : QueueType()
 
-  object YOUTUBE_ALBUM_RADIO : QueueType()
+  data object YOUTUBE_ALBUM_RADIO : QueueType()
 
-  object LOCAL_ALBUM_RADIO : QueueType()
+  data object LOCAL_ALBUM_RADIO : QueueType()
 }
 
+/** Extra state needed to rebuild non-list queues after process death. */
 sealed class QueueData : Serializable {
-  data class YouTubeData(val endpoint: String, val continuation: String? = null) : QueueData()
+  data class YouTubeData(
+    val endpoint: String,
+    val continuation: String? = null,
+  ) : QueueData()
 
   data class YouTubeAlbumRadioData(
     val playlistId: String,
@@ -41,3 +35,14 @@ sealed class QueueData : Serializable {
     val firstTimeLoaded: Boolean = false,
   ) : QueueData()
 }
+
+/** Serializable snapshot of the live player queue. */
+data class PersistQueue(
+  val title: String?,
+  val items: List<MediaMetadata>,
+  val mediaItemIndex: Int,
+  val position: Long,
+  val queueType: QueueType = QueueType.LIST,
+  val queueData: QueueData? = null,
+  val shuffledIndices: List<Int>? = null,
+) : Serializable
