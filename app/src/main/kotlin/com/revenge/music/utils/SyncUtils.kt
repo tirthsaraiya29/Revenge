@@ -1,6 +1,7 @@
 package com.revenge.music.utils
 
 import android.content.Context
+import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
 import com.revenge.innertube.YouTube
 import com.revenge.innertube.models.SongItem
@@ -234,8 +235,7 @@ class SyncUtils @Inject constructor(
             SyncOperation.ArtistsSubscriptions -> current.copy(artists = status)
             SyncOperation.SavedPlaylists,
             SyncOperation.AutoSyncPlaylists,
-            is SyncOperation.SinglePlaylist,
-            -> current.copy(playlists = status)
+            is SyncOperation.SinglePlaylist -> current.copy(playlists = status)
             else -> current
         }
     }

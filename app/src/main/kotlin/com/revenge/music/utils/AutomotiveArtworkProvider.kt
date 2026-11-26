@@ -2,39 +2,33 @@ package com.revenge.music.utils
 
 import android.content.ContentProvider
 import android.content.ContentValues
+import android.content.Context
 import android.database.Cursor
 import android.net.Uri
-import android.os.Binder
 import android.os.ParcelFileDescriptor
 import java.io.FileNotFoundException
-import timber.log.Timber
 
 /**
- * Serves the covers referenced by [AutomotiveArtwork.contentUriFor] to Android Auto, Automotive OS
- * and the instrument cluster, which only load local artwork URIs. Exported because those run in
- * other processes; only URIs signed by this install are served, read-only.
+ * Exported, read-only provider for signed automotive artwork URIs. The signature check in
+ * [AutomotiveArtwork.originalUrl] is the security boundary: callers cannot make the provider fetch
+ * arbitrary URLs.
  */
 class AutomotiveArtworkProvider : ContentProvider() {
 
-  override fun onCreate(): Boolean = true
+  override fun onCreate(): Boolean {
+    context?.applicationContext?.let { AutomotiveArtwork.applicationContext = it }
+    return true
+  }
 
   override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor {
     if (mode != "r") throw SecurityException("Artwork is read-only")
-    val context = context ?: throw FileNotFoundException(uri.toString())
+    val context = context ?: throw FileNotFoundException("No provider context")
     val url = AutomotiveArtwork.originalUrl(context, uri)
-    if (url == null) {
-      Timber.tag(TAG).w("Rejected unsigned artwork request from %s", callerName())
-      throw FileNotFoundException("Unknown artwork")
-    }
+      ?: throw FileNotFoundException("Unknown artwork URI")
     val file = AutomotiveArtwork.artworkFile(context, url)
-    if (file == null) {
-      Timber.tag(TAG).w("Artwork unavailable for %s: %s", callerName(), url)
-      throw FileNotFoundException("Artwork unavailable")
-    }
+      ?: throw FileNotFoundException("Artwork unavailable")
     return ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
   }
-
-  private fun callerName(): String? = context?.packageManager?.getNameForUid(Binder.getCallingUid())
 
   override fun getType(uri: Uri): String = "image/jpeg"
 
@@ -56,8 +50,4 @@ class AutomotiveArtworkProvider : ContentProvider() {
     selection: String?,
     selectionArgs: Array<out String>?,
   ): Int = 0
-
-  private companion object {
-    const val TAG = "AutomotiveArtwork"
-  }
 }

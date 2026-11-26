@@ -214,9 +214,11 @@ class CastConnectionHandler(
         buildMediaInfo(metadata)?.let { MediaQueueItem.Builder(it).build() }
       }
     if (queueItems.isEmpty()) return
+    val ids = runCatching { client.mediaQueue.itemIds }.getOrDefault(intArrayOf())
     val currentItemId = client.mediaStatus?.currentItem?.itemId ?: MediaQueueItem.INVALID_ITEM_ID
+    val currentIndex = ids.indexOf(currentItemId)
     val beforeId =
-      if (currentItemId != MediaQueueItem.INVALID_ITEM_ID) currentItemId
+      if (currentIndex >= 0 && currentIndex + 1 < ids.size) ids[currentIndex + 1]
       else MediaQueueItem.INVALID_ITEM_ID
     runCatching { client.queueInsertItems(queueItems.toTypedArray(), beforeId, null) }
   }
@@ -249,7 +251,7 @@ class CastConnectionHandler(
   fun setVolume(volume: Float) {
     val clamped = volume.coerceIn(0f, 1f)
     val session = castContext?.sessionManager?.currentCastSession ?: return
-    runCatching { session.volume = clamped }
+    runCatching { session.volume = clamped.toDouble() }
   }
 
   fun navigateToMediaIfInQueue(mediaId: String): Boolean {
@@ -306,7 +308,7 @@ class CastConnectionHandler(
           metadata.thumbnailUrl?.let { thumbnail ->
             addImage(
               com.google.android.gms.common.images.WebImage(
-                android.net.Uri.parse(resize(thumbnail, 1080, 1080)),
+                android.net.Uri.parse(thumbnail.resize(1080, 1080)),
               ),
             )
           }
@@ -369,8 +371,9 @@ class CastConnectionHandler(
     _castPosition.value = client.approximateStreamPosition.coerceAtLeast(0)
     _castDuration.value = client.streamDuration.coerceAtLeast(0)
     _castIsPlaying.value = client.isPlaying
-    _castIsBuffering.value = client.playerState == MediaInfo.STREAM_TYPE_BUFFERED &&
-      client.mediaStatus?.playerState == com.google.android.gms.cast.MediaStatus.PLAYER_STATE_BUFFERING
+    _castIsBuffering.value =
+      client.mediaStatus?.playerState ==
+        com.google.android.gms.cast.MediaStatus.PLAYER_STATE_BUFFERING
     session?.volume?.let { _castVolume.value = it.toFloat().coerceIn(0f, 1f) }
   }
 

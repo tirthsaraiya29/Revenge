@@ -103,7 +103,7 @@ class MusicFlowRepository @Inject constructor(
         }
 
         override val hasMore: Boolean
-            get() = seedQueue.isNotEmpty() || tailContinuation != null
+            get() = !initialised || seedQueue.isNotEmpty() || tailContinuation != null
 
         override suspend fun nextPage(): List<MusicFlowItem> {
             if (!initialised) {

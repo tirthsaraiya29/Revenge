@@ -156,7 +156,12 @@ object PodcastVideoProvider {
     }
 
     internal fun cleanArtist(raw: String): String {
-        val first = raw.split(Regex("[,&×x]|\\bfeat\\b|\\bft\\b|\\bfeaturing\\b|\\bwith\\b", RegexOption.IGNORE_CASE))
+        val first = raw.split(
+            Regex(
+                "[,&×]|\\bx\\b|\\bfeat\\b|\\bft\\b|\\bfeaturing\\b|\\bwith\\b",
+                RegexOption.IGNORE_CASE,
+            ),
+        )
             .firstOrNull()
             .orEmpty()
         return first.replace(Regex("\\s+"), " ").trim()

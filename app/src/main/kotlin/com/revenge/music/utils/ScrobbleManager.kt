@@ -35,8 +35,9 @@ class ScrobbleManager(
         scrobbled = false
         if (metadata.liked && useSendLikes) {
             scope.launch {
-                runCatching { LastFM.love(artistOf(metadata), metadata.title) }
-                    .onFailure { Timber.w(it, "Last.fm love failed") }
+                runCatching {
+                    LastFM.setLoveStatus(artistOf(metadata), metadata.title, love = true)
+                }.onFailure { Timber.w(it, "Last.fm love failed") }
             }
         }
         if (useNowPlaying) {

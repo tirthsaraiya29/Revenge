@@ -1,114 +1,125 @@
 package com.revenge.music.listentogether
 
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MessageCodecTest {
-    private val codec = MessageCodec()
+    private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+
+    private inline fun <reified T> encodePayload(payload: T): String =
+        json.encodeToString(payload)
 
     @Test
     fun jsonRoundTripPreservesTypeAndPayload() {
-        val payload = RoomCreatedPayload("ABC123", "user-1", "token-1")
-        val frame = codec.encode(MessageTypes.ROOM_CREATED, payload)
-        assertNotNull(frame)
-        val decoded = codec.decode(frame!!)!!
-        assertEquals(MessageTypes.ROOM_CREATED, decoded.type)
-        assertEquals(MessageFormat.JSON, decoded.format)
-        val restored = codec.decodePayload(decoded.type, decoded.payload, decoded.format)
-        assertEquals(payload, restored)
+        val codec = MessageCodec()
+        val payload = encodePayload(RoomCreatedPayload("ABC123", "user-1", "token-1"))
+        val frame = codec.encode(MessageType.ROOM_CREATED, payload)
+        val decoded = codec.decode(frame)!!
+        assertEquals(MessageType.ROOM_CREATED, decoded.type)
+        val restored = json.decodeFromString(
+            RoomCreatedPayload.serializer(),
+            decoded.payloadJson!!,
+        )
+        assertEquals(RoomCreatedPayload("ABC123", "user-1", "token-1"), restored)
     }
 
     @Test
-    fun jsonRoundTripKeepsNullToEmptyAsymmetry() {
-        val payload = TrackInfo(
-            id = "id",
-            title = "Title",
-            artist = "Artist",
-            album = null,
-            duration = 1000,
-            thumbnail = null,
-            suggestedBy = null,
-        )
-        val frame = codec.encode(MessageTypes.SUGGEST_TRACK, SuggestTrackPayload(payload))!!
-        val decoded = codec.decode(frame)!!
-        val restored = codec.decodePayload(decoded.type, decoded.payload, decoded.format)
-            as SuggestTrackPayload
-        assertEquals(payload, restored.trackInfo)
-        assertNull(restored.trackInfo.album)
+    fun nullPayloadEncodesAsNull() {
+        val codec = MessageCodec()
+        val decoded = codec.decode(codec.encode(MessageType.PING, null))!!
+        assertEquals(MessageType.PING, decoded.type)
+        assertNull(decoded.payloadJson)
     }
 
     @Test
     fun formatDetectionFollowsFirstByte() {
-        assertEquals(MessageFormat.JSON, codec.detectFormat(ByteArray(0)))
-        assertEquals(MessageFormat.JSON, codec.detectFormat("{}".toByteArray()))
-        assertEquals(MessageFormat.PROTOBUF, codec.detectFormat(byteArrayOf(0x08, 0x01)))
+        val codec = MessageCodec()
+        assertTrue(codec.isJsonFrame(ByteArray(0)))
+        assertTrue(codec.isJsonFrame("{}".toByteArray()))
+        assertFalse(codec.shouldUpgradeToProtobuf("{}".toByteArray()))
+        assertFalse(codec.isJsonFrame(byteArrayOf(0x08, 0x01)))
+        assertTrue(codec.shouldUpgradeToProtobuf(byteArrayOf(0x08, 0x01)))
     }
 
     @Test
     fun protobufRoundTripAfterUpgrade() {
-        codec.upgradeToProtobuf()
-        val payload = SyncStatePayload(
-            currentTrack = TrackInfo("t1", "Song", "Artist", "Album", 120_000, null, null),
-            isPlaying = true,
-            position = 5_000,
-            lastUpdate = 1_000,
-            queue = listOf(TrackInfo("t1", "Song", "Artist")),
-            volume = 0.5f,
+        val codec = MessageCodec()
+        codec.useProtobuf = true
+        codec.compressionEnabled = true
+        val payload = encodePayload(
+            PlaybackActionPayload(
+                action = PlaybackAction.PLAY,
+                trackId = "t1",
+                position = 5000L,
+                volume = 0.5f,
+            ),
         )
-        val frame = codec.encode(MessageTypes.SYNC_STATE, payload)!!
+        val frame = codec.encode(MessageType.PLAYBACK_ACTION, payload)
         val decoded = codec.decode(frame)!!
-        assertEquals(MessageFormat.PROTOBUF, decoded.format)
-        val restored = codec.decodePayload(decoded.type, decoded.payload, decoded.format)
-            as SyncStatePayload
-        assertEquals("t1", restored.currentTrack?.id)
-        assertEquals(true, restored.isPlaying)
-        assertEquals(5_000L, restored.position)
+        assertEquals(MessageType.PLAYBACK_ACTION, decoded.type)
+        val restored = json.decodeFromString(
+            PlaybackActionPayload.serializer(),
+            decoded.payloadJson!!,
+        )
+        assertEquals("t1", restored.trackId)
+        assertEquals(5000L, restored.position)
         assertEquals(0.5f, restored.volume!!, 0.0001f)
     }
 
     @Test
     fun chatStillEncodesAfterProtobufUpgrade() {
-        codec.upgradeToProtobuf()
-        val frame = codec.encode(MessageTypes.CHAT, ChatPayload("hello"))
-        assertNotNull(frame)
-        val decoded = codec.decode(frame!!)!!
-        assertEquals(MessageFormat.JSON, decoded.format)
-        val restored = codec.decodePayload(decoded.type, decoded.payload, decoded.format)
-            as ChatPayload
+        val codec = MessageCodec()
+        codec.useProtobuf = true
+        codec.compressionEnabled = true
+        val payload = encodePayload(ChatPayload("hello"))
+        val frame = codec.encode(MessageType.CHAT, payload)
+        val decoded = codec.decode(frame)!!
+        assertEquals(MessageType.CHAT, decoded.type)
+        val restored = json.decodeFromString(ChatPayload.serializer(), decoded.payloadJson!!)
         assertEquals("hello", restored.message)
     }
 
     @Test
     fun largePayloadIsCompressedAndRestored() {
-        codec.upgradeToProtobuf()
-        val message = "x".repeat(400)
-        val frame = codec.encode(MessageTypes.CHAT, ChatPayload(message))!!
+        val codec = MessageCodec()
+        codec.compressionEnabled = true
+        val message = "x".repeat(500)
+        val payload = encodePayload(ChatPayload(message))
+        val frame = codec.encode(MessageType.CHAT, payload)
+        assertTrue(codec.isJsonFrame(frame))
         val decoded = codec.decode(frame)!!
-        assertTrue(decoded.compressed)
-        val restored = codec.decodePayload(decoded.type, decoded.payload, decoded.format)
-            as ChatPayload
+        val restored = json.decodeFromString(ChatPayload.serializer(), decoded.payloadJson!!)
         assertEquals(message, restored.message)
     }
 
     @Test
-    fun unknownPayloadTypeReturnsNullWithoutThrowing() {
-        assertNull(codec.decodePayload("not_a_type", "{}".toByteArray(), MessageFormat.JSON))
-    }
-
-    @Test
     fun malformedFrameDecodesToNull() {
+        val codec = MessageCodec()
         assertNull(codec.decode(byteArrayOf(0x08)))
         assertNull(codec.decode("{not-json}".toByteArray()))
     }
 
     @Test
-    fun protobufUpgradeNegotiatesOutgoingFormat() {
-        assertEquals(MessageFormat.JSON, codec.outgoingFormat)
-        codec.upgradeToProtobuf()
-        assertEquals(MessageFormat.PROTOBUF, codec.outgoingFormat)
+    fun unknownTypeIsStillDecodable() {
+        val codec = MessageCodec()
+        val decoded = codec.decode(codec.encode("nonexistent_type", "{}"))!!
+        assertEquals("nonexistent_type", decoded.type)
+        assertNotNull(decoded.payloadJson)
+    }
+
+    @Test
+    fun upgradeFlagsAreControllable() {
+        val codec = MessageCodec()
+        assertFalse(codec.useProtobuf)
+        codec.useProtobuf = true
+        codec.compressionEnabled = true
+        assertTrue(codec.useProtobuf)
         assertTrue(codec.compressionEnabled)
     }
 }

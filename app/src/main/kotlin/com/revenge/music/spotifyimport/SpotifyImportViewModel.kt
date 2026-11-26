@@ -85,7 +85,7 @@ class SpotifyImportViewModel @Inject constructor(
       _uiState.update {
         it.copy(
           isLoading = false,
-          sources = sources.map(SpotifyImportSource::toUi),
+          sources = sources.map { source -> source.toUi() },
           selectedSourceIds = sources.map { source -> source.id }.toSet(),
         )
       }

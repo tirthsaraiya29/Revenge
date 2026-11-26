@@ -64,8 +64,6 @@ class PodcastProgressContractTest {
 
     @Test
     fun speedLabelsTrimTrailingZeros() {
-        val label = PodcastProgress::class.java
-        // The formatting rule is documented independently of the singleton state.
         assertEquals("1x", formatSpeed(1f))
         assertEquals("1.25x", formatSpeed(1.25f))
         assertEquals("1.5x", formatSpeed(1.5f))

@@ -5,7 +5,6 @@ import android.content.Context
 import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
-import androidx.annotation.RequiresApi
 import com.revenge.music.db.MusicDatabase
 import com.revenge.music.db.entities.AlbumArtistMap
 import com.revenge.music.db.entities.AlbumEntity

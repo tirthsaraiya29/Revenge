@@ -1,74 +1,205 @@
 package com.revenge.music.utils
 
 import com.revenge.music.models.MediaMetadata
+import com.revenge.music.utils.lastfm.LastFM
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ScrobbleManagerTest {
 
+  @Before
+  fun setUp() {
+    LastFM.initialize("test-key", "test-secret")
+  }
+
+  private fun metadata(id: String, durationSeconds: Int = 200): MediaMetadata =
+    MediaMetadata(
+      id = id,
+      title = "Title $id",
+      artists = listOf(MediaMetadata.Artist(null, "Artist")),
+      duration = durationSeconds,
+      album = MediaMetadata.Album("album", "Album"),
+    )
+
   @Test
-  fun localMediaIsAcceptedForScrobbling() = runTest {
-    val manager = ScrobbleManager(TestScope())
+  fun firesAtPercentThresholdCappedByAbsoluteDelay() = runTest {
+    val manager = ScrobbleManager(this)
+    val scrobbles = mutableListOf<Triple<String, Long, Int>>()
+    manager.submitScrobble = { _, _, timestamp, _, duration -> scrobbles += Triple("t", timestamp, duration) }
+    manager.submitNowPlaying = { _, _, _, _ -> }
     manager.enableScrobbling = true
+    manager.scrobbleDelayPercent = 0.5f
+    manager.scrobbleDelaySeconds = 50
+    manager.nowSeconds = { 1_000_000L }
+    val track = metadata("t", 200)
+    manager.onSongStart(track, 200)
+    manager.onPlayerStateChanged(true, track, 200)
 
-    val localMeta =
-      MediaMetadata(
-        id = "local_42",
-        title = "Local Track",
-        artists = listOf(MediaMetadata.Artist(id = "1", name = "Local Artist")),
-        duration = 180,
-      )
+    advanceTimeBy(49_000)
+    runCurrent()
+    assertTrue(scrobbles.isEmpty())
 
-    manager.onSongStart(localMeta, duration = 180000L)
-
-    // Ensure it didn't return early due to isLocalMediaId()
-    // It should accept metadata
-    val currentField =
-      ScrobbleManager::class.java.getDeclaredField("currentMetadata").apply {
-        isAccessible = true
-      }
-    val current = currentField.get(manager) as? MediaMetadata
-    assertNotNull(current)
-    assertEquals("local_42", current?.id)
+    advanceTimeBy(1_000)
+    runCurrent()
+    assertEquals(1, scrobbles.size)
+    assertEquals(1_000_000L - 50, scrobbles.first().second)
+    manager.destroy()
   }
 
   @Test
-  fun trackTransitionWhilePlayingSwitchesCurrentMetadata() = runTest {
-    val manager = ScrobbleManager(TestScope())
+  fun shorterTrackUsesHalfItsDuration() = runTest {
+    val manager = ScrobbleManager(this)
+    val scrobbles = mutableListOf<Long>()
+    manager.submitScrobble = { _, _, timestamp, _, _ -> scrobbles += timestamp }
+    manager.submitNowPlaying = { _, _, _, _ -> }
     manager.enableScrobbling = true
+    manager.nowSeconds = { 5_000L }
+    val track = metadata("short", 40)
+    manager.onSongStart(track, 40)
+    manager.onPlayerStateChanged(true, track, 40)
 
-    val song1 =
-      MediaMetadata(
-        id = "song_1",
-        title = "Track One",
-        artists = listOf(MediaMetadata.Artist(id = "a1", name = "Artist")),
-        duration = 200,
-      )
+    advanceTimeBy(19_000)
+    runCurrent()
+    assertTrue(scrobbles.isEmpty())
+    advanceTimeBy(1_000)
+    runCurrent()
+    assertEquals(listOf(5_000L - 20), scrobbles)
+    manager.destroy()
+  }
 
-    val song2 =
-      MediaMetadata(
-        id = "song_2",
-        title = "Track Two",
-        artists = listOf(MediaMetadata.Artist(id = "a1", name = "Artist")),
-        duration = 220,
-      )
+  @Test
+  fun tooShortTrackIsNeverScrobbled() = runTest {
+    val manager = ScrobbleManager(this)
+    var count = 0
+    manager.submitScrobble = { _, _, _, _, _ -> count++ }
+    manager.submitNowPlaying = { _, _, _, _ -> }
+    manager.enableScrobbling = true
+    manager.minSongDuration = 30
+    val track = metadata("tiny", 10)
+    manager.onSongStart(track, 10)
+    manager.onPlayerStateChanged(true, track, 10)
 
-    // Song 1 starts
-    manager.onPlayerStateChanged(isPlaying = true, metadata = song1, duration = 200000L)
+    advanceTimeBy(120_000)
+    runCurrent()
+    assertEquals(0, count)
+    manager.destroy()
+  }
 
-    val currentField =
-      ScrobbleManager::class.java.getDeclaredField("currentMetadata").apply {
-        isAccessible = true
-      }
-    assertEquals("song_1", (currentField.get(manager) as? MediaMetadata)?.id)
+  @Test
+  fun unknownDurationUsesThreeHundredSecondPercentButKeepsCap() = runTest {
+    val manager = ScrobbleManager(this)
+    var count = 0
+    manager.submitScrobble = { _, _, _, _, _ -> count++ }
+    manager.submitNowPlaying = { _, _, _, _ -> }
+    manager.enableScrobbling = true
+    manager.scrobbleDelaySeconds = 50
+    val track = metadata("unknown", 0)
+    manager.onSongStart(track, 0)
+    manager.onPlayerStateChanged(true, track, 0)
 
-    // Autoplay transition to Song 2 while isPlaying remains true
-    manager.onPlayerStateChanged(isPlaying = true, metadata = song2, duration = 220000L)
-    assertEquals("song_2", (currentField.get(manager) as? MediaMetadata)?.id)
+    advanceTimeBy(49_000)
+    runCurrent()
+    assertEquals(0, count)
+    advanceTimeBy(1_000)
+    runCurrent()
+    assertEquals(1, count)
+    manager.destroy()
+  }
+
+  @Test
+  fun pauseStopsAccumulationAndResumeContinues() = runTest {
+    val manager = ScrobbleManager(this)
+    var count = 0
+    manager.submitScrobble = { _, _, _, _, _ -> count++ }
+    manager.submitNowPlaying = { _, _, _, _ -> }
+    manager.enableScrobbling = true
+    manager.scrobbleDelaySeconds = 50
+    val track = metadata("resume", 200)
+    manager.onSongStart(track, 200)
+    manager.onPlayerStateChanged(true, track, 200)
+
+    advanceTimeBy(20_000)
+    runCurrent()
+    manager.onSongPause()
+    advanceTimeBy(10_000)
+    runCurrent()
+    assertEquals(0, count)
+    manager.onSongResume(track)
+    advanceTimeBy(30_000)
+    runCurrent()
+    assertEquals(1, count)
+    manager.destroy()
+  }
+
+  @Test
+  fun scrobblesOnlyOncePerTrack() = runTest {
+    val manager = ScrobbleManager(this)
+    var count = 0
+    manager.submitScrobble = { _, _, _, _, _ -> count++ }
+    manager.submitNowPlaying = { _, _, _, _ -> }
+    manager.enableScrobbling = true
+    manager.scrobbleDelaySeconds = 50
+    val track = metadata("once", 200)
+    manager.onSongStart(track, 200)
+    manager.onPlayerStateChanged(true, track, 200)
+
+    advanceTimeBy(200_000)
+    runCurrent()
+    assertEquals(1, count)
+    manager.destroy()
+  }
+
+  @Test
+  fun transitionWhilePlayingResetsCounter() = runTest {
+    val manager = ScrobbleManager(this)
+    var count = 0
+    manager.submitScrobble = { _, _, _, _, _ -> count++ }
+    manager.submitNowPlaying = { _, _, _, _ -> }
+    manager.enableScrobbling = true
+    manager.scrobbleDelaySeconds = 50
+    val first = metadata("first", 200)
+    manager.onSongStart(first, 200)
+    manager.onPlayerStateChanged(true, first, 200)
+    advanceTimeBy(40_000)
+    runCurrent()
+
+    val second = metadata("second", 200)
+    manager.onPlayerStateChanged(true, second, 200)
+    advanceTimeBy(49_000)
+    runCurrent()
+    assertEquals(0, count)
+    advanceTimeBy(1_000)
+    runCurrent()
+    assertEquals(1, count)
+    manager.destroy()
+  }
+
+  @Test
+  fun destroyStopsAllSubmissions() = runTest {
+    val manager = ScrobbleManager(this)
+    var scrobbles = 0
+    var nowPlaying = 0
+    manager.submitScrobble = { _, _, _, _, _ -> scrobbles++ }
+    manager.submitNowPlaying = { _, _, _, _ -> nowPlaying++ }
+    manager.enableScrobbling = true
+    manager.useNowPlaying = true
+    val track = metadata("destroy", 200)
+    manager.onSongStart(track, 200)
+    manager.onPlayerStateChanged(true, track, 200)
+    runCurrent()
+    assertEquals(1, nowPlaying)
+
+    manager.destroy()
+    advanceTimeBy(200_000)
+    runCurrent()
+    assertEquals(0, scrobbles)
+    assertEquals(1, nowPlaying)
   }
 }
