@@ -421,7 +421,9 @@ object Spotify {
         val root = data.obj("searchV2")
           ?: throw SpotifyException(500, "Invalid searchDesktop response")
         SpotifySearchResult(
-          tracks = parseSearchSection(root.obj("tracksV2"), "Track", ::parseTrack),
+          tracks =
+            parseSearchSection(root.obj("tracksV2"), "Track", ::parseTrack)
+              ?: SpotifyPaging(items = emptyList(), limit = limit, offset = offset),
           albums = parseSearchSection(root.obj("albumsV2"), "Album", ::parseAlbum),
           artists = parseSearchSection(root.obj("artists"), "Artist", ::parseArtist),
           playlists = parseSearchSection(root.obj("playlists"), "Playlist", ::parsePlaylist),
@@ -952,6 +954,9 @@ object Spotify {
       previous = body.str("previous"),
       href = body.str("href"),
     )
+
+  private fun imagesFrom(elements: List<JsonElement>): List<SpotifyImage> =
+    imagesFrom(JsonArray(elements))
 
   private fun imagesFrom(element: JsonElement?): List<SpotifyImage> {
     val array = element as? JsonArray ?: return emptyList()

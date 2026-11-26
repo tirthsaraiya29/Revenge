@@ -130,9 +130,9 @@ constructor(
     val playlists = mutableListOf<SpotifyPlaylist>()
     var offset = 0
     while (true) {
-      val page =
-        withAuthRetry { Spotify.myPlaylists(limit = PAGE, offset = offset) }
-          .getOrElse { break }
+      val result = withAuthRetry { Spotify.myPlaylists(limit = PAGE, offset = offset) }
+      if (result.isFailure) break
+      val page = result.getOrThrow()
       playlists += page.items
       offset += page.items.size
       if (page.items.isEmpty() || page.items.size < PAGE || offset >= page.total) break
@@ -322,18 +322,25 @@ constructor(
     val tracks = mutableListOf<SpotifyTrack>()
     var offset = 0
     while (true) {
-      val page =
-        when (source) {
-          is SpotifyImportSource.LikedSongs ->
-            withAuthRetry { Spotify.likedSongs(limit = PAGE, offset = offset) }
-              .getOrElse { break }
-              .let { paging -> paging.items.mapNotNull { it.track } to paging.total }
-          is SpotifyImportSource.Playlist ->
-            withAuthRetry { Spotify.playlistTracks(source.playlist.id, PAGE, offset) }
-              .getOrElse { break }
-              .let { paging -> paging.items.mapNotNull { it.track } to paging.total }
+      val items: List<SpotifyTrack>
+      val total: Int
+      when (source) {
+        is SpotifyImportSource.LikedSongs -> {
+          val result = withAuthRetry { Spotify.likedSongs(limit = PAGE, offset = offset) }
+          if (result.isFailure) break
+          val paging = result.getOrThrow()
+          items = paging.items.mapNotNull { it.track }
+          total = paging.total
         }
-      val (items, total) = page
+        is SpotifyImportSource.Playlist -> {
+          val result =
+            withAuthRetry { Spotify.playlistTracks(source.playlist.id, PAGE, offset) }
+          if (result.isFailure) break
+          val paging = result.getOrThrow()
+          items = paging.items.mapNotNull { it.track }
+          total = paging.total
+        }
+      }
       if (items.isEmpty()) break
       tracks += items.filter { it.name.isNotBlank() }
       offset += items.size

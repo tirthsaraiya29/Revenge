@@ -40,7 +40,7 @@ class PodcastProgressContractTest {
     @Test
     fun fractionAndRemaining() {
         assertEquals(1f, progress(position = 10, duration = 100, finished = true).fraction)
-        assertEquals(0.5f, progress(position = 50, duration = 100).fraction!!, 0.0001f)
+        assertEquals(0.5, progress(position = 50, duration = 100).fraction!!.toDouble(), 0.0001)
         assertNull(progress(position = 50, duration = 0).fraction)
         assertEquals(50L, progress(position = 50, duration = 100).remainingMs)
     }
