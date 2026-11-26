@@ -118,9 +118,11 @@ object YouLyPlus {
       try {
         for (index in servers.indices) {
           val (text, server) = results.receive()
-          if (!text.isNullOrBlank() && delivered.add(text)) {
-            lastWorkingServer = server
-            callback(text)
+          if (!text.isNullOrBlank()) {
+            if (delivered.add(text)) {
+              lastWorkingServer = server
+              callback(text)
+            }
           }
         }
       } finally {
