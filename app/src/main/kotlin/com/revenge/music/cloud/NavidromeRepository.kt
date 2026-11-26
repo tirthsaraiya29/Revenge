@@ -171,12 +171,12 @@ constructor(
         inLibrary = timestamp,
         year = song.year,
       )
-    insert(entity)
-    update(entity)
+    database.insert(entity)
+    database.update(entity)
     val artistId = "navidrome_artist_${song.artist.hashCode()}"
-    insert(ArtistEntity(id = artistId, name = song.artist, lastUpdateTime = timestamp))
-    insert(SongArtistMap(songId = entity.id, artistId = artistId, position = 0))
-    insert(PlaylistSongMap(playlistId = playlistId, songId = entity.id, position = position))
+    database.insert(ArtistEntity(id = artistId, name = song.artist, lastUpdateTime = timestamp))
+    database.insert(SongArtistMap(songId = entity.id, artistId = artistId, position = 0))
+    database.insert(PlaylistSongMap(playlistId = playlistId, songId = entity.id, position = position))
   }
 
   private fun remotePlaylist(playlist: NavidromePlaylist) =

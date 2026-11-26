@@ -179,6 +179,7 @@ object Spotify {
     offset: Int,
     flatten: Boolean,
     folderUri: String?,
+    filters: List<String> = emptyList(),
     item: (JsonObject) -> T?,
   ): Result<SpotifyPaging<T>> =
     graphql(
@@ -188,6 +189,9 @@ object Spotify {
           put("offset", offset)
           put("flatten", flatten)
           folderUri?.let { put("folderUri", it) }
+          if (filters.isNotEmpty()) {
+            put("filters", buildJsonArray { filters.forEach { add(JsonPrimitive(it)) } })
+          }
         },
       )
       .map { data ->
@@ -362,7 +366,7 @@ object Spotify {
         "me/top/tracks?time_range=${encode(timeRange)}&limit=$limit&offset=$offset",
         failFastOn429 = true,
       )
-      .map { pagingOf(it, ::parseTrack) }
+      .map { body -> pagingOf(body) { obj -> parseTrack(obj) } }
 
   suspend fun topArtists(
     timeRange: String = "medium_term",
@@ -374,7 +378,7 @@ object Spotify {
         "me/top/artists?time_range=${encode(timeRange)}&limit=$limit&offset=$offset",
         failFastOn429 = true,
       )
-      .map { pagingOf(it, ::parseArtist) }
+      .map { body -> pagingOf(body) { obj -> parseArtist(obj) } }
 
   suspend fun recommendations(
     seedTrackIds: List<String> = emptyList(),
@@ -422,11 +426,11 @@ object Spotify {
           ?: throw SpotifyException(500, "Invalid searchDesktop response")
         SpotifySearchResult(
           tracks =
-            parseSearchSection(root.obj("tracksV2"), "Track", ::parseTrack)
+            parseSearchSection(root.obj("tracksV2"), "Track") { obj -> parseTrack(obj) }
               ?: SpotifyPaging(items = emptyList(), limit = limit, offset = offset),
-          albums = parseSearchSection(root.obj("albumsV2"), "Album", ::parseAlbum),
-          artists = parseSearchSection(root.obj("artists"), "Artist", ::parseArtist),
-          playlists = parseSearchSection(root.obj("playlists"), "Playlist", ::parsePlaylist),
+          albums = parseSearchSection(root.obj("albumsV2"), "Album") { obj -> parseAlbum(obj) },
+          artists = parseSearchSection(root.obj("artists"), "Artist") { obj -> parseArtist(obj) },
+          playlists = parseSearchSection(root.obj("playlists"), "Playlist") { obj -> parsePlaylist(obj) },
         )
       }
 
@@ -549,7 +553,9 @@ object Spotify {
 
   suspend fun relatedArtists(artistId: String): Result<RelatedArtistsResponse> =
     rest("GET", "artists/$artistId/related-artists").map { body ->
-      RelatedArtistsResponse(artists = body.arr("artists").mapNotNull(::parseArtist))
+      RelatedArtistsResponse(
+        artists = body.arr("artists").mapNotNull { element -> element.asObj()?.let(::parseArtist) },
+      )
     }
 
   suspend fun getCanvas(trackId: String): String? {
@@ -925,7 +931,7 @@ object Spotify {
   private fun <T> parseSearchSection(
     section: JsonObject?,
     typename: String,
-    parser: (JsonObject) -> T,
+    parser: (JsonObject) -> T?,
   ): SpotifyPaging<T>? {
     if (section == null) return null
     val items =
@@ -944,9 +950,11 @@ object Spotify {
     )
   }
 
-  private fun <T> pagingOf(body: JsonObject, parser: (JsonObject) -> T): SpotifyPaging<T> =
+  private fun <T> pagingOf(body: JsonObject, parser: (JsonObject) -> T?): SpotifyPaging<T> =
     SpotifyPaging(
-      items = body.arr("items").mapNotNull { it.asObj()?.let(parser) },
+      items = body.arr("items").mapNotNull { element ->
+        element.asObj()?.let(parser)
+      },
       total = body.int("total") ?: 0,
       limit = body.int("limit") ?: 20,
       offset = body.int("offset") ?: 0,
