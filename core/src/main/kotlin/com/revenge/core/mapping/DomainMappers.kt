@@ -55,7 +55,7 @@ private fun SongEntity.resolvedThumbnail(): String? {
 
 fun Playlist.toDomain(): DomainPlaylist = DomainPlaylist(
     id = id,
-    name = name,
+    name = playlist.name,
     songCount = songCount,
     thumbnailUrl = playlist.thumbnailUrl ?: songThumbnails.firstOrNull { it != null },
 )

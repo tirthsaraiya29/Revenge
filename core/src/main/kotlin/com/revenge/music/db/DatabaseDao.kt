@@ -312,15 +312,22 @@ interface DatabaseDao {
 
     @Transaction
     @Query(
-        "SELECT album.*, 0 AS songCountListened, 0 AS timeListened FROM album " +
-            "JOIN song ON song.albumId = album.id JOIN event ON event.songId = song.id " +
-            "WHERE event.timestamp > :now - 1209600000 AND song.albumId IS NOT NULL " +
-            "GROUP BY album.id ORDER BY SUM(event.playTime) DESC LIMIT :limit OFFSET :offset",
+        "SELECT song.* FROM event JOIN song ON event.songId = song.id " +
+            "WHERE event.timestamp > (:now - 86400000 * 7 * 2) " +
+            "GROUP BY song.albumId HAVING song.albumId IS NOT NULL " +
+            "ORDER BY SUM(event.playTime) DESC LIMIT :limit OFFSET :offset",
     )
-    fun recommendedAlbum(now: Long, limit: Int = 5, offset: Int = 0): Flow<List<Album>>
+    fun recommendedAlbum(
+        now: Long = System.currentTimeMillis(),
+        limit: Int = 5,
+        offset: Int = 0,
+    ): Flow<List<Song>>
 
-    fun getRecommendationAlbum(now: Long, limit: Int = 5, offset: Int = 0): Flow<List<Album>> =
-        recommendedAlbum(now, limit, offset)
+    fun getRecommendationAlbum(
+        now: Long = System.currentTimeMillis(),
+        limit: Int = 5,
+        offset: Int = 0,
+    ): Flow<List<Song>> = recommendedAlbum(now, limit, offset)
 
     @Query(
         "SELECT song.id AS id, song.title AS title, " +
@@ -876,7 +883,8 @@ interface DatabaseDao {
     @Query(
         "SELECT playlist.*, (SELECT COUNT(*) FROM playlist_song_map " +
             "WHERE playlist_song_map.playlistId = playlist.id) AS songCount " +
-            "FROM playlist ORDER BY playlist.name COLLATE NOCASE ASC",
+            "FROM playlist WHERE playlist.bookmarkedAt IS NOT NULL " +
+            "ORDER BY playlist.name COLLATE NOCASE ASC",
     )
     fun playlistsByNameAsc(): Flow<List<Playlist>>
 
@@ -1087,10 +1095,10 @@ interface DatabaseDao {
     // ------------------------------------------------------------------
 
     @Query("UPDATE song SET totalPlayTime = totalPlayTime + :playTime WHERE id = :songId")
-    suspend fun incrementTotalPlayTime(songId: String, playTime: Long)
+    fun incrementTotalPlayTime(songId: String, playTime: Long)
 
     @Query("UPDATE song SET liked = :liked, likedDate = :likedDate WHERE id = :songId")
-    suspend fun updateLikedStatus(songId: String, liked: Boolean, likedDate: LocalDateTime?)
+    fun updateLikedStatus(songId: String, liked: Boolean, likedDate: LocalDateTime?)
 
     @Query("UPDATE playCount SET count = count + 1 WHERE song = :songId AND year = :year AND month = :month")
     suspend fun incrementPlayCount(songId: String, year: Int, month: Int)

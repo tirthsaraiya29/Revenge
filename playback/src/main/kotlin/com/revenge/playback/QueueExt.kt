@@ -1,6 +1,6 @@
 package com.revenge.playback
 
-import androidx.media3.common.MediaMetadata
+import com.revenge.music.models.MediaMetadata
 import com.revenge.music.extensions.toMediaItem
 import com.revenge.music.models.PersistQueue
 import com.revenge.music.models.QueueData

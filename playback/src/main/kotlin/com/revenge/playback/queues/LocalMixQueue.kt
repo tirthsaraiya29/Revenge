@@ -5,7 +5,7 @@ import com.revenge.innertube.YouTube
 import com.revenge.innertube.models.SongItem
 import com.revenge.innertube.models.WatchEndpoint
 import com.revenge.music.db.MusicDatabase
-import com.revenge.music.db.Song
+import com.revenge.music.db.entities.Song
 import com.revenge.music.extensions.toMediaItem
 import com.revenge.music.models.MediaMetadata
 import kotlinx.coroutines.CancellationException
@@ -51,7 +51,7 @@ class LocalMixQueue(
     override suspend fun nextPage(): List<MediaItem> = emptyList()
 
     private fun buildLocalMix(
-        playlist: List<com.revenge.music.db.PlaylistSong>,
+        playlist: List<com.revenge.music.db.entities.PlaylistSong>,
         playlistIds: Set<String>,
     ): List<Song> {
         val seen = HashSet<String>()

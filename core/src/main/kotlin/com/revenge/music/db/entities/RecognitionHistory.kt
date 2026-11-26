@@ -3,6 +3,7 @@ package com.revenge.music.db.entities
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import java.time.LocalDateTime
 
 @Entity(tableName = "recognition_history", indices = [Index("trackId")])
 data class RecognitionHistory(
@@ -21,6 +22,6 @@ data class RecognitionHistory(
     val spotifyUrl: String? = null,
     val isrc: String? = null,
     val youtubeVideoId: String? = null,
-    val recognizedAt: Long = System.currentTimeMillis(),
+    val recognizedAt: LocalDateTime = LocalDateTime.now(),
     val liked: Boolean = false,
 )
