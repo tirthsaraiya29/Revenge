@@ -1,37 +1,27 @@
 package com.revenge.music.generate
 
-import androidx.datastore.core.DataStore
-import androidx.datastore.preferences.core.Preferences
-import androidx.datastore.preferences.core.mutablePreferencesOf
+import androidx.datastore.preferences.core.edit
+import androidx.room.Room
 import com.revenge.music.constants.LastFMUsernameKey
-import com.revenge.music.db.daos.TasteProfileDao
+import com.revenge.music.db.InternalDatabase
+import com.revenge.music.db.MusicDatabase
 import com.revenge.music.db.entities.TasteProfileEntity
+import com.revenge.music.utils.dataStore
 import com.revenge.music.utils.lastfm.LastFmTasteApi
 import com.revenge.music.utils.lastfm.SimilarArtist
 import com.revenge.music.utils.lastfm.SimilarTrack
 import com.revenge.music.utils.lastfm.Tag
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
-
-class FakeTasteProfileDao : TasteProfileDao {
-  var storedProfile: TasteProfileEntity? = null
-
-  override suspend fun get(): TasteProfileEntity? = storedProfile
-
-  override suspend fun upsert(profile: TasteProfileEntity) {
-    storedProfile = profile
-  }
-
-  override suspend fun clear() {
-    storedProfile = null
-  }
-}
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
 
 class FakeLastFmTasteApi : LastFmTasteApi {
   var userTopArtistsCallCount = 0
@@ -75,31 +65,29 @@ class FakeLastFmTasteApi : LastFmTasteApi {
   }
 }
 
-class FakePreferencesDataStore(private var prefs: Preferences) : DataStore<Preferences> {
-  override val data: Flow<Preferences>
-    get() = flowOf(prefs)
-
-  override suspend fun updateData(transform: suspend (t: Preferences) -> Preferences): Preferences {
-    prefs = transform(prefs)
-    return prefs
-  }
-}
-
+@RunWith(RobolectricTestRunner::class)
 class TasteProfileProviderTest {
-  private lateinit var fakeDao: FakeTasteProfileDao
+  private val context get() = RuntimeEnvironment.getApplication()
+  private lateinit var internalDatabase: InternalDatabase
+  private lateinit var database: MusicDatabase
   private lateinit var fakeApi: FakeLastFmTasteApi
-  private lateinit var fakeStatsDao: FakeSongPlayStatsDao
-  private lateinit var fakeDataStore: FakePreferencesDataStore
   private lateinit var provider: TasteProfileProvider
 
   @Before
-  fun setup() {
-    fakeDao = FakeTasteProfileDao()
+  fun setup() = runBlocking {
+    internalDatabase =
+      Room.inMemoryDatabaseBuilder(context, InternalDatabase::class.java)
+        .allowMainThreadQueries()
+        .build()
+    database = MusicDatabase(internalDatabase)
     fakeApi = FakeLastFmTasteApi()
-    fakeStatsDao = FakeSongPlayStatsDao()
-    fakeDataStore =
-      FakePreferencesDataStore(mutablePreferencesOf(LastFMUsernameKey to "audioscrobbler_user"))
-    provider = TasteProfileProvider(fakeDao, fakeApi, fakeDataStore, fakeStatsDao)
+    context.dataStore.edit { it[LastFMUsernameKey] = "audioscrobbler_user" }
+    provider = TasteProfileProvider(database, fakeApi, context)
+  }
+
+  @After
+  fun tearDown() {
+    database.close()
   }
 
   @Test
@@ -129,8 +117,8 @@ class TasteProfileProviderTest {
 
   @Test
   fun testNetworkFailureReturnsStaleProfileFromDatabase() = runTest {
-    // Pre-populate DAO with stale database entry
-    fakeDao.storedProfile =
+    // Pre-populate database with stale entry
+    database.tasteProfileDao.upsert(
       TasteProfileEntity(
         id = 1,
         topArtistsJson = "[\"Radiohead\"]",
@@ -138,7 +126,8 @@ class TasteProfileProviderTest {
         topGenresJson = "[\"alt-rock\"]",
         confidence = 1.0f,
         updatedAtMillis = System.currentTimeMillis() - 7200_000L, // 2 hours old
-      )
+      ),
+    )
 
     // Simulate API failure
     fakeApi.shouldFail = true

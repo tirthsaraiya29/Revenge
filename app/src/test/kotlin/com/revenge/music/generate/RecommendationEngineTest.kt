@@ -1,72 +1,44 @@
 package com.revenge.music.generate
 
-import androidx.datastore.preferences.core.mutablePreferencesOf
-import com.revenge.music.constants.LastFMUsernameKey
+import androidx.room.Room
+import com.revenge.music.db.InternalDatabase
+import com.revenge.music.db.MusicDatabase
 import com.revenge.music.db.entities.RecommendationExclusionEntity
 import com.revenge.music.db.entities.SongPlayStatsEntity
 import kotlinx.coroutines.test.runTest
+import org.junit.After
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
 
+@RunWith(RobolectricTestRunner::class)
 class RecommendationEngineTest {
-  private lateinit var fakeStatsDao: FakeSongPlayStatsDao
-  private lateinit var fakeExclusionDao: FakeRecommendationExclusionDao
-  private lateinit var fakeTasteDao: FakeTasteProfileDao
+  private lateinit var internalDatabase: InternalDatabase
+  private lateinit var database: MusicDatabase
   private lateinit var fakeApi: FakeLastFmTasteApi
-  private lateinit var fakeDataStore: FakePreferencesDataStore
   private lateinit var tasteProfileProvider: TasteProfileProvider
   private lateinit var engine: RecommendationEngine
 
   @Before
   fun setup() {
-    fakeStatsDao = FakeSongPlayStatsDao()
-    fakeExclusionDao = FakeRecommendationExclusionDao()
-    fakeTasteDao = FakeTasteProfileDao()
+    internalDatabase =
+      Room.inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(), InternalDatabase::class.java)
+        .allowMainThreadQueries()
+        .build()
+    database = MusicDatabase(internalDatabase)
     fakeApi = FakeLastFmTasteApi()
-    fakeDataStore = FakePreferencesDataStore(mutablePreferencesOf(LastFMUsernameKey to "test_user"))
-    tasteProfileProvider = TasteProfileProvider(fakeTasteDao, fakeApi, fakeDataStore, fakeStatsDao)
-    engine =
-      RecommendationEngine(
-          songPlayStatsDao = fakeStatsDao,
-          recommendationExclusionDao = fakeExclusionDao,
-          tasteProfileProvider = tasteProfileProvider,
-          lastFmTasteApi = fakeApi,
-          database = null,
-        )
-        .apply {
-          allowNullDatabaseForTesting = true
-        }
+    tasteProfileProvider =
+      TasteProfileProvider(database, fakeApi, RuntimeEnvironment.getApplication())
+    val genresRepository = GenresRepository(database, fakeApi, tasteProfileProvider)
+    engine = RecommendationEngine(database, genresRepository, tasteProfileProvider, fakeApi)
   }
 
-  @Test
-  fun testNullDatabaseFailsWhenNotTestingAllowed() = runTest {
-    fakeStatsDao.upsert(
-      SongPlayStatsEntity(
-        trackKey = "blinding lights|the weeknd",
-        title = "Blinding Lights",
-        artist = "The Weeknd",
-        videoId = "seed_vid",
-        totalPlayTimeMs = 300_000L,
-        playCount = 10,
-        skipCount = 0,
-        lastPlayedAtMillis = System.currentTimeMillis(),
-      ),
-    )
-
-    val strictEngine =
-      RecommendationEngine(
-        songPlayStatsDao = fakeStatsDao,
-        recommendationExclusionDao = fakeExclusionDao,
-        tasteProfileProvider = tasteProfileProvider,
-        lastFmTasteApi = fakeApi,
-        database = null,
-      )
-    strictEngine.allowNullDatabaseForTesting = false
-
-    val result = strictEngine.generate(10)
-    assertTrue("Null database must fail when not explicitly allowed", result.isFailure)
-    assertTrue(result.exceptionOrNull()?.message?.contains("Database not available") == true)
+  @After
+  fun tearDown() {
+    database.close()
   }
 
   @Test
@@ -78,7 +50,7 @@ class RecommendationEngineTest {
 
   @Test
   fun testAllExcludedFailsGracefully() = runTest {
-    fakeStatsDao.upsert(
+    database.songPlayStatsDao.upsert(
       SongPlayStatsEntity(
         trackKey = "bad song|bad artist",
         title = "Bad Song",
@@ -90,7 +62,7 @@ class RecommendationEngineTest {
         lastPlayedAtMillis = System.currentTimeMillis(),
       ),
     )
-    fakeExclusionDao.upsert(
+    database.recommendationExclusionDao.upsert(
       RecommendationExclusionEntity(
         trackKey = "bad song|bad artist",
         excludedAtMillis = System.currentTimeMillis(),
@@ -109,7 +81,7 @@ class RecommendationEngineTest {
 
   @Test
   fun testRecommendationSucceedsWithLocalSeedsAndLastFmSignals() = runTest {
-    fakeStatsDao.upsert(
+    database.songPlayStatsDao.upsert(
       SongPlayStatsEntity(
         trackKey = "blinding lights|the weeknd",
         title = "Blinding Lights",
@@ -133,7 +105,7 @@ class RecommendationEngineTest {
 
   @Test
   fun testRecommendationDegradesToLocalOnlyOnLastFmFailure() = runTest {
-    fakeStatsDao.upsert(
+    database.songPlayStatsDao.upsert(
       SongPlayStatsEntity(
         trackKey = "blinding lights|the weeknd",
         title = "Blinding Lights",

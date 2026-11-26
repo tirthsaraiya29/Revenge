@@ -8,59 +8,59 @@ class RecommendationScoringTest {
 
   @Test
   fun testSimilarTrackBonusAppliesCorrectly() {
-    val base = 10.0f
-    val scored = scoreCandidateWithExternals(base, isSimilarTrack = true)
-    assertEquals(12.0f, scored, 0.001f)
+    val base = 10.0
+    val scored = scoreCandidateWithExternals(base, similarTrack = true)
+    assertEquals(12.0, scored, 0.001)
   }
 
   @Test
   fun testSimilarArtistBonusAppliesCorrectly() {
-    val base = 10.0f
-    val scored = scoreCandidateWithExternals(base, isSimilarArtist = true)
-    assertEquals(11.0f, scored, 0.001f)
+    val base = 10.0
+    val scored = scoreCandidateWithExternals(base, similarArtist = true)
+    assertEquals(11.0, scored, 0.001)
   }
 
   @Test
   fun testTagMatchBonusAppliesCorrectly() {
-    val base = 10.0f
-    val scored = scoreCandidateWithExternals(base, matchesTopGenre = true)
-    assertEquals(11.5f, scored, 0.001f)
+    val base = 10.0
+    val scored = scoreCandidateWithExternals(base, tagMatch = true)
+    assertEquals(11.5, scored, 0.001)
   }
 
   @Test
   fun testGenreMatchBonusAppliesCorrectly() {
-    val base = 10.0f
-    val scored = scoreCandidateWithExternals(base, matchesGenrePreference = true)
-    assertEquals(11.0f, scored, 0.001f)
+    val base = 10.0
+    val scored = scoreCandidateWithExternals(base, genreMatch = true)
+    assertEquals(11.0, scored, 0.001)
   }
 
   @Test
   fun testAllExternalBonusesAreAdditive() {
-    val base = 10.0f
+    val base = 10.0
     val scored =
       scoreCandidateWithExternals(
         baseScore = base,
-        isSimilarTrack = true,
-        isSimilarArtist = true,
-        matchesTopGenre = true,
+        similarTrack = true,
+        similarArtist = true,
+        tagMatch = true,
       )
     // 10.0 + 2.0 (track) + 1.0 (artist) + 1.5 (tag) = 14.5
-    assertEquals(14.5f, scored, 0.001f)
+    assertEquals(14.5, scored, 0.001)
   }
 
   @Test
   fun testAllSlice3ExternalBonusesAreAdditive() {
-    val base = 10.0f
+    val base = 10.0
     val scored =
       scoreCandidateWithExternals(
         baseScore = base,
-        isSimilarTrack = true,
-        isSimilarArtist = true,
-        matchesTopGenre = true,
-        matchesGenrePreference = true,
+        similarTrack = true,
+        similarArtist = true,
+        tagMatch = true,
+        genreMatch = true,
       )
     // 10.0 + 2.0 (track) + 1.0 (artist) + 1.5 (tag) + 1.0 (genre) = 15.5
-    assertEquals(15.5f, scored, 0.001f)
+    assertEquals(15.5, scored, 0.001)
   }
 
   @Test
@@ -81,10 +81,10 @@ class RecommendationScoringTest {
     val candidateScore =
       scoreCandidateWithExternals(
         baseScore = localScore,
-        isSimilarTrack = false,
-        isSimilarArtist = false,
-        matchesTopGenre = false,
+        similarTrack = false,
+        similarArtist = false,
+        tagMatch = false,
       )
-    assertEquals(localScore, candidateScore, 0.001f)
+    assertEquals(localScore, candidateScore, 0.001)
   }
 }

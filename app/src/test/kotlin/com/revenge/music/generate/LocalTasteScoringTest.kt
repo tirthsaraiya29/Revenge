@@ -34,19 +34,19 @@ class LocalTasteScoringTest {
 
     // Base score: ln(1.0 + 1000/60000) * 2.0 (PLAY_WEIGHT) + 1.5 (RECENCY_BONUS)
     val expectedBase =
-      (kotlin.math.ln(1.0 + 1000.0 / 60_000.0).toFloat() * PLAY_WEIGHT) + RECENCY_BONUS
+      kotlin.math.ln(1.0 + 1000.0 / 60_000.0) * PLAY_WEIGHT + RECENCY_BONUS
     // In afternoon: hourBonus = 1.0
     val afternoonScore = scoreStats(baseEntity, emptySet(), "afternoon")
-    assertEquals(expectedBase, afternoonScore, 0.01f)
+    assertEquals(expectedBase, afternoonScore, 0.01)
 
     // With liked bonus: expectedBase + 5.0 (LIKED_BONUS)
     val likedScore = scoreStats(baseEntity, setOf("song|artist"), "afternoon")
-    assertEquals(expectedBase + LIKED_BONUS, likedScore, 0.01f)
+    assertEquals(expectedBase + LIKED_BONUS, likedScore, 0.01)
 
     // With skip penalty: skipCount = 2 -> expectedBase - (2 * 3.0)
     val skippedEntity = baseEntity.copy(skipCount = 2)
     val skippedScore = scoreStats(skippedEntity, emptySet(), "afternoon")
-    assertEquals((expectedBase - 2 * SKIP_PENALTY).coerceAtLeast(0f), skippedScore, 0.01f)
+    assertEquals((expectedBase - 2 * SKIP_PENALTY).coerceAtLeast(0.0), skippedScore, 0.01)
 
     // Verify skip penalty is heaviest single penalty (-3.0 per skip)
     assertTrue(SKIP_PENALTY > PLAY_WEIGHT)
@@ -66,13 +66,13 @@ class LocalTasteScoringTest {
     // In morning, recent tracks get 1.3x
     val morningScore = scoreStats(recentEntity, emptySet(), "morning")
     val neutralScore = scoreStats(recentEntity, emptySet(), "afternoon")
-    assertEquals(neutralScore * 1.3f, morningScore, 0.01f)
+    assertEquals(neutralScore * 1.3, morningScore, 0.01)
 
     // In night, liked tracks get 1.3x
     val likedEntity = recentEntity.copy(lastPlayedAtMillis = 0L)
     val nightLikedScore = scoreStats(likedEntity, setOf("track|artist"), "night")
     val afternoonLikedScore = scoreStats(likedEntity, setOf("track|artist"), "afternoon")
-    assertEquals(afternoonLikedScore * 1.3f, nightLikedScore, 0.01f)
+    assertEquals(afternoonLikedScore * 1.3, nightLikedScore, 0.01)
   }
 
   @Test

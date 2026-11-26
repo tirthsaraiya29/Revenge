@@ -1,5 +1,8 @@
 package com.revenge.music.generate
 
+import androidx.room.Room
+import com.revenge.music.db.InternalDatabase
+import com.revenge.music.db.MusicDatabase
 import com.revenge.music.db.daos.RecommendationExclusionDao
 import com.revenge.music.db.entities.RecommendationExclusionEntity
 import com.revenge.music.viewmodels.GenerateUiState
@@ -18,6 +21,9 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
 
 class FakeRecommendationExclusionDao : RecommendationExclusionDao {
   val map = mutableMapOf<String, RecommendationExclusionEntity>()
@@ -48,27 +54,36 @@ class FakeRecommendationExclusionDao : RecommendationExclusionDao {
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
+@RunWith(RobolectricTestRunner::class)
 class GenerateViewModelTest {
   private val testDispatcher = StandardTestDispatcher()
+  private lateinit var internalDatabase: InternalDatabase
+  private lateinit var database: MusicDatabase
   private lateinit var fakeStatsDao: FakeSongPlayStatsDao
   private lateinit var fakeExclusionDao: FakeRecommendationExclusionDao
 
   @Before
   fun setup() {
     Dispatchers.setMain(testDispatcher)
+    internalDatabase =
+      Room.inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(), InternalDatabase::class.java)
+        .allowMainThreadQueries()
+        .build()
+    database = MusicDatabase(internalDatabase)
     fakeStatsDao = FakeSongPlayStatsDao()
     fakeExclusionDao = FakeRecommendationExclusionDao()
   }
 
   @After
   fun tearDown() {
+    database.close()
     Dispatchers.resetMain()
   }
 
   @Test
   fun initialUiStateIsIdle() {
     val fakeEngine =
-      object : LocalTasteEngine(fakeStatsDao, fakeExclusionDao) {
+      object : LocalTasteEngine(database) {
         override suspend fun generate(count: Int): Result<String> = Result.success("p1")
       }
     val viewModel = GenerateViewModel(fakeEngine, fakeStatsDao, fakeExclusionDao)
@@ -79,7 +94,7 @@ class GenerateViewModelTest {
   fun successfulGenerationTransitionsToSuccess() =
     runTest(testDispatcher) {
       val fakeEngine =
-        object : LocalTasteEngine(fakeStatsDao, fakeExclusionDao) {
+        object : LocalTasteEngine(database) {
           override suspend fun generate(count: Int): Result<String> =
             Result.success("taste_playlist_123")
         }
@@ -97,7 +112,7 @@ class GenerateViewModelTest {
   fun noListeningHistoryTransitionsToEmptyHistory() =
     runTest(testDispatcher) {
       val fakeEngine =
-        object : LocalTasteEngine(fakeStatsDao, fakeExclusionDao) {
+        object : LocalTasteEngine(database) {
           override suspend fun generate(count: Int): Result<String> =
             Result.failure(IllegalStateException("No listening history available yet"))
         }
@@ -113,7 +128,7 @@ class GenerateViewModelTest {
   fun allExcludedTransitionsToAllExcluded() =
     runTest(testDispatcher) {
       val fakeEngine =
-        object : LocalTasteEngine(fakeStatsDao, fakeExclusionDao) {
+        object : LocalTasteEngine(database) {
           override suspend fun generate(count: Int): Result<String> =
             Result.failure(IllegalStateException("All candidate tracks have been excluded"))
         }
@@ -135,7 +150,7 @@ class GenerateViewModelTest {
         ),
       )
       val fakeEngine =
-        object : LocalTasteEngine(fakeStatsDao, fakeExclusionDao) {
+        object : LocalTasteEngine(database) {
           override suspend fun generate(count: Int): Result<String> =
             Result.failure(IllegalStateException("All candidate tracks have been excluded"))
         }
@@ -155,7 +170,7 @@ class GenerateViewModelTest {
   fun cancelGenerationResetsToIdle() =
     runTest(testDispatcher) {
       val fakeEngine =
-        object : LocalTasteEngine(fakeStatsDao, fakeExclusionDao) {
+        object : LocalTasteEngine(database) {
           override suspend fun generate(count: Int): Result<String> {
             kotlinx.coroutines.delay(10_000)
             return Result.success("p1")

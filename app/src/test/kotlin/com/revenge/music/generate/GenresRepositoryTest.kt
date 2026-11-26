@@ -1,16 +1,24 @@
 package com.revenge.music.generate
 
-import androidx.datastore.preferences.core.mutablePreferencesOf
+import androidx.room.Room
+import com.revenge.music.db.InternalDatabase
+import com.revenge.music.db.MusicDatabase
 import com.revenge.music.db.entities.SongPlayStatsEntity
+import com.revenge.music.db.entities.TasteProfileEntity
 import com.revenge.music.utils.lastfm.LastFmTasteApi
 import com.revenge.music.utils.lastfm.SimilarArtist
 import com.revenge.music.utils.lastfm.SimilarTrack
 import com.revenge.music.utils.lastfm.Tag
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
 
 private class FakeGenresTasteApi : LastFmTasteApi {
   var topTagsCallCount = 0
@@ -41,44 +49,40 @@ private class FakeGenresTasteApi : LastFmTasteApi {
     Result.success(emptyList())
 }
 
-private class FakeTasteProfileProvider(
-  private val profile: TasteProfile? = null,
-) :
-  TasteProfileProvider(
-    tasteProfileDao = FakeTasteProfileDao(),
-    lastFmTasteApi = FakeGenresTasteApi(),
-    dataStore = FakePreferencesDataStore(mutablePreferencesOf()),
-    songPlayStatsDao = FakeSongPlayStatsDao(),
-  ) {
-  override suspend fun get(forceRefresh: Boolean): TasteProfile? = profile
-}
-
+@RunWith(RobolectricTestRunner::class)
 class GenresRepositoryTest {
 
+  private val context get() = RuntimeEnvironment.getApplication()
+  private lateinit var internalDatabase: InternalDatabase
+  private lateinit var database: MusicDatabase
   private lateinit var fakeApi: FakeGenresTasteApi
-  private lateinit var fakeStatsDao: FakeSongPlayStatsDao
   private lateinit var repository: GenresRepository
 
   @Before
-  fun setup() {
+  fun setup() = runBlocking {
+    internalDatabase =
+      Room.inMemoryDatabaseBuilder(context, InternalDatabase::class.java)
+        .allowMainThreadQueries()
+        .build()
+    database = MusicDatabase(internalDatabase)
     fakeApi = FakeGenresTasteApi()
-    fakeStatsDao = FakeSongPlayStatsDao()
-    val fakeProvider =
-      FakeTasteProfileProvider(
-        TasteProfile(
-          topArtistNames = listOf("radiohead"),
-          topTrackKeys = listOf("creep|radiohead"),
-          topGenres = listOf("rock", "indie"),
-          fetchedAtMillis = System.currentTimeMillis(),
-        ),
-      )
-    repository =
-      GenresRepository(
-        database = null,
-        tasteApi = fakeApi,
-        tasteProfileProvider = fakeProvider,
-        songPlayStatsDao = fakeStatsDao,
-      )
+    database.tasteProfileDao.upsert(
+      TasteProfileEntity(
+        id = 1,
+        topArtistsJson = "[\"radiohead\"]",
+        topTracksJson = "[\"creep|radiohead\"]",
+        topGenresJson = "[\"rock\",\"indie\"]",
+        confidence = 1.0f,
+        updatedAtMillis = System.currentTimeMillis(),
+      ),
+    )
+    val provider = TasteProfileProvider(database, fakeApi, context)
+    repository = GenresRepository(database, fakeApi, provider)
+  }
+
+  @After
+  fun tearDown() {
+    database.close()
   }
 
   @Test
@@ -99,7 +103,7 @@ class GenresRepositoryTest {
 
   @Test
   fun testTopGenresAggregatesWeightsFromTasteProfileAndPlayStats() = runTest {
-    fakeStatsDao.upsert(
+    database.songPlayStatsDao.upsert(
       SongPlayStatsEntity(
         trackKey = "karma police|radiohead",
         title = "Karma Police",
@@ -113,9 +117,8 @@ class GenresRepositoryTest {
 
     val top = repository.topGenres(5)
     assertTrue("Should return non-empty top genres", top.isNotEmpty())
-    val genreNames = top.map { it.genre }
-    assertTrue("Should contain rock from taste profile", genreNames.contains("rock"))
-    assertTrue("Should contain indie from taste profile", genreNames.contains("indie"))
+    assertTrue("Should contain rock from taste profile", top.contains("rock"))
+    assertTrue("Should contain indie from taste profile", top.contains("indie"))
   }
 
   @Test
