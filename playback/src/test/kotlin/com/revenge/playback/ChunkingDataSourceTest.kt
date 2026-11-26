@@ -105,7 +105,7 @@ class ChunkingDataSourceTest {
     }
 
     private fun assertTerminalReopenIsEnd(terminal: IOException) {
-        val upstream = FakeSource(ByteArray(100), stopAt = 10)
+        val upstream = FakeSource(ByteArray(100), stopAt = 0)
         upstream.failOpenOnCall = 2
         upstream.openFailure = terminal
         val source = ChunkingDataSource(upstream, chunkSize = 16)
@@ -228,6 +228,7 @@ class ChunkingDataSourceTest {
             if (position >= end) return C.RESULT_END_OF_INPUT
 
             var count = minOf(length, end - position)
+            if (stopAt >= 0) count = minOf(count, stopAt - position)
             if (dropAt >= 0 && !dropped) {
                 val untilDrop = dropAt - position
                 if (untilDrop <= 0) {

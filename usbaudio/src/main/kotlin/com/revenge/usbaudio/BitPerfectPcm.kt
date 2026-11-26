@@ -96,7 +96,6 @@ object BitPerfectPcm {
         }
 
         input.position(input.position() + frames * frameBytesIn)
-        output.position(output.position() + frames * frameBytesOut)
         return exact
     }
 

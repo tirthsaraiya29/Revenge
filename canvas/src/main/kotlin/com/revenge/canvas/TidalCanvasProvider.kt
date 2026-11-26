@@ -90,7 +90,7 @@ object TidalCanvasProvider {
         } else {
             val payload = json.parseToJsonElement(response.body)
             val items = locateItems(payload, types.lowercase(Locale.ROOT))
-            items.firstNotNullOfOrNull { element ->
+            items?.firstNotNullOfOrNull { element ->
                 mapCandidate(element as? JsonObject, requestedArtist, requestedTitle, albumOnly)
             }
         }

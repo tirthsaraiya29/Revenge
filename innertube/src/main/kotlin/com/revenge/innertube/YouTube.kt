@@ -15,6 +15,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
+import kotlin.random.Random
 import java.text.Normalizer
 import java.util.Locale
 import kotlin.coroutines.cancellation.CancellationException
@@ -109,7 +110,6 @@ object YouTube {
     private fun sectionContents(response: BrowseResponse): List<SectionListRenderer.Content> {
         val result = mutableListOf<SectionListRenderer.Content>()
         response.contents?.sectionListRenderer?.contents?.let(result::addAll)
-        response.contents?.twoColumnBrowseResultsRenderer?.secondaryContents?.sectionListRenderer?.contents?.let(result::addAll)
         response.contents?.singleColumnBrowseResultsRenderer?.tabs?.tabs.orEmpty().forEach { tab ->
             tab?.tabRenderer?.content?.sectionListRenderer?.contents?.let(result::addAll)
         }
@@ -308,10 +308,10 @@ object YouTube {
                 val title = runsText(card.header?.musicCardShelfHeaderBasicRenderer?.title)
                     ?: YouTubeConstants.DEFAULT_TOP_RESULT
                 val items = buildList<YTItem> {
-                    SearchSummaryPage.fromMusicCardShelfRenderer(card)?.let(::add)
+                    SearchSummaryPage.fromMusicCardShelfRenderer(card)?.let { item -> add(item) }
                     card.contents.orEmpty().forEach { child ->
                         child.musicResponsiveListItemRenderer?.let { row ->
-                            SearchSummaryPage.fromMusicResponsiveListItemRenderer(row)?.let(::add)
+                            SearchSummaryPage.fromMusicResponsiveListItemRenderer(row)?.let { item -> add(item) }
                         }
                     }
                 }.distinctBy { it.id }
@@ -326,7 +326,7 @@ object YouTube {
             }
             content.itemSectionRenderer?.contents.orEmpty().forEach { child ->
                 child.musicResponsiveListItemRenderer?.let { row ->
-                    SearchSummaryPage.fromMusicResponsiveListItemRenderer(row)?.let(flat::add)
+                    SearchSummaryPage.fromMusicResponsiveListItemRenderer(row)?.let { item -> flat.add(item) }
                 }
             }
         }
@@ -429,7 +429,7 @@ object YouTube {
         val songs = mutableListOf<SongItem>()
         shelf?.contents.orEmpty().forEach { content ->
             content.musicResponsiveListItemRenderer?.let { row ->
-                AlbumPage.getSong(row, album)?.let(songs::add)
+                AlbumPage.getSong(row, album)?.let { item -> songs.add(item) }
             }
         }
 
@@ -442,7 +442,7 @@ object YouTube {
             page.onResponseReceivedActions.orEmpty().forEach { action ->
                 action.appendContinuationItemsAction?.continuationItems.orEmpty().forEach { content ->
                     content.musicResponsiveListItemRenderer?.let { row ->
-                        AlbumPage.getSong(row, album)?.let(songs::add)
+                        AlbumPage.getSong(row, album)?.let { item -> songs.add(item) }
                     }
                 }
             }
@@ -699,8 +699,15 @@ object YouTube {
             isPodcast = false,
         )
 
-        val relatedContents = secondary?.contents.orEmpty().drop(1)
-        var related = relatedContents.flatMap(::relatedFromContent)
+        var related = secondary?.contents.orEmpty().drop(1).flatMap { content ->
+            val rows = content.musicShelfRenderer?.contents.orEmpty() +
+                content.musicPlaylistShelfRenderer?.contents.orEmpty()
+            rows.mapNotNull { item ->
+                item.musicResponsiveListItemRenderer?.let { row ->
+                    RelatedPage.fromMusicResponsiveListItemRenderer(row)
+                }
+            }
+        }
         if (related.isEmpty()) {
             related = response.continuationContents?.sectionListContinuation?.contents.orEmpty()
                 .flatMap(::relatedFromContent)
@@ -753,23 +760,23 @@ object YouTube {
         val songs = mutableListOf<SongItem>()
         shelfContinuation?.contents.orEmpty().forEach { content ->
             content.musicResponsiveListItemRenderer?.let { row ->
-                PlaylistPage.fromMusicResponsiveListItemRenderer(row)?.let(songs::add)
+                PlaylistPage.fromMusicResponsiveListItemRenderer(row)?.let { item -> songs.add(item) }
             }
         }
         appended.orEmpty().forEach { content ->
             content.musicResponsiveListItemRenderer?.let { row ->
-                PlaylistPage.fromMusicResponsiveListItemRenderer(row)?.let(songs::add)
+                PlaylistPage.fromMusicResponsiveListItemRenderer(row)?.let { item -> songs.add(item) }
             }
             content.musicMultiRowListItemRenderer?.let { row ->
-                PodcastPage.episode(row)?.let(songs::add)
+                PodcastPage.episode(row)?.let { item -> songs.add(item) }
             }
         }
         musicShelf?.contents.orEmpty().forEach { content ->
             content.musicResponsiveListItemRenderer?.let { row ->
-                PlaylistPage.fromMusicResponsiveListItemRenderer(row)?.let(songs::add)
+                PlaylistPage.fromMusicResponsiveListItemRenderer(row)?.let { item -> songs.add(item) }
             }
             content.musicMultiRowListItemRenderer?.let { row ->
-                PodcastPage.episode(row)?.let(songs::add)
+                PodcastPage.episode(row)?.let { item -> songs.add(item) }
             }
         }
 
@@ -1073,7 +1080,7 @@ object YouTube {
         val result = next(WatchEndpoint(videoId = videoId)).getOrThrow()
         val song = result.items.firstOrNull { it.id == videoId }
             ?: throw InnerTubeException.ParseError("Song not found in queue")
-        val token = if (add) song.libraryAddToken else song.libraryRemoveToken
+        val token = (if (add) song.libraryAddToken else song.libraryRemoveToken)
             ?: throw InnerTubeException.ParseError("Library token unavailable")
         feedback(listOf(token)).getOrThrow()
     }
@@ -1126,7 +1133,7 @@ object YouTube {
     }
 
     fun newPlaybackNonce(): String = buildString(16) {
-        repeat(16) { append(NONCE_ALPHABET.random()) }
+        repeat(16) { append(NONCE_ALPHABET[Random.nextInt(NONCE_ALPHABET.length)]) }
     }
 
     suspend fun reportWatchtime(
@@ -1311,7 +1318,7 @@ object YouTube {
                 is AlbumItem -> albums += item
                 is ArtistItem -> artists += item
                 is PlaylistItem -> playlists += item
-                null -> Unit
+                else -> Unit
             }
         }
 

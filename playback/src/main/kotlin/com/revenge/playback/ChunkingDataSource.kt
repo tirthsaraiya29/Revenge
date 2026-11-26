@@ -24,7 +24,7 @@ class ChunkingDataSource(
     private var expectedLength: Long = C.LENGTH_UNSET.toLong()
     private var consumed: Long = 0L
     private var chunkRemaining: Long = 0L
-    private var open: Boolean = false
+    private var opened: Boolean = false
     private var closed: Boolean = false
     private var ended: Boolean = false
 
@@ -37,7 +37,7 @@ class ChunkingDataSource(
         expectedLength = dataSpec.length
         consumed = 0L
         chunkRemaining = 0L
-        open = true
+        opened = true
         closed = false
         ended = false
         openChunk()
@@ -46,7 +46,7 @@ class ChunkingDataSource(
 
     override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
         if (length == 0) return 0
-        if (!open || closed || ended) return C.RESULT_END_OF_INPUT
+        if (!opened || closed || ended) return C.RESULT_END_OF_INPUT
         val expected = expectedLength
         if (expected != C.LENGTH_UNSET.toLong() && consumed >= expected) {
             return C.RESULT_END_OF_INPUT
@@ -142,7 +142,7 @@ class ChunkingDataSource(
     override fun close() {
         if (closed) return
         closed = true
-        open = false
+        opened = false
         upstream.close()
     }
 }

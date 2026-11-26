@@ -27,6 +27,7 @@ import com.revenge.innertube.utils.sha1
 import com.revenge.metadata.cleaner.ApiText
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
+import io.ktor.client.content.ProgressListener
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
@@ -42,8 +43,7 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.delay
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.put
+import kotlinx.serialization.json.JsonPrimitive
 import okhttp3.Cache
 import java.io.File
 import java.io.IOException
@@ -504,29 +504,34 @@ class InnerTube {
         uploadUrl: String,
         data: ByteArray,
         onProgress: ((Float) -> Unit)? = null,
-    ): HttpResponse = execute {
-        http.post(uploadUrl) {
-            baseHeaders()
-            clientHeaders(YouTubeClient.WEB_REMIX, login = true)
-            header("X-Goog-Upload-Command", "upload, finalize")
-            header("X-Goog-Upload-Offset", "0")
-            header("X-Goog-AuthUser", "0")
-            header("Origin", YouTubeClient.ORIGIN_YOUTUBE_MUSIC)
-            contentType(ContentType.Application.OctetStream)
-            setBody(data)
-            onUpload { sent, total ->
-                val denominator = total ?: data.size.toLong()
-                if (denominator > 0L) onProgress?.invoke(sent.toFloat() / denominator)
+    ): HttpResponse {
+        val progress = onProgress
+        val totalSize = data.size.toLong()
+        return execute {
+            http.post(uploadUrl) {
+                baseHeaders()
+                clientHeaders(YouTubeClient.WEB_REMIX, login = true)
+                header("X-Goog-Upload-Command", "upload, finalize")
+                header("X-Goog-Upload-Offset", "0")
+                header("X-Goog-AuthUser", "0")
+                header("Origin", YouTubeClient.ORIGIN_YOUTUBE_MUSIC)
+                contentType(ContentType.Application.OctetStream)
+                setBody(data)
+                onUpload(object : ProgressListener {
+                    override suspend fun onProgress(bytesSentTotal: Long, contentLength: Long?) {
+                        val denominator = contentLength ?: totalSize
+                        if (denominator > 0L) progress?.invoke(bytesSentTotal.toFloat() / denominator)
+                    }
+                })
             }
         }
     }
 
     suspend fun deletePrivatelyOwnedEntity(entityId: String): HttpResponse {
         val context = contextFor(YouTubeClient.WEB_REMIX, includeDataSync = true)
-        val payload = buildJsonObject {
-            put("context", innertubeJson.encodeToJsonElement(Context.serializer(), context))
-            put("entityId", entityId)
-        }.toString()
+        val payload = "{\"context\":" +
+            innertubeJson.encodeToString(Context.serializer(), context) +
+            ",\"entityId\":" + JsonPrimitive(entityId) + "}"
         return execute {
             http.post("https://music.youtube.com/youtubei/v1/music/delete_privately_owned_entity") {
                 baseHeaders()

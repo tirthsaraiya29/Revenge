@@ -26,9 +26,9 @@ object PageHelper {
         return iconType in ADD_ICONS || iconType in SAVED_ICONS || iconType.startsWith("LIBRARY_")
     }
 
-    fun isAddLibraryIcon(iconType: String?): Boolean = iconType in ADD_ICONS
+    fun isAddLibraryIcon(iconType: String?): Boolean = iconType != null && iconType in ADD_ICONS
 
-    fun isSavedLibraryIcon(iconType: String?): Boolean = iconType in SAVED_ICONS
+    fun isSavedLibraryIcon(iconType: String?): Boolean = iconType != null && iconType in SAVED_ICONS
 
     fun extractRuns(
         columns: List<MusicResponsiveListItemRenderer.FlexColumn>,
