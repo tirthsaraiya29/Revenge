@@ -8,25 +8,14 @@ import java.util.Locale
 
 object ParametricEQParser {
 
-    private val preampPattern =
-        Regex("""\bPreamp:\s*([-+]?\d+\.?\d*)\s*dB""", RegexOption.IGNORE_CASE)
-    private val frequencyPattern =
-        Regex("""\bFc\s+([-+]?\d+\.?\d*)\s*Hz""", RegexOption.IGNORE_CASE)
-    private val gainPattern =
-        Regex("""\bGain\s+([-+]?\d+\.?\d*)\s*dB""", RegexOption.IGNORE_CASE)
-    private val qPattern =
-        Regex("""\bQ\s+([-+]?\d+\.?\d*)""", RegexOption.IGNORE_CASE)
-
-    private val typeTokens = listOf(
-        FilterType.LSC to "LSC",
-        FilterType.HSC to "HSC",
-        FilterType.PK to "PK",
-        FilterType.LPQ to "LPQ",
-        FilterType.HPQ to "HPQ"
-    )
+    private val PREAMP_REGEX = Regex("""(?i)Preamp:\s*([-+]?\d+\.?\d*)\s*dB""")
+    private val FC_REGEX = Regex("""(?i)\bFc\s*([-+]?\d+\.?\d*)\s*Hz""")
+    private val GAIN_REGEX = Regex("""(?i)\bGain\s*([-+]?\d+\.?\d*)\s*dB""")
+    private val Q_REGEX = Regex("""(?i)(?:^|[^A-Za-z])Q\s*([-+]?\d+\.?\d*)""")
+    private val ON_REGEX = Regex("""(?i)\bON\b""")
 
     fun parseFile(file: File): ParametricEQ {
-        require(file.exists()) { "File does not exist: ${file.absolutePath}" }
+        require(file.exists()) { "EQ file does not exist: ${file.absolutePath}" }
         return parseText(file.readText())
     }
 
@@ -37,31 +26,39 @@ object ParametricEQParser {
         val bands = mutableListOf<ParametricEQBand>()
         val metadata = linkedMapOf<String, String>()
 
-        for (rawLine in content.lineSequence()) {
+        content.lineSequence().forEach { rawLine ->
             val line = rawLine.trim()
-            if (line.isEmpty()) continue
+            if (line.isEmpty()) return@forEach
 
-            when {
-                line.startsWith("Preamp:", ignoreCase = true) -> {
-                    preamp = preampPattern.find(line)
-                        ?.groupValues
-                        ?.getOrNull(1)
-                        ?.toDoubleOrNull()
-                        ?: 0.0
-                }
+            val lower = line.lowercase()
+            if (lower.startsWith("preamp:")) {
+                preamp = PREAMP_REGEX.find(line)?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0
+                return@forEach
+            }
 
-                line.startsWith("Filter", ignoreCase = true) -> {
-                    parseBand(line)?.let { bands.add(it) }
-                }
+            if (lower.startsWith("filter")) {
+                if (!ON_REGEX.containsMatchIn(line)) return@forEach
+                val type = detectFilterType(line) ?: return@forEach
+                val frequency = FC_REGEX.find(line)?.groupValues?.get(1)?.toDoubleOrNull() ?: return@forEach
+                val gain = GAIN_REGEX.find(line)?.groupValues?.get(1)?.toDoubleOrNull() ?: return@forEach
+                val q = Q_REGEX.find(line)?.groupValues?.get(1)?.toDoubleOrNull() ?: return@forEach
+                bands.add(
+                    ParametricEQBand(
+                        frequency = frequency,
+                        gain = gain,
+                        q = q,
+                        filterType = type,
+                        enabled = true,
+                    )
+                )
+                return@forEach
+            }
 
-                else -> {
-                    val separator = line.indexOf(':')
-                    if (separator >= 0) {
-                        val key = line.substring(0, separator).trim()
-                        val value = line.substring(separator + 1).trim()
-                        metadata[key] = value
-                    }
-                }
+            val colon = line.indexOf(':')
+            if (colon >= 0) {
+                val key = line.substring(0, colon).trim()
+                val value = line.substring(colon + 1).trim()
+                if (key.isNotEmpty()) metadata[key] = value
             }
         }
 
@@ -69,23 +66,19 @@ object ParametricEQParser {
     }
 
     fun toString(eq: ParametricEQ): String = buildString {
-        appendLine("Preamp: ${eq.preamp} dB")
+        append("Preamp: ${eq.preamp} dB")
         eq.bands.forEachIndexed { index, band ->
-            appendLine(
-                "Filter ${index + 1}: ${band.filterType} " +
-                    "Fc ${band.frequency} Hz Gain ${band.gain} dB Q ${band.q}"
-            )
+            append("\nFilter ${index + 1}: ${band.filterType} Fc ${band.frequency} Hz")
+            append(" Gain ${band.gain} dB Q ${band.q}")
         }
     }
 
     fun toFileFormat(eq: ParametricEQ): String = buildString {
-        appendLine("Preamp: ${eq.preamp} dB")
+        append("Preamp: ${eq.preamp} dB")
         eq.bands.forEachIndexed { index, band ->
             val q = String.format(Locale.ROOT, "%.2f", band.q)
-            appendLine(
-                "Filter ${index + 1}: ON ${band.filterType} " +
-                    "Fc ${band.frequency.toInt()} Hz Gain ${band.gain} dB Q $q"
-            )
+            append("\nFilter ${index + 1}: ON ${band.filterType} Fc ${band.frequency.toInt()} Hz")
+            append(" Gain ${band.gain} dB Q $q")
         }
     }
 
@@ -93,52 +86,43 @@ object ParametricEQParser {
         val errors = mutableListOf<String>()
 
         if (eq.preamp < -50.0 || eq.preamp > 50.0) {
-            errors.add("Preamp value ${eq.preamp} dB is out of range (-50 to +50 dB)")
+            errors.add("Preamp must be between -50.0 and 50.0 dB")
         }
+
         if (eq.bands.isEmpty()) {
             errors.add("EQ profile must have at least one band")
+            return errors
         }
+
         if (eq.bands.size > ParametricEQ.MAX_BANDS) {
-            errors.add("EQ profile has ${eq.bands.size} bands, maximum is ${ParametricEQ.MAX_BANDS}")
+            errors.add("Too many bands: ${eq.bands.size}; maximum is 20")
         }
 
         eq.bands.forEachIndexed { index, band ->
             val number = index + 1
             if (band.frequency <= 0.0 || band.frequency > 100000.0) {
-                errors.add(
-                    "Band $number: Frequency ${band.frequency} Hz is out of range (1 to 100000 Hz)"
-                )
+                errors.add("Frequency of band $number must be between 0 and 100000 Hz")
             }
             if (band.gain < -30.0 || band.gain > 30.0) {
-                errors.add("Band $number: Gain ${band.gain} dB is out of range (-30 to +30 dB)")
+                errors.add("Gain of band $number must be between -30 and 30 dB")
             }
             if (band.q <= 0.0 || band.q > 20.0) {
-                errors.add("Band $number: Q factor ${band.q} is out of range (0.01 to 20)")
+                errors.add("Q factor of band $number must be between 0 and 20")
             }
         }
 
         return errors
     }
 
-    private fun parseBand(line: String): ParametricEQBand? {
-        if (!line.contains("ON", ignoreCase = true)) return null
-
+    private fun detectFilterType(line: String): FilterType? {
         val upper = line.uppercase(Locale.ROOT)
-        val filterType = typeTokens.firstOrNull { upper.contains(it.second) }?.first ?: return null
-
-        val frequency = frequencyPattern.find(line)
-            ?.groupValues?.getOrNull(1)?.toDoubleOrNull() ?: return null
-        val gain = gainPattern.find(line)
-            ?.groupValues?.getOrNull(1)?.toDoubleOrNull() ?: return null
-        val q = qPattern.find(line)
-            ?.groupValues?.getOrNull(1)?.toDoubleOrNull() ?: return null
-
-        return ParametricEQBand(
-            frequency = frequency,
-            gain = gain,
-            q = q,
-            filterType = filterType,
-            enabled = true
-        )
+        return when {
+            upper.contains("LSC") -> FilterType.LSC
+            upper.contains("HSC") -> FilterType.HSC
+            upper.contains("LPQ") -> FilterType.LPQ
+            upper.contains("HPQ") -> FilterType.HPQ
+            upper.contains("PK") -> FilterType.PK
+            else -> null
+        }
     }
 }
