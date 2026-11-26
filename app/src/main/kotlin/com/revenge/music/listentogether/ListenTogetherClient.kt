@@ -168,6 +168,8 @@ class ListenTogetherClient(private val context: Context) {
   fun connect() {
     if (socket != null || _connectionState.value == ConnectionState.CONNECTING) return
     explicitDisconnect = false
+    codec.useProtobuf = false
+    codec.compressionEnabled = false
     _connectionState.value = ConnectionState.CONNECTING
     addLog(LogLevel.INFO, "Connecting")
     val url = context.dataStore[ListenTogetherServerUrlKey] ?: ListenTogetherServers.defaultServerUrl

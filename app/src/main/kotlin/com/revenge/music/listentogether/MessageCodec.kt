@@ -63,7 +63,11 @@ class MessageCodec {
         }
         .toString()
         .toByteArray(Charsets.UTF_8)
-    return if (compressionEnabled && jsonBytes.size > 100) gzip(jsonBytes) ?: jsonBytes else jsonBytes
+    if (compressionEnabled && jsonBytes.size > 100) {
+      val gzipped = gzip(jsonBytes)
+      if (gzipped != null && gzipped.size < jsonBytes.size) return gzipped
+    }
+    return jsonBytes
   }
 
   private fun encodeEnvelope(type: String, serializedPayload: ByteArray): ByteArray {

@@ -472,10 +472,6 @@ class ListenTogetherManager(
         if (isHost) sendCurrentState()
       }
       is ListenTogetherEvent.PlaybackSync -> scope.launch { applyPlayback(event.action) }
-      is ListenTogetherEvent.BufferWait -> {
-        pendingBufferTrackId = event.trackId
-        pendingSync = null
-      }
       is ListenTogetherEvent.BufferComplete -> {
         if (pendingBufferTrackId == event.trackId) {
           pendingBufferTrackId = null
@@ -549,7 +545,7 @@ class ListenTogetherManager(
     val desiredPosition =
       (payload.position ?: 0L) + max(0L, now - (payload.serverTime ?: now))
     val key = "${payload.action}:${payload.trackId}:${payload.position}:${payload.serverTime}"
-    if (key == lastActionKey && now - lastActionAt <= 1_000) return
+    if (!bypassBuffer && key == lastActionKey && now - lastActionAt <= 1_000) return
     lastActionKey = key
     lastActionAt = now
 
