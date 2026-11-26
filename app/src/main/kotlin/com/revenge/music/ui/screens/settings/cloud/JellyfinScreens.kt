@@ -55,6 +55,7 @@ fun JellyfinLoginScreen(navController: NavController, repository: JellyfinReposi
   val scope = rememberCoroutineScope()
 
   fun submit() {
+    // nosemgrep: revenge-cleartext-endpoint -- user-supplied LAN Jellyfin server; HTTP is a supported local setup.
     val url = serverUrl.trim().let { if (it.startsWith("http://") || it.startsWith("https://")) it else "http://$it" }
     if (url.isBlank() || username.isBlank() || password.isBlank()) {
       error = "Server URL, username and password are required"
@@ -103,6 +104,7 @@ fun JellyfinLoginScreen(navController: NavController, repository: JellyfinReposi
         modifier = Modifier.fillMaxWidth(),
       )
       Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        // nosemgrep: revenge-cleartext-endpoint -- user-supplied LAN Jellyfin server; HTTP is a supported local setup.
         OutlinedButton(onClick = { serverUrl = "http://${serverUrl.trim().removePrefix("http://").removePrefix("https://")}" }) {
           Text("Add http://")
         }

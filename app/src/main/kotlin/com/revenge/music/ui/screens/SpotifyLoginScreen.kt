@@ -79,6 +79,7 @@ fun SpotifyLoginScreen(
       factory = { context ->
         val webView =
           WebView(context).apply {
+            // nosemgrep: revenge-webview-javascript -- Spotify OAuth page requires JS; no JS interface is added.
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
             settings.setSupportMultipleWindows(true)

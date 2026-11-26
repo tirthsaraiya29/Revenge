@@ -106,6 +106,7 @@ fun NavidromeLoginScreen(navController: NavController, repository: NavidromeRepo
         modifier = Modifier.fillMaxWidth(),
       )
       Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        // nosemgrep: revenge-cleartext-endpoint -- user-supplied LAN Navidrome server; HTTP is a supported local setup.
         OutlinedButton(onClick = { serverUrl = "http://${serverUrl.trim().removePrefix("http://").removePrefix("https://")}" }) {
           Text("Add http://")
         }

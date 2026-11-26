@@ -51,6 +51,16 @@ jobs:
         run: echo "sdk.dir=$ANDROID_HOME" > local.properties
       - name: Test
         run: ./gradlew test --console=plain --no-daemon
+      # Fresh runners have no ~/.android/debug.keystore, and AGP no longer
+      # generates one, so validateSigningDebug fails.
+      - name: Create debug keystore
+        run: |
+          mkdir -p "$HOME/.android"
+          keytool -genkeypair -v \
+            -keystore "$HOME/.android/debug.keystore" \
+            -storepass android -alias androiddebugkey -keypass android \
+            -dname "CN=Android Debug,O=Android,C=US" \
+            -keyalg RSA -keysize 2048 -validity 10000
       - name: Assemble FOSS debug APK
         run: ./gradlew :app:assembleUniversalFossDebug --console=plain --no-daemon
       - uses: actions/upload-artifact@v4

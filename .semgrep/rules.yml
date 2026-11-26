@@ -25,7 +25,7 @@ rules:
       URLs are not exposed on the network.
     patterns:
       - pattern-regex: '"http://[^"]+"'
-      - pattern-not-regex: '"http://(localhost|127\.0\.0\.1|10\.0\.2\.2|schemas\.android\.com|www\.w3\.org|ns\.adobe\.com|xmlpull\.org)'
+      - pattern-not-regex: '"http://(localhost|127\.0\.0\.1|10\.0\.2\.2|schemas\.android\.com|www\.w3\.org|ns\.adobe\.com|xmlpull\.org|apache\.org/xml/features|xml\.org/sax/features)'
     paths:
       exclude:
         - "**/test/**"
