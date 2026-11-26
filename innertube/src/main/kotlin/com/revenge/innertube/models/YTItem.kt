@@ -135,15 +135,15 @@ private class BlockedArtist(entry: String) {
 
 fun <T : YTItem> List<T>.filterBlockedArtists(blockedArtists: Set<String> = YouTube.blockedArtists): List<T> {
     if (blockedArtists.isEmpty()) return this
-    val blocked = blockedArtists.map(::BlockedArtist)
+    val blocked = blockedArtists.map { BlockedArtist(it) }
     fun blockedArtist(artist: Artist): Boolean = blocked.any { it.matchesArtist(artist) }
 
     return filterNot { item ->
         when (item) {
             is ArtistItem -> blocked.any { it.matches(item.id, item.title) || it.matches(item.channelId, item.title) }
-            is SongItem -> item.artists.any(::blockedArtist)
-            is AlbumItem -> item.artists?.any(::blockedArtist) == true
-            is PlaylistItem -> item.author?.let(::blockedArtist) == true
+            is SongItem -> item.artists.any { blockedArtist(it) }
+            is AlbumItem -> item.artists?.any { blockedArtist(it) } == true
+            is PlaylistItem -> item.author?.let { blockedArtist(it) } == true
             else -> false
         }
     }

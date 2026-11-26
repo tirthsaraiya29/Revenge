@@ -3,7 +3,7 @@ package com.revenge.innertube.pages
 import com.revenge.innertube.models.Album
 import com.revenge.innertube.models.AlbumItem
 import com.revenge.innertube.models.Artist
-import com.revenge.innertube.models.BrowseResponse
+import com.revenge.innertube.models.response.BrowseResponse
 import com.revenge.innertube.models.MusicResponsiveListItemRenderer
 import com.revenge.innertube.models.MusicShelfRenderer
 import com.revenge.innertube.models.Run

@@ -263,7 +263,7 @@ object YouTube {
     }
 
     private fun flatSummaries(flat: List<YTItem>): List<SearchSummary> {
-        val groups = listOf(
+        val groups: List<Pair<String, List<YTItem>>> = listOf(
             "Songs" to flat.filterIsInstance<SongItem>().filter { !it.isVideoSong },
             "Videos" to flat.filterIsInstance<SongItem>().filter { it.isVideoSong && !it.isPodcastEpisode },
             "Episodes" to flat.filterIsInstance<SongItem>().filter { it.isPodcastEpisode },

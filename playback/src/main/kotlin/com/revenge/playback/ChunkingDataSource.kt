@@ -147,7 +147,6 @@ class ChunkingDataSource(
     }
 }
 
-@UnstableApi
 class ChunkingDataSourceFactory(
     private val upstreamFactory: DataSource.Factory,
     private val chunkSize: Long = 5L * 1024 * 1024,

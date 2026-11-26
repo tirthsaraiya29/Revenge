@@ -1,5 +1,6 @@
 package com.revenge.playback.queues
 
+import android.net.Uri
 import androidx.media3.common.MediaItem
 import com.revenge.music.models.MediaMetadata
 import org.junit.Assert.assertEquals
@@ -146,6 +147,7 @@ class QueueFilterSelectedTrackTest {
         )
         return MediaItem.Builder()
             .setMediaId(id)
+            .setUri(Uri.parse("https://example.test/$id"))
             .setTag(metadata)
             .build()
     }

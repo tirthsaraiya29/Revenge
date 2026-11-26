@@ -3,7 +3,6 @@ package com.revenge.innertube
 import com.revenge.innertube.models.Context
 import com.revenge.innertube.models.IpVersion
 import com.revenge.innertube.models.MediaInfo
-import com.revenge.innertube.models.ThirdParty
 import com.revenge.innertube.models.YouTubeClient
 import com.revenge.innertube.models.YouTubeLocale
 import com.revenge.innertube.models.body.AccountMenuBody
@@ -16,7 +15,6 @@ import com.revenge.innertube.models.body.GetSearchSuggestionsBody
 import com.revenge.innertube.models.body.GetTranscriptBody
 import com.revenge.innertube.models.body.LikeBody
 import com.revenge.innertube.models.body.NextBody
-import com.revenge.innertube.models.body.PlayerBody
 import com.revenge.innertube.models.body.PlaylistDeleteBody
 import com.revenge.innertube.models.body.SearchBody
 import com.revenge.innertube.models.body.SubscribeBody
@@ -40,6 +38,7 @@ import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
+import io.ktor.http.content.TextContent
 import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.delay
@@ -164,6 +163,16 @@ class InnerTube {
     private fun contextFor(client: YouTubeClient, includeDataSync: Boolean): Context =
         client.toContext(locale, visitorData, if (includeDataSync) dataSyncId else null)
 
+    /** Serialises the request context, optionally with an embedded-player thirdParty block. */
+    private fun contextJson(client: YouTubeClient, embedUrl: String? = null): String {
+        val encoded = innertubeJson.encodeToString(
+            Context.serializer(),
+            contextFor(client, includeDataSync = true),
+        )
+        if (embedUrl == null) return encoded
+        return encoded.dropLast(1) + ",\"thirdParty\":{\"embedUrl\":" + JsonPrimitive(embedUrl) + "}}"
+    }
+
     private suspend inline fun <reified T : Any> postJson(
         client: YouTubeClient,
         path: String,
@@ -207,28 +216,35 @@ class InnerTube {
         signatureTimestamp: Int?,
         poToken: String? = null,
     ): HttpResponse {
-        val base = contextFor(client, includeDataSync = true)
-        val thirdParty = if (client.isEmbedded) {
-            ThirdParty(embedUrl = "${YouTubeClient.ORIGIN_YOUTUBE_MUSIC}/embed/$videoId")
+        val embedUrl = if (client.isEmbedded) {
+            "${YouTubeClient.ORIGIN_YOUTUBE_MUSIC}/embed/$videoId"
         } else {
             null
         }
-        val playbackContext = if (client.useSignatureTimestamp && signatureTimestamp != null) {
-            PlayerBody.PlaybackContext(PlayerBody.ContentPlaybackContext(signatureTimestamp))
-        } else {
-            null
+        val payload = buildString {
+            append("{\"context\":").append(contextJson(client, embedUrl))
+            append(",\"videoId\":").append(JsonPrimitive(videoId))
+            if (playlistId != null) append(",\"playlistId\":").append(JsonPrimitive(playlistId))
+            if (client.useSignatureTimestamp && signatureTimestamp != null) {
+                append(",\"playbackContext\":{\"contentPlaybackContext\":{\"signatureTimestamp\":")
+                append(signatureTimestamp)
+                append("}}")
+            }
+            if (client.useWebPoTokens && poToken != null) {
+                append(",\"serviceIntegrityDimensions\":{\"poToken\":")
+                append(JsonPrimitive(poToken))
+                append("}")
+            }
+            append(",\"contentCheckOk\":true,\"racyCheckOk\":true}")
         }
-        val integrity = if (client.useWebPoTokens && poToken != null) {
-            PlayerBody.ServiceIntegrityDimensions(poToken)
-        } else {
-            null
+        return execute {
+            http.post(YouTubeClient.API_URL_YOUTUBE_MUSIC + "player") {
+                baseHeaders()
+                clientHeaders(client, login = true)
+                parameter("prettyPrint", false)
+                setBody(TextContent(payload, ContentType.Application.Json))
+            }
         }
-        return postJson(
-            client = client,
-            path = "player",
-            body = PlayerBody(base.copy(thirdParty = thirdParty), videoId, playlistId, playbackContext, integrity),
-            login = true,
-        )
     }
 
     suspend fun registerPlayback(
@@ -495,8 +511,7 @@ class InnerTube {
             header("X-Goog-Upload-Header-Content-Length", contentLength.toString())
             header("X-Goog-AuthUser", "0")
             header("Origin", YouTubeClient.ORIGIN_YOUTUBE_MUSIC)
-            contentType(ContentType.Application.FormUrlEncoded)
-            setBody("filename=$filename")
+            setBody(TextContent("filename=$filename", ContentType.Application.FormUrlEncoded))
         }
     }
 
@@ -538,8 +553,7 @@ class InnerTube {
                 clientHeaders(YouTubeClient.WEB_REMIX, login = true)
                 parameter("key", TRANSCRIPT_KEY)
                 parameter("prettyPrint", false)
-                contentType(ContentType.Application.Json)
-                setBody(payload)
+                setBody(TextContent(payload, ContentType.Application.Json))
             }
         }
     }

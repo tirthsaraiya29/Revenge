@@ -18,7 +18,7 @@ object YouTubeUrlParser {
         "^(?:https?://)?(?:www\\.)?(?:music\\.)?youtube\\.com/watch\\?.*$",
         RegexOption.IGNORE_CASE,
     )
-    private val watchParam = Regex("[?&]v=($VIDEO_ID)(?:[&#]|$)")
+    private val watchParam = Regex("[?&]v=($VIDEO_ID)(?:[&#]|\\z)")
     private val shortLink = Regex(
         "^(?:https?://)?(?:www\\.)?youtu\\.be/($VIDEO_ID)(?:[?#/].*)?$",
         RegexOption.IGNORE_CASE,

@@ -401,7 +401,7 @@ object BeatAnalyzer {
             val beats = ceil((bodyStartMs - offsetMs) / periodMs)
             point = (offsetMs + beats * periodMs).roundToLong().coerceAtLeast(bodyStartMs)
         }
-        if (point < 0L || point > 20_000L) return null
+        if (point < 0L || point > 20_000L || point > durationMs) return null
         return point
     }
 

@@ -2,7 +2,7 @@ package com.revenge.innertube
 
 import com.revenge.innertube.models.Badges
 import com.revenge.innertube.models.BrowseEndpoint
-import com.revenge.innertube.models.BrowseResponse
+import com.revenge.innertube.models.response.BrowseResponse
 import com.revenge.innertube.models.DefaultServiceEndpoint
 import com.revenge.innertube.models.FeedbackEndpoint
 import com.revenge.innertube.models.Icon
