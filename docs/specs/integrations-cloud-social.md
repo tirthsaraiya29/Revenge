@@ -115,7 +115,7 @@ Names are given so each contract can be located, not to mandate files or decompo
 
 | File | Responsibility |
 |---|---|
-| `app/src/main/kotlin/com/revenge/music/cloud/CloudModels.kt` | Credentials/song/playlist value types; `NavidromeAuthMethod`; Hilt `CloudEntryPoint`. |
+| `app/src/main/kotlin/com/revenge/music/cloud/CloudModels.kt` | Credentials/song/playlist value types; `NavidromeAuthMethod`; `CloudEntryPoint`. |
 | `.../cloud/NavidromeApiService.kt` | Subsonic HTTP protocol, authentication variants, URL builders, JSON parsing, `SubsonicApiException`. |
 | `.../cloud/NavidromeRepository.kt` | Credential persistence, login/ping/sync orchestration, Room mirroring, observable login state. |
 | `.../cloud/JellyfinApiService.kt` | Jellyfin HTTP protocol, `MediaBrowser` authorization header, JSON parsing, stream/image URL builders. |
@@ -131,7 +131,7 @@ Names are given so each contract can be located, not to mandate files or decompo
 | `.../spotify/Spotify.kt` | GraphQL partner API client, REST fallback client, response parsers for every operation, token holder, hash-expiry callback, `SpotifyException`. |
 | `.../spotify/SpotifyAuth.kt` | `sp_dc` cookie to internal token exchange, TOTP, nuance-secret cache, login URL. |
 | `.../spotify/SpotifyHashProvider.kt` | Thread-safe persisted-query hash registry with hardcoded and remote entries. |
-| `.../spotify/SpotifySessionManager.kt` | DataStore session read/write/clear and token refresh via `sp_dc`. |
+| `.../spotify/SpotifySessionManager.kt` | Session read/write/clear and token refresh via `sp_dc`. |
 | `.../spotify/SpotifyMapper.kt` | Search-query construction, thumbnail selection, title normalisation, similarity/scoring. |
 | `.../spotify/SpotifyPlaybackResolver.kt` | Spotify track to YouTube `SongItem` resolution with caching, concurrency limits and scoring. |
 | `.../spotify/SpotifyQueue.kt` | `Queue` implementation that resolves Spotify tracks into Media3 items in order. |
@@ -188,7 +188,7 @@ Names are given so each contract can be located, not to mandate files or decompo
 
 | File | Responsibility |
 |---|---|
-| `app/src/test/kotlin/com/revenge/music/spotify/SpotifyQueueTest.kt` | Robolectric queue ordering, unresolved-track, duplicate-track, and match-scoring tests. |
+| `app/src/test/kotlin/com/revenge/music/spotify/SpotifyQueueTest.kt` | Queue ordering, unresolved-track, duplicate-track, and match-scoring tests. |
 | `app/src/test/kotlin/com/revenge/music/utils/ScrobbleManagerTest.kt` | Local media acceptance and auto-transition metadata switching. |
 
 Additional tests required by this specification may be added under the same package names.
@@ -237,7 +237,7 @@ data class JellyfinPlaylist(
   val id: String, val name: String, val songCount: Int = 0, val hasCover: Boolean = false,
 )
 
-@EntryPoint @InstallIn(SingletonComponent::class)
+@EntryPoint @InstallIn(SingletonComponent::class)   // binding is illustrative; compile contract
 interface CloudEntryPoint {
   fun navidromeRepository(): NavidromeRepository
   fun jellyfinRepository(): JellyfinRepository
@@ -271,8 +271,7 @@ Common query parameters for every API call:
 
 Authentication:
 
-- `TOKEN`: `t = lowercaseHex(MD5(password + salt))`, `s = salt`. Salt is six characters drawn from
-  a random UUID string.
+- `TOKEN`: `t = lowercaseHex(MD5(password + salt))`, `s = salt`. Salt is six random characters.
 - `PASSWORD`: `p = "enc:" + lowercaseHex(UTF-8(password))`.
 - `ping` and every data call use the requested method; if a token-authenticated call fails with
   `SubsonicApiException.code == 41`, the call is retried **once** with `PASSWORD`. The successful
@@ -318,7 +317,7 @@ cancelled.
 Constructor: `NavidromeRepository(@ApplicationContext context, database: MusicDatabase, api:
 NavidromeApiService)`; singleton.
 
-Persistent state in `SharedPreferences` file `navidrome_prefs`:
+Persistent state (preferences namespace `navidrome_prefs`):
 `server_url`, `username`, `password`, `auth_method` (enum name, default `TOKEN`), `connected`.
 `logout()` clears the whole file. Password is stored in plaintext preferences; this is an accepted
 existing limitation and must not be silently migrated without a migration spec.
@@ -989,7 +988,7 @@ Session semantics:
 #### ViewModel contract
 
 ```text
-@HiltViewModel
+@HiltViewModel   // construction mechanism illustrative; required for hiltViewModel() retrieval
 class SpotifyImportViewModel(repository) : ViewModel() {
   val uiState: StateFlow<SpotifyImportUiState>
   fun restoreSession()
@@ -1175,13 +1174,13 @@ Semantics:
 - While playing, play time accumulates in one-second steps. Pausing stops accumulation; resuming
   continues without resetting the accumulated time. `onSongStart` with a new track resets.
 - Scrobble threshold = `min(floor(durationSeconds * scrobbleDelayPercent), scrobbleDelaySeconds)`.
-  It fires once per track, cancels the ticker, and submits a scrobble with
+  It fires once per track, stops further time accumulation, and submits a scrobble with
   `timestamp = nowSeconds - playTimeSeconds`.
 - A track shorter than `minSongDuration` is never scrobbled when its duration is positive. A
   non-positive/unknown duration disables the short-track exclusion and uses 300 seconds for the
   percent threshold.
-- `destroy()` cancels both the ticker and the in-flight now-playing/scrobble job. No callback after
-  destroy.
+- `destroy()` cancels all outstanding timing and any in-flight now-playing/scrobble submission. No
+  callback occurs after destroy.
 - `useSendLikes` is carried for the like-sync feature; `ScrobbleManager` itself does not call
   `setLoveStatus`.
 
@@ -1206,7 +1205,7 @@ preference is authoritative.
 
 ### 6.3 ListenBrainz (`ListenBrainzManager`)
 
-Singleton object; no constructor. Token and enable flag come from preferences
+Process-wide manager; no constructor. Token and enable flag come from preferences
 `listenbrainz_enabled` and `listenbrainz_token`.
 
 ```text
@@ -1305,7 +1304,7 @@ A single shared implementation must be bound to `LastFmTasteApi` and reused proc
 - WebSocket URL: preference `listenTogetherServerUrl`; default
   `wss://metroserverx.meowery.eu/ws` (the only directory entry: name "Metrolist Server", location
   Poland, operator "Metrolist").
-- OkHttp WebSocket client: connect 30 s, read 60 s, write 30 s, protocol ping 30 s.
+- WebSocket transport timeouts: connect 30 s, read 60 s, write 30 s, protocol ping 30 s.
 - Application ping every 25 s; server must answer `pong`. RTT = time between sending `ping` and
   receiving `pong`.
 - Server URL directory is `ListenTogetherServers.serversFlow` / `.servers` / `.defaultServerUrl` /
@@ -1563,7 +1562,7 @@ Sync semantics:
 - `request_sync` asks the host for `sync_state`; `sync_state` carries current track, playing state,
   position, last update, queue and volume. It is applied only when a player connection exists.
 - A heartbeat keeps the session alive; it is stopped on cleanup.
-- All manager-to-player mutations run on the main dispatcher; network sends are fire-and-forget.
+- All manager-to-player mutations run on the main thread; network sends are fire-and-forget.
 
 Chat:
 
@@ -1680,9 +1679,8 @@ Large bitmaps embedded per item are unreliable.
   - Signature = first 16 bytes of `HMAC-SHA256(per-install secret, url)`, lowercase hex.
 - Mapping must be cheap enough to run for every browse item and metadata read; implementations may
   memoise it. Any memoised mapping must be bounded and must remain correct for every URL.
-- The per-install secret is 32 random bytes persisted in SharedPreferences file
-  `automotive_artwork` under `uri_secret`; it survives process restarts so previously browsed URIs
-  remain valid.
+- The per-install secret is 32 random bytes persisted in app preferences under `uri_secret`; it
+  survives process restarts so previously browsed URIs remain valid.
 - `authority(context)` = `<packageName>.artwork`.
 
 `originalUrl(context, uri): String?`
@@ -1701,7 +1699,8 @@ fun MediaItem.withAutomotiveArtworkUri(context): MediaItem
 ```
 
 These return the same object when no remapping occurs, otherwise a copy with the artwork URI
-replaced. They must be cheap (LRU hit) because they run for every browse item and metadata read.
+replaced. They must be cheap enough to run for every browse item and metadata read; memoisation is
+permitted but not required.
 
 ### 9.2 Provider
 
@@ -1720,7 +1719,8 @@ replaced. They must be cheap (LRU hit) because they run for every browse item an
 `artworkFile(context, url): File?` is blocking and intended for a provider binder thread:
 
 - Directory `<cacheDir>/automotive_artwork`; filename `sha256Hex(url) + ".jpg"`.
-- Existing non-empty file is returned after touching `lastModified` (LRU recency).
+- An existing non-empty file is returned without refetching, and counts as recently used for the
+  trimming policy below.
 - Otherwise fetch the image at 1024×1024 with a 10 s timeout. On a network error, retry from the
   image loader's read-only disk cache; then encode JPEG at quality 90 off the provider thread.
 - Publish the file atomically (for example by writing a temporary file and renaming it); never
@@ -1797,7 +1797,7 @@ optimisation and must not block playback.
 | ListenBrainz | `false` | Fire-and-forget. |
 | Listen Together | `connectionState=ERROR`, `ListenTogetherEvent.ConnectionError`, `ServerError` | Up to 15 exponential backoffs; session auto-rejoin; network-loss wait. |
 | Cast | `isCasting` false, `initialize` false, media errors logged | Queue load 2 retries; auto-reconnect flag. |
-| Automotive artwork | `FileNotFoundException` / `SecurityException` | Coil network fallback to disk cache; null result. |
+| Automotive artwork | `FileNotFoundException` / `SecurityException` | Image-loader disk-cache fallback; null result. |
 
 ---
 

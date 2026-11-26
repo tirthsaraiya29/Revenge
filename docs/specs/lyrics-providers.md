@@ -2,6 +2,16 @@
 
 Status: M2 specification (behavioural contract only).
 Cluster: `lyrics-providers`.
+
+> **Top note — read first.** This document specifies the **observable contract** only: public API,
+> wire formats and DTO field names, error taxonomy, cancellation and retry semantics, caching, and
+> acceptance tests. Any algorithm description, step ordering, helper decomposition, data structure,
+> or code-like narration below is **illustrative**: it shows one shape that satisfies the contract
+> and is **not** a required implementation. Implementers must design and write the code
+> independently; submissions are **similarity-audited** against the reference baseline. Where an
+> acceptance test pins an exact value (a string, field name, request sequence, return value, or
+> error message), that value is binding; everything else is guidance.
+
 Clean-room namespaces (must be preserved exactly):
 
 | Module | Gradle path | Directory | Namespace(s) |
@@ -15,8 +25,9 @@ Clean-room namespaces (must be preserved exactly):
 | Unison client | `:unison` | `unison` | `com.revenge.unison`, `com.revenge.unison.models` |
 
 This document describes observable behaviour and API shape. It intentionally omits statement-level
-implementation. Any implementation that satisfies the contracts and acceptance tests is acceptable.
-Do not copy implementation bodies from the baseline; implement from this contract.
+implementation. Any implementation that satisfies the contracts and acceptance tests is acceptable,
+and implementers are expected to structure the code their own way. Do not copy implementation
+bodies from the baseline; implement from this contract.
 
 ---
 
@@ -85,9 +96,9 @@ thread-safe and multiplex concurrent calls.
 
 Every public `suspend` function observes structured cancellation. Catch blocks for ordinary
 errors must rethrow `kotlin.coroutines.cancellation.CancellationException` (or
-`kotlinx.coroutines.CancellationException` — same type). Parallel fan-out (`:youlyplus`,
-`:paxsenixlyrics`, `:unison` search) must cancel sibling jobs in `finally` when the caller is
-cancelled or a winner is chosen.
+`kotlinx.coroutines.CancellationException` — same type). When a parallel fan-out (`:youlyplus`,
+`:paxsenixlyrics`, `:unison` search) settles on a winner or the caller is cancelled, the remaining
+in-flight requests must be cancelled and must not deliver results.
 
 ### 3.3 JSON decoding rules
 
@@ -132,11 +143,11 @@ client's ordinary error handling. `Expect success = no` means the client inspect
 ### 3.5 State and caching
 
 - No provider caches lyric text or search results.
-- `:youlyplus` keeps one process-wide `AtomicReference<String?>` of the last mirror that returned
-  lyrics and promotes it to first position; this is the only provider-local "cache".
-- `:paxsenixlyrics` caches its `HttpClient` and resolved app version after `init`; the lock is a
-  one-time double-checked initialisation.
-- All other clients cache only the lazily created `HttpClient`.
+- `:youlyplus` remembers, process-wide, the last mirror that produced usable lyrics and queries it
+  first on later calls; this is the only provider-local cache.
+- `:paxsenixlyrics` initialises once, thread-safely, at `init`: the HTTP client and the resolved app
+  version are reused, and repeated `init` calls neither rebuild the client nor re-read the version.
+- All other clients keep only a lazily created, reused `HttpClient`.
 
 ### 3.6 Normalisation responsibility
 
@@ -219,16 +230,17 @@ internal fun similarity(first: String, second: String): Double
 
 #### 4.1.3 `getLyrics`
 
-1. Clean `(title, artist)` with `MetadataCleaner.clean`. Use `toSearchQuery()` for search terms.
-2. `findTracks` (below).
-3. If `duration == -1`, choose `tracks.bestMatchingFor(-1, cleanTitle, cleanArtist)`; otherwise
-   choose `tracks.bestMatchingForRelaxed(duration)`.
-4. Return `matched.syncedLyrics ?: matched.plainLyrics`.
-5. If there is no match or both lyric fields are null, throw
-   `IllegalStateException("Lyrics unavailable")` internally and return `Result.failure` with it.
-6. Any other non-cancellation exception is `Result.failure(e)`; cancellation is rethrown.
+Observable behaviour:
 
-Synchronised lyrics are preferred over plain lyrics for the same track.
+- Search terms are `MetadataCleaner.clean(title, artist).toSearchQuery()`; the candidate list comes
+  from the widened search in §4.1.4.
+- The chosen track is `bestMatchingFor(-1, cleanTitle, cleanArtist)` when `duration == -1`, and
+  `bestMatchingForRelaxed(duration)` otherwise.
+- On success the document is `syncedLyrics` when present, else `plainLyrics` (synchronised is
+  preferred for the same track).
+- No match, or both lyric fields null, yields
+  `Result.failure(IllegalStateException("Lyrics unavailable"))`.
+- Any other non-cancellation exception becomes `Result.failure(e)`; cancellation is rethrown.
 
 #### 4.1.4 Search widening (`findTracks`)
 
@@ -295,8 +307,7 @@ Never returns a value and never throws except cancellation. It emits at most 5 d
 3. Otherwise order by ascending `abs(track.duration.toInt() - duration)`; skip tracks farther than
    5 seconds; for each, call `callback` with `syncedLyrics` if non-null, and call `callback` with
    `plainLyrics` at most once across the whole call when non-null; stop at 5 delivered.
-4. Call `currentCoroutineContext().ensureActive()` once per candidate so cancellation is observed
-   between callbacks.
+4. Cancellation must be observed between candidates and between delivered callbacks.
 
 Callbacks run synchronously inside the caller's coroutine; they may be invoked zero times.
 
@@ -322,7 +333,7 @@ Contract:
 - Time = `minutes*60_000 + seconds*1_000 + millis`; minutes are not clamped.
 - Lines without a timestamp are ignored. Duplicate timestamps: the later parsed line overwrites
   the earlier value.
-- An unexpected runtime failure yields `null` (wrapped in `runCatching`); empty input yields
+- Parsing never throws: an unexpected runtime failure yields `null`; empty input yields
   `mapOf(0L to "")`, not `null`.
 
 `LrcLib.Lyrics` is an inline value class; `text` is public.
@@ -428,9 +439,9 @@ defaults. `errcode`/`status` are not validated.
 - Download: `GET LYRICS_DOWNLOAD_URL` with `fmt=lrc`, `charset=utf8`, `client=pc`, `ver=1`,
   `id=<id>`, `accesskey=<accesskey>`.
 - Single page only: `pagesize=8`, no page/continuation parameter, no follow-up request.
-- The content-negotiation plugin is installed for `application/json`, `text/html` and
-  `text/plain`, and gzip/deflate content encoding is enabled. KuGou sometimes labels JSON as HTML
-  or plain text; all three must decode with the same `Json`.
+- JSON responses must be accepted whether labelled `application/json`, `text/html` or `text/plain`
+  (KuGou sometimes mislabels JSON), and gzip/deflate content encoding must be accepted. All three
+  content types decode with the same rules.
 
 #### 4.2.4 `generateKeyword`
 
@@ -458,13 +469,13 @@ blank album → `"T - A"`.
 
 #### 4.2.6 `getLyrics`
 
-Wrap the whole flow in a `Result` that rethrows cancellation:
+Returns a `Result` and rethrows cancellation:
 
-1. `keyword = generateKeyword(...)`.
-2. `candidate = getLyricsCandidate(keyword, duration) ?: throw IllegalStateException("No lyrics candidate for ${keyword.title} - ${keyword.artist}")`.
-3. Download and decode: `DownloadLyricsResponse.content`, decode with a **MIME** Base64 decoder
-   (`Base64.getMimeDecoder()`), interpret bytes as UTF-8, run `normalizeLyrics()`.
-4. Return `Result.success(text)`; any non-cancellation exception is `Result.failure`.
+- The candidate comes from `getLyricsCandidate(generateKeyword(...), duration)`; when none exists the
+  failure is `IllegalStateException("No lyrics candidate for ${keyword.title} - ${keyword.artist}")`.
+- The downloaded `DownloadLyricsResponse.content` is Base64 that must decode even when line-wrapped
+  (MIME-style); the bytes are UTF-8 and are passed through `normalizeLyrics()`.
+- Success carries that text; any non-cancellation exception is `Result.failure`.
 
 An empty normalised document is a successful `Result.success("")` (callers treat blank as a
 failed provider outcome). Do not convert it to failure inside KuGou.
@@ -497,20 +508,23 @@ Callback count is unbounded. A decode exception aborts the loop and propagates.
 
 #### 4.2.9 `normalizeLyrics`
 
-1. Split on any line terminator (`lines()`); keep only lines that fully match
-   `^\[\d\d:\d\d\.\d{2,3}].*` (two-digit minutes/seconds, fraction of 2 or 3 digits, `.`
-   separator). If none remain → return `""`.
-2. Head cut: scan `i` from `min(30, lines.lastIndex)` down to `0`; the first line matching
-   `.+].+[:：].+` (a timestamped line containing a second `:`/`：` after the timestamp) sets
-   `headCut = i + 1`; break. If none, `headCut = 0`.
-3. Tail cut: scan `i` from `min(lines.size - 30, lines.lastIndex)` down to `0`; if
-   `lines[lines.lastIndex - i]` matches the credit regex, set `tailCut = i + 1`; break. If none,
-   `tailCut = 0`.
-4. Return `lines.drop(headCut).dropLast(tailCut).joinToString("\n")`.
+Input is split on any line terminator; only lines that fully match
+`^\[\d\d:\d\d\.\d{2,3}].*` (two-digit minutes/seconds, 2–3 digit fraction, `.` separator) are kept.
+If none remain the result is `""`.
 
-Consequences: CRLF is normalised to `\n`; untimestamped metadata lines are removed; a credit
-block within the first/last 30 timestamped lines is removed; the returned document always uses
-`\n`.
+Head removal: let `i` be the highest index not greater than `min(30, lastIndex)` whose line matches
+`.+].+[:：].+` (a timestamped line with a second `:`/`：` after the leading timestamp). Every line up
+to and including `i` is removed; if no line matches, nothing is removed from the head.
+
+Tail removal: consider indices from `lastIndex - min(size - 30, lastIndex)` up to `lastIndex` (an
+empty range when `size < 30`). The lowest such index whose line matches the credit pattern
+`LRC_CREDIT_PATTERN` is the cut point; that line and every line after it are removed. If no line
+matches, nothing is removed from the tail.
+
+The retained lines are joined with `\n`.
+
+Consequences: CRLF is normalised to `\n`; untimestamped metadata lines are removed; a trailing
+credit block is removed; the returned document always uses `\n`.
 
 ---
 
@@ -595,31 +609,32 @@ All are `@Serializable`. Unknown keys are ignored.
 Guarantees: **never throws**; malformed XML, empty input, XXE attempts, or a document with no
 usable paragraph all return `emptyList()`.
 
-Parsing rules:
+Required observable parsing behaviour:
 
-1. Build a namespace-aware DOM. Harden against XXE: disallow DOCTYPE declarations, disable
-   external general and external parameter entities. Feature-setting failures must be tolerated
-   (`runCatching`) so the parser still works on JVMs that reject a feature name.
-2. Select every element with local name `p` in any namespace (`getElementsByTagNameNS("*","p")`).
-3. Skip a `p` whose `begin` attribute is blank/absent.
-4. Read `agent` from the paragraph: try namespace `http://www.w3.org/ns/ttml#metadata`, then the
-   plain attribute, then `ttm:agent`, then any attribute whose local name is `agent`. Blank value
-   → `null`.
-5. Iterate element children in document order, considering only elements whose local name is
-   `span` (case-insensitive, ignoring namespace prefix):
-   - `role == "x-bg"` → parse as a **background line**.
-   - `role == "x-translation"` or `role == "x-roman"` → ignore entirely.
-   - otherwise → parse as a timed span.
-6. A timed span requires non-blank `begin` and `end`; its text is `textContent.trim()` and must be
-   non-empty. A span missing either time or text is dropped.
-7. Spans are merged into words: a new span starts a new word when the **previous** span was
-   followed by whitespace in the source (`endsWithWhitespace`: the next sibling is a text node
-   containing whitespace, or there is no next sibling → `false`) **or** when the previous span does
-   not exist. Adjacent spans with no whitespace between them are syllables of one word: their text
-   is concatenated and the word runs from the first span's start to the last span's end.
-8. Text: if merged words exist, join their text with single spaces; otherwise use the paragraph's
-   direct text (text nodes plus non-background/non-ignored span text), trimmed.
-9. An empty resulting text drops the line (`null`).
+- Every element whose local name is `p` (in any namespace) is a candidate paragraph.
+- A `p` whose `begin` attribute is blank or absent is skipped.
+- `agent` is taken from the paragraph's TTML-metadata attribute
+  (`http://www.w3.org/ns/ttml#metadata`), falling back to the plain attribute, then `ttm:agent`, then
+  any attribute whose local name is `agent`; a blank value means `null`.
+- Child elements are considered in document order; only elements whose local name is `span`
+  (case-insensitive, ignoring namespace prefix) contribute:
+  - `role == "x-bg"` → a **background line**.
+  - `role == "x-translation"` or `role == "x-roman"` → ignored entirely.
+  - otherwise → a timed span.
+- A timed span must have non-blank `begin` and `end` and non-empty trimmed text; otherwise it is
+  dropped.
+- Spans merge into words. A span begins a new word when there is no previous span, or when the
+  previous span was followed by whitespace in the source (the next sibling is a whitespace text
+  node; a span with no next sibling is treated as *not* followed by whitespace). Spans with no
+  whitespace between them are syllables of one word: their texts are concatenated and the word
+  spans the first span's start to the last span's end.
+- If merged words exist, the line text joins their text with single spaces; otherwise it is the
+  paragraph's direct text (text nodes plus non-background, non-ignored span text), trimmed.
+- A line whose resulting text is empty is dropped.
+
+The parser must be XXE-hardened: DOCTYPE declarations and external general/parameter entities must
+never be resolved, and a JVM that rejects a hardening feature name must still parse (feature-setting
+failures are non-fatal).
 
 Background line (`role="x-bg"`):
 
@@ -792,28 +807,26 @@ list unchanged; otherwise return `[last] + servers without last` (no duplicates)
 
 `getLyrics`:
 
-1. Build the promoted server list.
-2. In a `coroutineScope`, launch one job per server; each job fetches and sends
-   `server to lrc?` into a `Channel` sized to the server count. A server error yields `null`
-   (cancellation rethrown).
-3. Receive up to `servers.size` results. The first non-null, non-blank LRC is stored as the last
-   working server and returned. In `finally`, cancel all jobs and close the channel.
-4. If no server yields usable lyrics, the scope throws
-   `IllegalStateException("No lyrics found from any YouLyPlus server")`; `getLyrics` converts it to
-   `Result.failure`. Cancellation of the caller cancels every in-flight request and is rethrown.
+- Query the servers in promoted order, all concurrently (at most one live request per server).
+- A server that errors or returns a blank document contributes no result; cancellation is
+  rethrown.
+- The first non-null, non-blank LRC becomes the last working server and is returned.
+- Remaining in-flight requests are cancelled once a winner exists or the caller is cancelled.
+- If no server yields usable lyrics the function returns
+  `Result.failure(IllegalStateException("No lyrics found from any YouLyPlus server"))`.
 
 `getAllLyrics`:
 
-1. Same promoted list and fan-out.
-2. Receive exactly `servers.size` results (arrival order). For each non-null, non-blank LRC not
-   already seen (exact string identity via a `HashSet`), set the last working server and invoke
-   the callback. Duplicate documents are suppressed.
-3. Cancel remaining jobs and close the channel in `finally`. Zero callbacks when all mirrors fail.
-   Never throws except cancellation.
+- Same promoted list and concurrent fan-out.
+- Every server's result is considered in arrival order. Each non-null, non-blank LRC that has not
+  already been delivered (exact string identity) updates the last working server and is passed to
+  the callback; duplicates are suppressed.
+- Zero callbacks when all mirrors fail. Remaining requests are cancelled when the call ends. Never
+  throws except cancellation.
 
-Concurrency notes: both functions keep at most `servers.size` live requests; results arriving after
-the winner in `getLyrics` are ignored and their jobs cancelled. The `AtomicReference` update is
-last-writer-wins and must not break correctness.
+Concurrency: at most `servers.size` live requests exist; results arriving after the `getLyrics`
+winner are ignored and cancelled. Concurrent updates of the last-working-server value are
+last-writer-wins and must not affect correctness.
 
 #### 4.5.4 Choosing the document
 
@@ -930,9 +943,9 @@ Base URL `https://lyrics.paxsenix.org`. Failure messages: `"No matching track fo
 
 #### 4.6.2 `init`
 
-Idempotent and thread-safe (double-checked locking on a private lock). Reads
-`packageManager.getPackageInfo(packageName, 0).versionName`, takes it when non-blank, otherwise
-uses `"Unknown"`; a read error logs and uses `"Unknown"`. Creates the shared OkHttp client:
+Idempotent and thread-safe: initialisation happens once. The version is
+`packageManager.getPackageInfo(packageName, 0).versionName` when non-blank, otherwise `"Unknown"`;
+a version-read error logs and uses `"Unknown"`. The shared HTTP client has:
 
 - base URL `https://lyrics.paxsenix.org`;
 - `User-Agent: revenge/<version>`;
@@ -944,7 +957,7 @@ Calling `init` again is a no-op (does not rebuild the client or re-read the vers
 
 #### 4.6.3 Lookup flow
 
-`getLyrics` (wrapped in a cancellation-safe `Result`):
+`getLyrics` returns a cancellation-safe `Result`:
 
 1. `TrackTarget` = raw `title`, `durationSeconds = duration`, and
    `MetadataCleaner.clean(title, artist).toSearchQuery()` → `(cleanTitle, cleanArtist)`.
@@ -974,17 +987,14 @@ It never throws except cancellation (all failures are contained and logged throu
 
 #### 4.6.5 `awaitBestLyrics(ranked, limit)`
 
-Concurrent candidate fetch with early exit:
+Concurrent candidate fetch with early exit and these observable outcomes:
 
-1. Take at most `limit` ranked results and `async`-fetch each.
-2. Wait for completions with `select { job.onAwait { it } }`; remove completed jobs from the
-   pending list.
-3. Skip failed fetches and candidates whose lyrics are blank.
-4. The first result with `hasWordTimings == true` wins immediately (returned).
-5. Otherwise remember the first non-blank result as a fallback and continue until every candidate
-   has completed.
-6. Return the fallback (possibly null).
-7. In `finally`, cancel all jobs (winners included), so sibling requests stop.
+- At most `limit` ranked candidates are fetched concurrently.
+- Failed fetches and candidates with blank lyrics are skipped.
+- The first completed candidate with word timings wins immediately and is returned.
+- Otherwise the first non-blank candidate is remembered as a fallback while the remaining
+  candidates finish; the fallback (possibly null) is returned once they all complete.
+- All in-flight fetches, including the winner, are cancelled when the function returns.
 
 #### 4.6.6 DTOs (`com.revenge.paxsenix.models`)
 
@@ -1144,10 +1154,11 @@ Cancellation is rethrown; all other errors are `Result.failure`.
 
 1. `searchEntries`: clean metadata; if either value blank → empty; otherwise `GET lyrics/search`
    with cleaned values; parse; empty on any error.
-2. If results are non-empty: take the first 5, call `currentCoroutineContext().ensureActive()`
-   before each, log, and invoke `callback(entry.lyrics)` in order. Return.
-3. If results are empty: `ensureActive()`, then `fetchEntry(videoId, title, artist, album,
-   durationSeconds)`; invoke `callback` once when non-null; otherwise no callback.
+2. If results are non-empty: take the first 5 and invoke `callback(entry.lyrics)` in order, logging
+   as it goes. Cancellation must be observed before each callback. Return.
+3. If results are empty: after observing cancellation, fetch the single entry
+   (`fetchEntry(videoId, title, artist, album, durationSeconds)`); invoke `callback` once when
+   non-null; otherwise no callback.
 
 Never throws except cancellation. The single-result fallback is only used when the search returned
 no entries, not when it returned entries with blank lyrics (those are filtered out by
@@ -1155,7 +1166,7 @@ no entries, not when it returned entries with blank lyrics (those are filtered o
 
 #### 4.7.5 Parsing
 
-Both parsers use the Unison `Json` (Section 3.3) and `runCatching`; they never throw.
+Both parsers use the Unison decoding rules (Section 3.3) and never throw.
 
 `parseSingle(body)`:
 
@@ -1236,7 +1247,7 @@ The nested `ParsedLine`/`ParsedWord` shapes in Section 4.3.1 are consumed by
 when a Unison document starts with `<tt` (case-insensitive, after `trimStart`). Therefore:
 
 - `parseTTML` must return an empty list rather than throw for non-TTML input.
-- `toLRC(emptyList())` must return `""` (a `buildString` over zero lines).
+- `toLRC(emptyList())` must return `""`.
 - `ParsedLine` and `ParsedWord` are public and must keep their constructor parameter names and
   defaults; tests construct them by name.
 
@@ -1591,8 +1602,8 @@ HTTP). No live network. Numeric labels are test-case IDs.
     callbacks in order; search empty + single lookup present → one callback.
 89. TTML pass-through: a Unison entry whose lyrics start with `<tt` is converted by the `:lyrics`
     adapter (test the adapter mapping separately); a plain/LRC entry is unchanged.
-90. `getAllLyrics` cancellation between callbacks stops further callbacks (the `ensureActive`
-    check).
+90. `getAllLyrics` cancellation between callbacks stops further callbacks (cancellation must be
+    observed between delivered callbacks).
 
 ### 8.9 Cross-cutting determinism tests
 
@@ -1630,8 +1641,8 @@ HTTP). No live network. Numeric labels are test-case IDs.
 
 - No provider performs work in a top-level initializer; first use may create the HTTP client.
 - All public entry points are safe to call concurrently and repeatedly.
-- Memory: no unbounded provider-local collections. `YouLyPlus` dedupes one call with a transient
-  `HashSet`; `Paxsenix` keeps at most `limit` in-flight jobs; KuGou's song page is 8 entries.
+- Memory: no unbounded provider-local collections. `YouLyPlus` dedupes within a single call;
+  `Paxsenix` keeps at most `limit` in-flight jobs; KuGou's song page is 8 entries.
 - Determinism: identical fixtures produce identical output strings across runs and platforms,
   except network timing-dependent callback order in `YouLyPlus.getAllLyrics` (arrival order) and
   `Unison`/`LyricsHelper` concurrency. Tests must assert sets/contents for those.

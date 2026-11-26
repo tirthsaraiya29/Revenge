@@ -7,6 +7,12 @@ Kotlin packages: `com.revenge.music.lyrics`, `com.revenge.music.api`
 Source root: `lyrics/src`
 Cluster: `lyrics-orchestration`
 
+> **Note on algorithm shape.** Algorithm descriptions in this document are illustrative, not
+> prescriptive. Implementers must design independent implementations that satisfy the public API,
+> wire schemas, observable rules and acceptance tests stated here; internal structure, helper
+> decomposition, data structures and control flow are the implementer's choice. Submissions are
+> similarity-audited against reference implementations.
+
 ---
 
 ## 1. Purpose and Scope
@@ -529,124 +535,110 @@ val providerName: String)` from `:core`. `LyricsHelper` is structurally compatib
 `com.revenge.music.playback.ILyricsHelper` but does not currently declare that interface; the
 app-injected type is `LyricsHelper`.
 
-Hilt scope: the class carries **no scope annotation**. Each injection site (MusicService, player
-entry point, `LyricsMenuViewModel`, `MusicFlowViewModel`) receives its own instance, so the cache
-and in-flight map are per-consumer unless the rebuild adds `@Singleton`. If `@Singleton` is added,
-the semantics below still hold; document the choice because caching becomes process-wide.
+Hilt scope: the class is unscoped, so each injection site receives its own instance and caching and
+de-duplication are per instance. Making the class process-wide (for example with `@Singleton`) is
+permitted; the observable rules below hold either way, and the choice must be documented because
+caching then becomes process-wide.
 
 ### 7.1 `getLyrics(mediaMetadata)` - best single result
 
-Order of operations, exactly:
+Observable contract (behaviour a caller can rely on):
 
-1. Cancel the current alternate-search job (`currentLyricsJob`), if any.
-2. If the LRU cache has `mediaMetadata.id`, return its first `LyricsResult` immediately
-   (`LyricsWithProvider(result.lyrics, result.providerName)`). Cache hits are served offline.
-3. If offline (`!isOnline()`), return `LyricsWithProvider(LYRICS_NOT_FOUND, "Unknown")`.
-4. Create a lazy `Deferred` on a module-owned `CoroutineScope(SupervisorJob() + Dispatchers.IO)`
-   and register it in `inFlight` keyed by song id.
-   - If another fetch for the same id is already in flight, cancel the newly created deferred and
-     await the existing one. This is the only de-duplication mechanism; it is per-helper-instance.
-   - Register completion cleanup that removes the entry only if it is the same deferred.
-5. Start and await the fetch. The fetch outlives the caller's coroutine: caller cancellation
-   cancels only the wait, not the shared fetch.
-6. On completion, cache the selected `LyricsResult` list (one element) under the song id.
+1. A new single-result request first cancels any in-progress alternate enumeration (7.4).
+2. If the cache (7.5) holds the media id, its stored first result is returned immediately, without
+   any provider call and without a connectivity check. Cache hits therefore work offline.
+3. If offline, return `LyricsWithProvider(LYRICS_NOT_FOUND, "Unknown")`; no provider is called.
+4. Concurrent requests for the same media id on the same helper instance share one provider fetch:
+   the providers are called once and every waiting caller observes the same outcome. This
+   de-duplication is per helper instance.
+5. The shared fetch is independent of the caller's coroutine. Cancelling a caller aborts only that
+   caller's wait (the caller sees `CancellationException`); the fetch continues and still populates
+   the cache for later callers.
+6. On completion the selected result is cached under the media id (successes only; see 7.5).
 
-`fetchBestLyrics`:
+Provider selection for this path:
 
-1. Resolve enabled providers:
-   `context.dataStore[LyricsProviderOrderKey].orEmpty()` -> `orderedProviderNames` -> map to
-   providers -> `filter { it.isEnabled(context) }`.
-2. If none, return `(LYRICS_NOT_FOUND, "Unknown")`.
-3. Launch every provider concurrently in a `coroutineScope`; per provider, call `fetchFromProvider`
-   and record:
-   - `null`, blank text, or `LYRICS_NOT_FOUND` -> `FAILED`;
-   - otherwise store the text and classify `SYNCED` iff `LyricsUtils.hasSyncedLyrics(text)`.
-4. After each provider finishes, send a completion token through a channel of capacity
-   `providers.size`, then evaluate `chooseProvider(order, outcomes)`:
-   - `Selected` -> cancel sibling jobs, cache the single result under the song id, return it;
-   - `None` -> return `(LYRICS_NOT_FOUND, "Unknown")`;
-   - `Pending` -> wait for the next completion.
-5. If the loop exhausts without a selection, return `(LYRICS_NOT_FOUND, "Unknown")`.
+- Enabled providers are those named by the effective provider order (persisted order; blank order
+  means the default order of 5.3), restricted to providers whose enable flag is true (5.6). An empty
+  set yields `(LYRICS_NOT_FOUND, "Unknown")`.
+- All enabled providers are queried concurrently; there is no sequential fallback walk. Each has
+  the per-provider budget of 7.2.
+- Per-provider outcome: usable, non-blank text other than the sentinel is `SYNCED` iff
+  `LyricsUtils.hasSyncedLyrics(text)`, else `UNSYNCED`; a null/blank/sentinel result, a thrown
+  failure or a timeout is `FAILED`.
+- The winner is the first provider in priority order whose outcome is `SYNCED` or `UNSYNCED`
+  (`chooseProvider`, 5.5), evaluated as outcomes arrive. A higher-priority provider that has not yet
+  produced an outcome keeps the choice `Pending` and blocks selection, even when a lower-priority
+  provider has already returned lyrics. If every provider in the order is `FAILED`, the result is
+  `(LYRICS_NOT_FOUND, "Unknown")`.
 
 Consequences:
 
-- The **highest-priority completed** provider wins. A lower-priority synced result does not
-  pre-empt a higher-priority unsynced result.
-- A higher-priority provider that has not yet finished blocks selection, even if a lower-priority
-  provider already returned lyrics. Selection therefore waits up to the per-provider timeout.
-- Providers start in parallel; there is no sequential fallback walk in this path.
+- Priority, not synchronisation quality, decides: a higher-priority `UNSYNCED` result beats a
+  lower-priority `SYNCED` result.
+- A slow top-priority provider can delay the result by up to its budget even when a lower-priority
+  provider has already answered; that delay is intended.
 
 ### 7.2 Per-provider timeout and failure isolation
 
-`fetchFromProvider` wraps the provider call in `withTimeoutOrNull(5_000L)`:
-
-- Arguments: `id = mediaMetadata.id`, `title`, `artist = artists.joinToString { it.name }`
-  (Kotlin default separator `", "`), `duration = mediaMetadata.duration`,
-  `album = mediaMetadata.album?.title`.
-- `Result.failure` -> rethrow `CancellationException`, otherwise `reportException` and return
-  `null`.
-- Any thrown exception -> rethrow `CancellationException`, otherwise `reportException` and return
-  `null`.
-- Timeout -> `null` (provider treated as `FAILED`).
-
-`reportException` is `com.revenge.music.utils.reportException(Throwable)`; it logs and invokes the
-global exception reporter. It must never throw into the fetch pipeline.
+- Every provider call carries a 5 s budget. A provider that has not produced a usable result within
+  its budget is treated as `FAILED`; no exception reaches the caller.
+- Provider arguments are derived from `MediaMetadata`: `id = mediaMetadata.id`, `title`,
+  `artist = artists.joinToString { it.name }` (separator exactly `", "`),
+  `duration = mediaMetadata.duration`, `album = mediaMetadata.album?.title`.
+- A `Result.failure`, a thrown exception or a timeout all mean `FAILED`. Non-cancellation failures
+  are reported through `com.revenge.music.utils.reportException(Throwable)` (logs and forwards to
+  the global reporter) and are not surfaced.
+- `CancellationException` is always rethrown, never converted to `FAILED`.
+- Reporting a failure must never itself throw into the fetch pipeline.
 
 ### 7.3 Online check
 
-```kotlin
-try { networkConnectivity.isCurrentlyConnected() } catch (e: Exception) { true }
-```
-
-An exception/unknown state is treated as online. Offline skips all provider work for both paths.
+Connectivity is evaluated before any provider work. If the connectivity source throws or cannot
+report a state, the helper treats the device as online. Offline skips all provider work for both
+fetch paths and yields the offline results of 7.6.
 
 ### 7.4 `getAllLyrics(...)` - alternate enumeration ("pagination/continuation")
 
 There is no network pagination token anywhere in this cluster. The continuation mechanism is the
 provider `getAllLyrics` callback stream; orchestration fans it out across providers.
 
-Order of operations:
+Observable contract:
 
-1. Cancel `currentLyricsJob`.
-2. Cache key = `"$songArtists-$songTitle"` with **all space characters removed**
-   (`replace(" ", "")`). If cached, invoke `callback` once per stored result and return
-   synchronously.
-3. If offline, return without invoking the callback.
-4. Resolve enabled providers as in 7.1.
-5. Create `currentLyricsJob = CoroutineScope(SupervisorJob()).launch { ... }` (Default dispatcher):
-   launch one child per provider; each calls `provider.getAllLyrics(...)` and, for every emitted
-   text, appends `LyricsResult(provider.name, text)` to a `CopyOnWriteArrayList` and invokes
-   `callback` immediately. Per-provider non-cancellation exceptions are reported and swallowed;
-   cancellation is rethrown.
-6. Join all children; store the collected list in the same LRU cache under the key.
-7. `currentLyricsJob?.join()` suspends the caller until enumeration completes.
-
-Contract details:
-
-- Callback ordering is arrival order across providers and pages; no global sort, no de-duplication
-  across providers. Providers themselves may de-duplicate.
-- An empty provider set or all-failure enumeration leaves the cache untouched and emits nothing.
-- Cancelling `currentLyricsJob` (directly or via `cancelCurrentLyricsJob`, or indirectly by
-  `getLyrics`'s first step) stops further callbacks at the next provider suspension/`ensureActive`.
-- The job is **not** a child of the caller. Caller cancellation aborts only the `join()`; the
-  enumeration continues and may still invoke callbacks into a cancelled UI collector. This is
-  baseline behaviour; consumers that care call `cancelCurrentLyricsJob()`.
-- `getAllLyrics` also cancels the job at entry, so two rapid searches cannot both populate results.
-- The outer job has no explicit dispatcher, so it runs on `Dispatchers.Default`; provider clients
-  switch to IO internally.
+1. Entry cancels any in-progress alternate enumeration, so two rapid searches cannot both populate
+   results.
+2. Cache key = `"$songArtists-$songTitle"` with **every literal space character removed**
+   (`replace(" ", "")`; not other whitespace). On a hit, stored results are replayed to the caller
+   synchronously in stored order, with zero provider calls, and the call returns.
+3. If offline, return without invoking the callback; the cache is untouched.
+4. Otherwise use the same enabled-provider set as 7.1. Each provider's emitted documents become
+   `LyricsResult(provider.name, text)` and are delivered to the callback immediately, in arrival
+   order across providers and pages. There is no global sort and no cross-provider de-duplication
+   (a provider may de-duplicate its own output).
+5. A provider that throws (other than cancellation) does not affect other providers; the failure is
+   reported and swallowed. Cancellation is rethrown and stops further callbacks at the next
+   provider suspension point.
+6. After an online enumeration finishes (including one that emitted nothing), the collected list is
+   cached under the key unconditionally; an empty list is cached and replayed as empty.
+7. The enumeration is independent of the caller's coroutine: caller cancellation aborts only the
+   caller's wait, so enumeration may continue and callbacks may still be delivered into a cancelled
+   collector. `cancelCurrentLyricsJob()` explicitly stops enumeration at the next provider
+   suspension point.
+8. An empty provider set emits nothing and leaves the cache untouched.
 
 ### 7.5 Cache contract
 
-- One `android.util.LruCache<String, List<LyricsResult>>` with capacity **20 entries**.
-- Keys share one namespace: song ids (single-best) and `artist-title` (alternates). A song id
-  equal to an artist-title string is a theoretical collision; preserve key construction.
+- One result cache with capacity **20 entries**, evicting least-recently-used entries (a 21st
+  distinct key evicts the oldest).
+- Keys share one namespace: song ids (single-best) and `artist-title` (alternates). A song id equal
+  to an artist-title string is a theoretical collision; key construction is preserved.
 - `getLyrics` caches only successful selections; failures and `LYRICS_NOT_FOUND` are never cached.
 - `getAllLyrics` caches the collected list unconditionally after an online enumeration, even when
-  it is empty (so a subsequent call replay is empty rather than re-fetching).
-- The cache is process-lifetime for the helper instance; it is not invalidated when provider
-  settings, order or enable flags change. A cached result is therefore served even after its
-  provider is disabled.
-- `LruCache` is internally synchronised; `inFlight` is a `ConcurrentHashMap`.
+  it is empty (so a subsequent replay is empty rather than a re-fetch).
+- The cache lives as long as the helper instance; it is not invalidated when provider settings,
+  order or enable flags change. A cached result is therefore served even after its provider is
+  disabled.
+- Cache access and in-flight de-duplication (7.1) must be safe under concurrent callers.
 
 ### 7.6 Error taxonomy (orchestration)
 
@@ -663,18 +655,18 @@ Contract details:
 The sentinel value is `com.revenge.music.db.entities.LyricsEntity.Companion.LYRICS_NOT_FOUND`
 = `"LYRICS_NOT_FOUND"`. The provider name fallback is exactly `"Unknown"`.
 
-### 7.7 Test seams (required, internal only)
+### 7.7 Testability requirements (internal, not public API)
 
-To make section 14 deterministic without Android provider clients, `LyricsHelper` must expose an
-`internal` constructor (or internal factory) accepting:
+To make section 14 deterministic without Android provider clients, the helper must allow tests to
+inject, without changing the public constructor or any public signature:
 
-- `providersSupplier: suspend () -> List<LyricsProvider>` (default: DataStore + registry),
-- `onlineSupplier: () -> Boolean` (default: `networkConnectivity.isCurrentlyConnected()`),
-- `cache: MutableMap<String, List<LyricsResult>>`-compatible seam / internal cache interface,
-- `fetchScope: CoroutineScope` (default: `SupervisorJob() + Dispatchers.IO`),
-- `providerTimeoutMs: Long` (default `5_000`).
+- the enabled-provider set (default: persisted order plus enable flags),
+- the connectivity answer (default: the connectivity observer),
+- a cache instance or namespace,
+- the coroutine context used for the shared fetch,
+- the per-provider budget (default `5_000` ms).
 
-The public primary constructor and all public signatures stay unchanged.
+These seams are internal; implementers choose their form.
 
 ---
 
@@ -834,14 +826,16 @@ These caps are fail-closed and deterministic. They do not change any realistic l
 
 ## 9. Romanisation
 
-All `romanize*` functions run on `Dispatchers.Default` via `withContext`. They are pure with
-respect to their arguments but not cooperatively cancellable inside their character loops; a
-caller cannot expect prompt cancellation mid-string. They must not throw for any built-in input.
+`romanize*` functions are pure with respect to their arguments: the same input always yields the
+same output and no shared mutable state is observable. They run off the caller's main thread.
+Prompt cancellation mid-string is not guaranteed. They must not throw for any input, including
+null/empty where the signature accepts it.
 
 ### 9.1 Japanese - `katakanaToRomaji`, `romanizeJapanese`
 
 - `katakanaToRomaji(null)` and `katakanaToRomaji("")` -> `""`.
-- Longest-match (2-character) lookup first in a katakana->romaji table:
+- Katakana mapping rules (longest match wins; a 2-character entry is preferred over single
+  characters):
   - youon (`キャ` etc.), `シャ/シュ/ショ`, `チャ/チュ/チョ`, `ニャ...`, `ヒャ...`, `ミャ...`,
     `リャ...`, `ギャ...`, `ジャ/ジュ/ジョ`, `ヂャ...`, `ビャ...`, `ピャ...`;
   - all base kana, voiced (`ガ..`, `ザ..`, `ダ..`, `バ..`), semi-voiced (`パ..`);
@@ -852,10 +846,11 @@ caller cannot expect prompt cancellation mid-string. They must not throw for any
   `nextKatakana` is null/empty, append nothing. Consumes one character.
 - Unmapped characters pass through unchanged.
 - Output is lowercased.
-- `romanizeJapanese(text)`: Kuromoji IPADIC `Tokenizer()` (lazy singleton) tokenises the text;
-  for each token use `reading` if non-empty and not `"*"`, else `surface`; compute the next token's
-  reading the same way (or `null`); call `katakanaToRomaji(reading, nextReading)`; join token
-  outputs with a single space. Non-Japanese tokens pass through (surface) lowercased.
+- `romanizeJapanese(text)`: tokenise with a Kuromoji IPADIC tokenizer. For each token, use its
+  `reading` when non-empty and not `"*"`, else its `surface`; pass the following token's reading
+  (same rule, else null) as the liaison context to `katakanaToRomaji`; join the token outputs with
+  one space. Non-Japanese tokens pass through (surface) lowercased. A process-wide tokenizer
+  instance is acceptable but not required.
 - Both public overloads must exist with the exact default argument (one-arg and
   two-arg-with-default); JVM overload resolution relies on it.
 
@@ -951,35 +946,38 @@ intentionally not Hilt-injected.
 
 ### 10.1 State and triggers
 
-- `_status` starts `Idle`.
+- `status` starts `Idle`.
 - `hasActiveTranslations` starts `false`; set true on success/cached/database load, false on
   clear.
-- `manualTrigger`, `clearTranslationsTrigger`, `translationSaved` are `MutableSharedFlow<Unit>`
-  with `extraBufferCapacity = 1`, `onBufferOverflow = DROP_OLDEST`, emitted with `tryEmit`.
-- `setCompositionActive(active)` gates UI-facing error/success reset behaviour. The Compose
-  screen sets it true on entry and false+cancels on dispose.
-- `resetStatus()` cancels the status-reset job and sets `Idle`.
-- `cancelTranslation()` cancels both the status-reset job and the translation job, clears the job
-  references and sets `Idle`. It does not clear the cache or flows.
+- `manualTrigger`, `clearTranslationsTrigger` and `translationSaved` are `SharedFlow<Unit>` with
+  `extraBufferCapacity = 1` and `onBufferOverflow = DROP_OLDEST`; emissions use `tryEmit` and may
+  be dropped when no collector is ready.
+- `setCompositionActive(active)` gates UI-facing error/success reset behaviour: while inactive,
+  status is left unchanged by error/success reporting. The Compose screen sets it true on entry
+  and false (then cancels) on dispose.
+- `resetStatus()` sets `Idle` and cancels any pending status reset.
+- `cancelTranslation()` cancels any pending status reset and any in-flight translation, sets
+  `Idle`, and does not clear the cache or per-entry flows.
 - `clearCache()` clears the translation cache only.
 
-`STATUS_LINGER_MS = 3_000`, `TRANSLATION_TIMEOUT_MS = 45_000`.
+Status linger is 3 s; a translation attempt has a 45 s budget.
 
 ### 10.2 Cache
 
-- Plain in-memory `mutableMapOf<String, List<String>>` (baseline is unsynchronised; a rebuild must
-  not regress thread safety - use a concurrent map or confine all access).
-- Key: `"${systemText.hashCode()}_${mode}_$language"`, where `systemText` is the non-blank entry
-  texts joined with `"\n"`. (Java/Kotlin `String.hashCode`; collisions are accepted.)
+- In-memory cache keyed by the translation inputs: the non-blank entry texts joined with `"\n"`,
+  the mode and the language. Any deterministic key derivation is acceptable, including hash-based
+  keys with accepted collisions.
 - Value: translated lines, one per non-blank entry.
-- Entries are added after a successful `translateLyrics` run (streaming or not) and by
-  `loadTranslationsFromDatabase`. Cache hits and `applyCachedTranslations` only read.
+- Entries are written after a successful translation run (streaming or not) and by database load.
+  Cache reads never mutate it.
 - `getCachedTranslations(lyrics, mode, language)` returns the cached list or `null`; it does not
-  check length.
-- `applyCachedTranslations` returns false when absent or when `cached.size < nonBlankEntryCount`;
-  otherwise assigns `cached[i]` to the i-th non-blank entry and returns true. Surplus cached lines
-  are ignored.
+  check the length against the entry count.
+- `applyCachedTranslations` returns false when no entry exists or when the cached list is shorter
+  than the non-blank entry count. Otherwise it assigns `cached[i]` to the i-th non-blank entry and
+  returns true; surplus cached lines are ignored.
 - The cache is never evicted except by `clearCache()`.
+- Cache access must be safe under concurrent use (translation, UI reads and database load may run
+  concurrently).
 
 `nonEmptyEntries` = entries whose `text.isNotBlank()`, paired with their original index.
 

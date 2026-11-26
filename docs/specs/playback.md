@@ -1,7 +1,6 @@
 # Clean-Room Specification — `:playback`
 
-> **Required behaviour only.** Any algorithm shape is illustrative; implementers must
-> design independently and are audited for baseline similarity.
+> Required behaviour only. Any algorithm shape is illustrative; implementers must design independently and are audited for baseline similarity.
 
 Status: M2 specification (behavioural contract only).
 Module: `:playback` — directory `playback`, Gradle path `:playback`.

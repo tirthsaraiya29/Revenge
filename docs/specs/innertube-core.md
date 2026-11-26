@@ -12,6 +12,13 @@ omits source bodies. Any implementation that satisfies the contracts and accepta
 acceptable. Where the baseline has a known defect (for example swallowing cancellation), §9 states
 the normative target: the acceptance tests win.
 
+> **Note on implementation shape.** Any ordering, fallback chain, traversal strategy or internal
+> structure described in this document is illustrative of the *observable* behaviour it must
+> produce, not a prescribed algorithm. Implementers must design and write their own code
+> independently and choose their own internal types and control flow.
+> Submissions are similarity-audited against reference implementations; a solution that merely
+> renames or reshapes an existing implementation is not acceptable even if it passes the tests.
+
 ---
 
 ## 0. Scope and non-goals
@@ -77,8 +84,8 @@ with names exactly as listed.
 
 ## 2. Package layout and target files
 
-The implementer must write exactly the files below. Helper classes may be `private` inside these
-files; any public type must match §4–§12.
+The files below are the required layout. Helper types may be private or internal; every public
+type must match §4–§12.
 
 Main (`innertube/src/main/kotlin/com/revenge/innertube/`):
 
@@ -139,17 +146,19 @@ player/account/queue/transcript, `sw.js_data` sample, and the lyric/translation 
 
 ## 3. Runtime architecture and lifecycle
 
-Two layers only:
+Observable structure:
 
-1. `InnerTube` owns the Ktor `HttpClient` (OkHttp engine), request construction, auth headers and
-   transport retry. It knows nothing about page models.
-2. `YouTube` is a process-wide `object` holding one private `InnerTube` instance. It decodes
-   responses into `models.response.*` DTOs, maps them to `pages.*` models / `YTItem`s, applies
-   block/dislike filters, and wraps failures in `Result`.
+1. `InnerTube` is the only component that performs InnerTube HTTP I/O: request construction, auth
+   headers and transport retry live behind its public methods. It exposes no `pages.*` types and
+   does not decode page models.
+2. `YouTube` is a process-wide singleton presenting one configuration surface and one method per
+   user-facing operation. Its methods return decoded page models / `YTItem`s, apply block and
+   dislike filters, and report failures through `Result` (§9). Consumers never observe more than
+   one transport configuration at a time.
 
-Configuration is global mutable state on `YouTube` (delegated to `InnerTube`). It is intended to be
-set once during app start, before concurrent use. No configuration property is internally
-synchronised; concurrent mutation while requests are in flight is a caller error (see §9.5).
+Configuration is global mutable state exposed by `YouTube` and shared with `InnerTube`. It is set
+once during app start, before concurrent use. Configuration is not synchronised; mutating it while
+requests are in flight is a caller error (see §9.5).
 
 `YouTube` filters: `blockedArtists: Set<String>` and `dislikedSongs: Set<String>`. Entries are
 either `"id"` or `"id||name"`. `filterBlockedArtists` splits on `||`, matches ids against
@@ -289,7 +298,8 @@ are preserved from the baseline (wire constants; see §12.3).
   - Private upload releases (`browseId` contains `FEmusic_library_privately_owned_release_detail`):
     builds `AlbumItem` from the detail header and playlist id from the first top-level button's
     watch-playlist endpoint; songs from the single-column first shelf.
-  - Otherwise the canonical playlist id is `microformatDataRenderer.urlCanonical.substringAfterLast('=')`;
+  - Otherwise the canonical playlist id is the part of `microformatDataRenderer.urlCanonical`
+    after the final `=`;
     header from the first tab's `musicResponsiveHeaderRenderer`; year from the last subtitle run
     parsed as Int; thumbnail from the last thumbnail URL.
   - `songs` = `albumSongs(playlistId, albumItem)` when `withSongs`; otherwise empty.
@@ -300,7 +310,8 @@ are preserved from the baseline (wire constants; see §12.3).
   secondary contents. Appends rows from each continuation response's
   `onResponseReceivedActions[0].appendContinuationItemsAction.continuationItems`; the next token is
   read from `continuationContents.musicPlaylistShelfContinuation.continuations`. Stops when the
-  token is null, repeats (visited set), or after **50** distinct tokens. Unparseable rows dropped.
+  token is null, when it repeats a token already followed, or after **50** distinct tokens.
+  Unparseable rows are dropped.
 - `artist`: header may be `musicImmersiveHeaderRenderer`, `musicVisualHeaderRenderer`,
   `musicHeaderRenderer` or `musicDetailHeaderRenderer`. Description runs from the first description
   shelf or the immersive description. `sections` from the first tab, mapped by
@@ -333,12 +344,12 @@ are preserved from the baseline (wire constants; see §12.3).
 
 ### 4.5 Home / explore / browse / library / charts / history
 
-- `home`: if `continuation != null`, returns `homeContinuation(continuation)` (private helper)
+- `home`: if `continuation != null`, returns the continuation page described below
   directly. Otherwise browses `browseId` + `params`; sections are `musicCarouselShelfRenderer`s that
   parse successfully; sections whose `isStationListenTogether` is true are removed. Chips come from
   `sectionListRenderer.header.chipCloudRenderer.chips`. Applies blocked/disliked filters.
-  `homeContinuation` takes only `sectionListContinuation`, has `chips = null`, and carries the next
-  continuation.
+  The continuation page takes only `sectionListContinuation`, has `chips = null`, and carries the
+  next continuation.
 - `explore`: browses `"FEmusic_explore"`; `newReleaseAlbums` from the carousel whose "more" button
   targets `FEmusic_new_releases_albums`; `moodAndGenres` from the carousel targeting
   `FEmusic_moods_and_genres`, mapped via `MoodAndGenres.fromMusicNavigationButtonRenderer`.
@@ -372,13 +383,13 @@ are preserved from the baseline (wire constants; see §12.3).
 ### 4.6 Account / write actions
 
 - `likeVideo`, `likePlaylist`, `subscribeChannel`: dispatch to the corresponding `InnerTube` call
-  with `WEB_REMIX`; success is any 2xx (the transport has `expectSuccess = true`).
+  with `WEB_REMIX`; success is any 2xx (non-2xx responses surface as failures).
 - `getChannelId`: non-Result. Returns `artist(browseId).artist.channelId ?: ""` on success, `""` on
   any failure. Must not throw.
 - Playlist edit methods dispatch to `InnerTube` with `WEB_REMIX`; `playlistId.removePrefix("VL")` is
   applied for add/remove but not for move/rename/delete/thumbnail operations. The playlist id is
   passed through otherwise unchanged.
-- `createPlaylist`: **blocking** (`runBlocking`), not `suspend`, not a `Result`. Posts
+- `createPlaylist`: **blocking**, not `suspend`, not a `Result`. Posts
   `playlist/create`, decodes `CreatePlaylistResponse`, returns `playlistId`. Throws on transport or
   parse failure. Callers must invoke it off the main thread.
 - `uploadCustomThumbnailLink`: gets an upload id from the response header `x-guploader-uploadid`
@@ -400,8 +411,8 @@ are preserved from the baseline (wire constants; see §12.3).
 
 ### 4.7 Player, playback reporting, queue and next
 
-- `player`: posts `player` for the supplied `YouTubeClient`, always attempting login
-  (`attachClient(..., withLogin = true)`), with context `user.onBehalfOfUser = dataSyncId` when the
+- `player`: posts `player` for the supplied `YouTubeClient`, always requesting login
+  (subject to the client's login support), with context `user.onBehalfOfUser = dataSyncId` when the
   client supports login. Adds embedded `thirdParty.embedUrl` when `client.isEmbedded`; adds
   `playbackContext.contentPlaybackContext.signatureTimestamp` when
   `client.useSignatureTimestamp && signatureTimestamp != null`; adds
@@ -422,11 +433,10 @@ are preserved from the baseline (wire constants; see §12.3).
   `items` are parsed from `playlistPanelVideoRenderer` through `NextPage`; `currentIndex` is the
   index of the row with `selected == true`, or null. `title` is the queue header subtitle's first
   run. `lyricsEndpoint`/`relatedEndpoint` are the browse endpoints of tabs 1 and 2 when present.
-  If the last panel content is an `automixPreviewVideoRenderer`, `next` is called recursively for
-  its watch-playlist endpoint and the result is merged: original items first, then automix items,
-  with the original title/endpoints/currentIndex and `endpoint = automixEndpoint`. Blocked/disliked
-  filters apply to the final list. There is no recursion-depth guard; implementations may cap the
-  automix chain at 1 level to match observable baseline behaviour.
+  If the last panel content is an `automixPreviewVideoRenderer`, the automix queue for its
+  watch-playlist endpoint is fetched once and merged: original items first, then automix items,
+  with the original title/endpoints/currentIndex and `endpoint = automixEndpoint`. At most one
+  automix level is fetched (no recursive chain). Blocked/disliked filters apply to the final list.
 - `queue`: `videoIds != null` requires `videoIds.size <= YouTube.MAX_GET_QUEUE_SIZE` (1000); a
   larger list fails. Posts `music/get_queue` with both selectors. Maps `queueDatas[i].content`'s
   `playlistPanelVideoRenderer` via `NextPage`; drops unparseable rows.
@@ -467,7 +477,7 @@ are preserved from the baseline (wire constants; see §12.3).
 - `commentContinuation(token)`: `next` with `WEB` and the continuation. Reads
   `onResponseReceivedEndpoints[*].reloadContinuationItemsCommand.continuationItems` and
   `.appendContinuationItemsAction.continuationItems`. Merges legacy `commentThreadRenderer`s with
-  framework `commentEntityPayload` mutations: toolbar state and surface payloads are indexed by key;
+  framework `commentEntityPayload` mutations: toolbar state and surface payloads are matched by key;
   like/reply counts prefer payload toolbar, then surface toolbar, then `"0"`; vote status
   `TOOLBAR_LIKE_STATE_LIKE` maps to `"UPVOTE"`, everything else to `"INDIFFERENT"`; author, avatar,
   content and published time come from the framework payload when present. Framework entries take
@@ -501,22 +511,24 @@ are preserved from the baseline (wire constants; see §12.3).
 
 ### 5.2 Transport configuration
 
-The private client uses OkHttp with: `expectSuccess = true`; JSON
-`ignoreUnknownKeys = true`, `explicitNulls = false`, `encodeDefaults = true`; gzip (quality 0.9) and
-deflate (0.8); request timeout 60 000 ms, connect 30 000 ms, socket 60 000 ms; connection pool of 10
-connections kept 5 minutes; HTTP/2 preferred, HTTP/1.1 fallback; `retryOnConnectionFailure = true`;
-a 50 MiB disk cache under `java.io.tmpdir/revenge_http_cache`; proxy and proxy authenticator from
-the current properties. Default request: base URL `https://music.youtube.com/youtubei/v1/`, headers
+The transport client must exhibit these observable properties: a non-2xx response is a failure
+(the body is never returned as success), so status errors surface through the taxonomy in §9.1;
+JSON decoding ignores unknown keys, treats a missing value for a nullable property as null, and
+encodes defaulted properties (as detailed in §10); request timeout 60 000 ms, connect timeout
+30 000 ms, socket/read timeout 60 000 ms; a 50 MiB disk cache under
+`java.io.tmpdir/revenge_http_cache` (the caching guarantee); and the current `proxy`/`proxyAuth`
+are honoured. The exact engine, connection-pool and protocol-negotiation choices are the
+implementer's. Default request: base URL `https://music.youtube.com/youtubei/v1/`, headers
 `Accept: application/json`, `Accept-Language: <hl>,<gl>;q=0.9,en;q=0.8`,
 `Cache-Control: no-cache`.
 
-`attachClient(client, withLogin = false)` adds: `Content-Type: application/json`,
+Per-request client headers add: `Content-Type: application/json`,
 `X-Goog-Api-Format-Version: 1`, `X-YouTube-Client-Name: <clientId>`,
 `X-YouTube-Client-Version: <clientVersion>`, `X-Origin: https://music.youtube.com`,
 `Referer: https://music.youtube.com/`, `X-Goog-Visitor-Id` when visitorData is non-null,
 `cookie` plus `Authorization: SAPISIDHASH <epochSeconds>_<sha1("<epochSeconds> <SAPISID> https://music.youtube.com")>`
-when `withLogin && client.loginSupported && cookie != null` (only when SAPISID exists), `User-Agent:
-<client.userAgent>`, and query `prettyPrint=false`.
+when login is requested for the call and `client.loginSupported && cookie != null` (only when
+SAPISID exists), `User-Agent: <client.userAgent>`, and query `prettyPrint=false`.
 
 Login policy: search uses `(setLogin ?: useLoginForBrowse) && !cookie.isNullOrEmpty()`; browse uses
 `(setLogin || useLoginForBrowse) && !cookie.isNullOrEmpty()`; player, next, feedback, account menu,
@@ -527,8 +539,8 @@ next/player/writes always pass it; search-suggestions/queue/transcript pass null
 
 ### 5.3 Methods
 
-All methods below are `suspend` and return the Ktor `HttpResponse` unless stated. They all run
-through the retry wrapper §9.2.
+All methods below are `suspend` and return the Ktor `HttpResponse` unless stated. They all follow
+the retry policy in §9.2.
 
 - `search(client, query: String? = null, params: String? = null, continuation: String? = null, setLogin: Boolean? = null)` — POST `search`; sends `query`, `params`; passes the continuation both as query parameter `continuation` and `ctoken`. Body `SearchBody(context, query, params)`.
 - `player(client, videoId: String, playlistId: String?, signatureTimestamp: Int?, poToken: String? = null)` — POST `player`; body as §5.2/§4.7. `contentCheckOk = true`, `racyCheckOk = true`.
@@ -577,10 +589,10 @@ through the retry wrapper §9.2.
   auth.
 - `getMediaInfo(videoId): Result<MediaInfo>` — see §5.5.
 
-### 5.4 Retry wrapper
+### 5.4 Retry policy
 
-Every method above (including GETs) is wrapped by the retry policy in §9.2. Exceptions thrown by
-body decoding are outside the wrapper's retry classification and surface immediately.
+Every method above (including GETs) follows the retry policy in §9.2. Exceptions thrown by body
+decoding are outside that retry classification and surface immediately.
 
 ### 5.5 `InnerTube.getMediaInfo(videoId)`
 
@@ -599,16 +611,14 @@ call is wrapped in `Result`.
 
 ## 6. `com.revenge.innertube.NetworkConfig`
 
-`object NetworkConfig` — stateless factory. Only used by auxiliary fetchers; the InnerTube transport
-builds its own client. No call sites exist in the current tree, so this API is maintained for
-source compatibility and must compile.
+`object NetworkConfig` — stateless client factory. It is not used by the InnerTube transport; it is
+maintained for source compatibility and must compile and satisfy the rules below.
 
 - `createOptimizedHttpClient(cacheDir: File? = null, enableCache: Boolean = true): HttpClient` —
-  OkHttp Ktor client with: `expectSuccess = true`; JSON with `ignoreUnknownKeys=true`,
-  `explicitNulls=false`, `encodeDefaults=true`, `isLenient=true`; gzip 0.9 and deflate 0.8; request
-  timeout 60 000 ms, connect 30 000 ms, socket 60 000 ms; OkHttp connect 30 s, read 60 s, write 60 s;
-  `retryOnConnectionFailure(true)`; when `enableCache`, a 50 MiB disk cache at `cacheDir` or
-  `java.io.tmpdir/revenge_http_cache`.
+  a client that fails on non-2xx (`expectSuccess`-equivalent); decodes JSON ignoring unknown keys,
+  treating missing nullable values as null, encoding defaults, and tolerating lenient JSON; request
+  timeout 60 000 ms, connect timeout 30 000 ms, socket/read timeout 60 000 ms; and, when
+  `enableCache`, uses a 50 MiB disk cache at `cacheDir` or `java.io.tmpdir/revenge_http_cache`.
 - `createYouTubeMusicClient(cacheDir: File? = null): HttpClient` — identical to
   `createOptimizedHttpClient(cacheDir)`.
 - `getAdaptiveTimeouts(networkQuality: NetworkQuality): TimeoutConfig` — table:
@@ -655,8 +665,9 @@ Constructor calls `NewPipe.init(downloader)` (process-global; last constructed w
   and `url` are required; de-obfuscate `s` with the player manager and substitute as `sp` query
   parameter; then run throttling-parameter de-obfuscation (`n` transform) on the URL. Any missing
   parameter, parse failure, or de-obfuscation failure returns `null` (never throws).
-- `object NewPipeExtractor` — lazy, `@Synchronized` initialisation of a single downloader/utility
-  pair using the current `YouTube.proxy`/`proxyAuth`; subsequent proxy changes do **not** rebuild it.
+- `object NewPipeExtractor` — initialises a single downloader/utility pair lazily and at most
+  once, safely under concurrent first use, using the `YouTube.proxy`/`proxyAuth` current at that
+  moment; subsequent proxy changes do **not** rebuild it.
   - `getSignatureTimestamp(videoId): Result<Int>` — delegates.
   - `getStreamUrl(format, videoId): String?` — delegates.
   - `newPipePlayer(videoId): List<Pair<Int,String>>` — `StreamInfo.getInfo(service 0, watch URL)`;
@@ -774,7 +785,7 @@ Mapping rules:
 | socket/DNS/connect/read timeout, `IOException` | `TransportError` |
 | HTTP 401 | `AuthRequired` |
 | HTTP 403, 429 | `BotCheck` |
-| other HTTP status (with `expectSuccess=true`) | `HttpError` |
+| other non-2xx HTTP status | `HttpError` |
 | JSON decode / missing required field | `ParseError` |
 | absent panel/header/content that the method requires | `ParseError` |
 | `queue` size assertion | `IllegalArgumentError` |
@@ -783,12 +794,12 @@ Mapping rules:
 
 ### 9.2 Transport retry policy
 
-The retry wrapper runs the request block at most **3 attempts**. It retries only `IOException` (and
-subclasses). Backoff: first retry waits 500 ms, second waits 1000 ms. On the third failure the
-original `IOException` is rethrown (then classified by the facade). HTTP status failures produced by
-`expectSuccess=true` are **not** retried here. `delay` is coroutine-cancellable; a cancellation
-raised during backoff propagates immediately and no further attempt runs. The wrapper must not catch
-`CancellationException` as a retryable failure.
+Each transport request is attempted at most **3 times**. Only `IOException` (and subclasses) is
+retried. Backoff: first retry waits 500 ms, second waits 1000 ms. On the third failure the original
+`IOException` is rethrown (then classified by the facade). HTTP status failures (non-2xx) are
+**not** retried here. The backoff wait is cancellable: a cancellation raised during backoff
+propagates immediately and no further attempt runs. Cancellation is never treated as a retryable
+failure.
 
 `403` is a `BotCheck`, not a transport error, and is not retried inside `InnerTube`. Higher layers
 may retry with a different client or rotate the guest session; see §12.4. A retry that later
@@ -799,13 +810,12 @@ outcome).
 
 Every `YouTube` `suspend` method that returns `Result` must:
 
-1. catch `Throwable` from transport/decoding and map it with `InnerTubeErrors.classify`;
-2. **rethrow `CancellationException`** before any catch-all (Kotlin `runCatching` alone is not
-   acceptable because it swallows cancellation);
+1. classify every transport/decoding failure with `InnerTubeErrors.classify`;
+2. **rethrow `CancellationException` unchanged** — cancellation must never be turned into a
+   `Result`, even when a generic failure handler is present;
 3. return `Result.failure(typedError)` for every other failure.
 
-This is a normative change from any baseline that used bare `runCatching`. The pagination helpers
-in §8.1 already rethrow cancellation and are the reference behaviour. Non-`suspend` methods
+The pagination helpers in §8.1 follow the same rule and are the reference behaviour. Non-`suspend` methods
 (`createPlaylist`, `newPlaybackNonce`, `parseTasteSignals`, `getNewPipeStreamUrls`) and
 `getChannelId` follow their stated contract; `getChannelId` converts failures to `""`.
 
@@ -826,7 +836,8 @@ in §8.1 already rethrow cancellation and are the reference behaviour. Non-`susp
   dispatcher.
 - Setting `InnerTube.proxy` closes and replaces the client. Do not do this while requests are in
   flight.
-- `NewPipeExtractor` initialisation is `@Synchronized`. NewPipe extraction itself is blocking.
+- `NewPipeExtractor` initialisation happens at most once and is safe under concurrent first use.
+  NewPipe extraction itself is blocking.
 - Page/DTO data classes are immutable values and may cross threads freely.
 - No method blocks a suspend caller except the explicitly blocking NewPipe and `createPlaylist`
   paths; all HTTP calls use coroutine-aware Ktor I/O.
@@ -838,7 +849,7 @@ in §8.1 already rethrow cancellation and are the reference behaviour. Non-`susp
 All types below marked `@Serializable` must serialize with the property names shown. `?` means a
 nullable Kotlin type; `= x` is a default. Decoding rules for every DTO:
 
-- Unknown JSON keys are ignored (`ignoreUnknownKeys = true`).
+- Unknown JSON keys are ignored.
 - With `explicitNulls = false`, a **missing key for a nullable property decodes as null**, including
   properties without a declared default. A missing key for a non-nullable property without a
   default is a `MissingFieldException` (→ `ParseError`).
@@ -1022,9 +1033,9 @@ as stated in §4.
 
 - Title is always the first flex-column run's text cleaned by `ApiText.clean`; a row with no title
   is dropped.
-- Artists come from the first separator-delimited segment's **odd** runs (every second run, starting
-  at index 0) so bullet separators are skipped; each artist id is the run's browse endpoint id or
-  null. Missing run endpoints are allowed (id null); for library rows ids may be `""`.
+- Artist names are the text runs of the first separator-delimited segment (the 1st, 3rd, 5th, …
+  runs), excluding bullet-separator runs; each artist id is that run's browse endpoint id or null.
+  Missing run endpoints are allowed (id null); for library rows ids may be `""`.
 - Album is the appropriate column's first run when it has a browse endpoint.
 - Duration parses the fixed column's first run via `parseTime`; `null` when absent/unparseable.
 - Explicit is true when any badge icon type is `MUSIC_EXPLICIT_BADGE`.
@@ -1352,10 +1363,11 @@ module produces and consumes.
 
 ## 14. Non-functional and quality requirements
 
-- **Determinism:** all parsers are pure functions of their JSON input. No locale-dependent
-  lowercasing: use `ignoreCase` comparisons, not default-locale `lowercase()`. `searchSummary`
-  title normalisation is Unicode NFD, strips combining marks, lowercases with locale-independent
-  rules, and collapses non-letter/non-digit runs to spaces.
+- **Determinism:** all parsers are pure functions of their JSON input. No locale-dependent case
+  folding: comparisons and normalisation must give the same result under every default locale
+  (for example, Turkish dotless-i must not change behaviour). `searchSummary` title normalisation
+  is Unicode NFD, strips combining marks, lowercases with locale-independent rules, and collapses
+  non-letter/non-digit runs to spaces.
 - **No network in tests:** all HTTP tests use a fake engine/MockWebServer.
 - **No secret leakage:** error messages may include status codes and the server reason; they must
   not include cookie values, SAPISID or tokens.
@@ -1366,16 +1378,16 @@ module produces and consumes.
 
 ---
 
-## 15. Baseline defects the clean-room implementation must not reproduce
+## 15. Required behaviour that must not regress
 
-1. Bare `runCatching` swallowing `CancellationException` (§9.3).
-2. Untyped errors conflating auth, bot checks, transport and parsing (§9.1).
-3. `x-guploader-uploadid!!` and other unchecked `!!` on server-optional nodes: use typed
-   `ParseError` instead of `NullPointerException`.
-4. Parse failures inside a page mapper aborting the whole page when the mapper is documented to
-   drop rows; drop the row and continue.
-5. Unbounded automix recursion in `next`: cap at one automix level.
-6. Any network call from `parseTasteSignals`, URL parsing, cookie parsing or page mapping.
+1. Cancellation is always rethrown and never becomes a `Result` (§9.3).
+2. Errors are typed and never conflated: auth, bot checks, transport and parsing stay distinct
+   (§9.1).
+3. Server-optional nodes produce a typed `ParseError`, never a null-pointer failure.
+4. A row mapper documented to drop unparseable rows must drop the row and continue, not abort the
+   whole page.
+5. The automix chain in `next` is fetched at most one level deep (§4.7).
+6. `parseTasteSignals`, URL parsing, cookie parsing and page mapping perform no network I/O.
 
 ---
 

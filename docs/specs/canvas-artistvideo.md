@@ -481,7 +481,7 @@ Returns `null` (reject) or an integer score.
 
 Reject if:
 - any of `attributes.name` or `attributes.collectionName` is blacklisted (§8.7), or
-- `artistMatches(attributes.artistName, artist)` is false.
+- the returned artist does not match the requested artist per §8.8.
 
 Score:
 - artist: `10` if `artistName` equals the requested artist (ignore case), else `5`.
@@ -510,7 +510,7 @@ Reference values (used by tests):
 Given a search item and its attributes, for `item.type == "songs"` the id is the first available of:
 1. `item.relationships.albums.data[0].id`
 2. `attributes.collectionId`
-3. `albumIdFromUrl(attributes.url)`
+3. the catalog-URL id extraction rule (§8.5)
 
 For every other type the id is `item.id`.
 
@@ -829,7 +829,7 @@ Network/cache tests (with MockEngine + clock):
 | TK-3 | token with issuer other than `AMPWebPlay` | ignored |
 | TK-4 | garbage JWT / non-3-part string | ignored without throwing |
 | TK-5 | discovery throws for both pages | bundled fallback returned, non-empty |
-| TK-6 | two concurrent `getToken()` calls on a cold cache | exactly one discovery sequence (mutex) |
+| TK-6 | two concurrent `getToken()` calls on a cold cache | exactly one discovery sequence |
 | TK-7 | `getToken()` then advance clock past expiry−5 min | discovery runs again |
 | TK-8 | `clearToken()` then `getToken()` | discovery runs again |
 | TK-9 | engine throws `CancellationException` | rethrown |
@@ -857,9 +857,9 @@ Existing pure-logic cases (must all pass exactly):
 
 | ID | Given | Then |
 |---|---|---|
-| AM-1 | `buildQuery("The Beatles Abbey Road","The Beatles",null)` | `"The Beatles Abbey Road"` (no duplication) |
-| AM-2 | `buildQuery("Come Together","The Beatles","Abbey Road")` | `"The Beatles Come Together Abbey Road"` |
-| AM-3 | `buildQuery("25","Adele","25")` | `"Adele 25"` |
+| AM-1 | query for term `The Beatles Abbey Road`, artist `The Beatles`, no album | `"The Beatles Abbey Road"` (no duplication) |
+| AM-2 | query for term `Come Together`, artist `The Beatles`, album `Abbey Road` | `"The Beatles Come Together Abbey Road"` |
+| AM-3 | query for term `25`, artist `Adele`, album `25` | `"Adele 25"` (album already contained) |
 | AM-4 | exact album candidate | score `25`, `>= 12` |
 | AM-5 | exact song on matching album | score `45` |
 | AM-6 | wrong artist | `null` |
@@ -868,7 +868,7 @@ Existing pure-logic cases (must all pass exactly):
 | AM-9 | song item with `relationships.albums.data[0].id` | resolves that id |
 | AM-10 | song item with no relationship, `collectionId` present; then only `url` present | falls back to `collectionId`, then numeric id from URL |
 | AM-11 | item id `pl.abc` | `null` |
-| AM-12 | `albumIdFromUrl` valid URL / slug-only URL / null | id / `null` / `null` |
+| AM-12 | catalog-URL id extraction: valid URL / slug-only URL / null | id / no id / no id |
 | AM-13 | editorial with `motionDetailSquare.video` and `motionSquareVideo1x1.hlsUrl` | preferred key wins → `square-hls` |
 | AM-14 | editorial with unknown object `videoUrl` | returns it |
 | AM-15 | editorial object has only dimensions | `null` |
@@ -876,7 +876,7 @@ Existing pure-logic cases (must all pass exactly):
 | AM-17 | song mapping with title/artist overrides | name = song, albumName = album |
 | AM-18 | blacklisted album response | `null` |
 | AM-19 | album without editorial video | `null` |
-| AM-20 | `cacheKey("song","  Song ","Artist","US")` | `"song|song|artist|us"` |
+| AM-20 | two equivalent song lookups differing only in input case and surrounding whitespace | the second is served from the first's cache entry (no second request) |
 
 Network/cache/failure tests:
 | ID | Given | Then |
@@ -901,7 +901,7 @@ Network/cache/failure tests:
 | AV-4 | `animated` set, `videoUrl` set | prefers `animated` |
 | AV-5 | `animated=null`, `videoUrl` set | falls back to `videoUrl` |
 | AV-6 | `animated=""`, `videoUrl` set | returns `""` (blank wins) |
-| AV-7 | `videoMimeType` for `.m3u8`, uppercase, `clip.mp4?token=abc`, unknown, empty | HLS, HLS, MP4, HLS, HLS respectively |
+| AV-7 | MIME classification for `.m3u8`, uppercase, `clip.mp4?token=abc`, unknown, empty | HLS, HLS, MP4, HLS, HLS respectively |
 
 ### 13.7 `ArtistVideoCanvasProvider`
 
@@ -938,11 +938,13 @@ Compose/Media3 tests may use a fake `Player` or Robolectric shadows; they must a
 
 ## 14. Threading, cancellation and error taxonomy (consolidated)
 
-- All provider functions are `suspend`, run on the caller's dispatcher, and perform no
-  `withContext`. Callers use `Dispatchers.IO`.
-- Shared state: `ConcurrentHashMap` caches in every provider; a `Mutex` plus `@Volatile` fields in
-  the token provider. No other mutable shared state.
-- `System.currentTimeMillis()` is the clock; tests inject a fake.
+- All provider functions are `suspend` and run on the caller's dispatcher (no internal dispatcher
+  switch). Callers use `Dispatchers.IO`.
+- Shared state: process-wide, concurrency-safe caches in every provider and in the token provider;
+  no other mutable shared state. Container and synchronization choices are not contractual, but
+  concurrent calls must be safe. The token provider must serialize discovery so that concurrent
+  cold-cache callers trigger at most one discovery sequence (TK-6).
+- Wall-clock time drives cache/token expiry; tests substitute a controllable clock.
 - Error classes:
   - **Cancellation** (`CancellationException`, both kotlinx and kotlin.coroutines variants):
     always rethrown, never converted to `null`, in every provider and every nested try.

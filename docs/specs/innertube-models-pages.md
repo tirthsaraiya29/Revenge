@@ -326,8 +326,8 @@ Both access paths must remain available.
 ## 6. Serializable DTO catalogue
 
 Wire names are identical to property names unless Section 5.2 lists an alias. Every class is a
-Kotlin `data class` with the declared constructor order; every `@Serializable` class must keep the
-annotation so nested serializers are generated.
+Kotlin `data class` with the declared constructor order; every `@Serializable` class must retain the
+annotation (nested serialization depends on it).
 
 ### 6.1 Request context — `Context.kt`
 
@@ -397,12 +397,13 @@ See Sections 4.1–4.3.
 
 Helper functions (pure, deterministic):
 
-- `fun Runs?.extractCountText(): String?` — joins non-blank trimmed run texts, then finds the first
-  human count value matching digits plus digits/space/comma/`.`/full-width punctuation and optional
-  compact suffixes (`K M B T`, CJK `万 萬 億 亿 兆 千`, Korean `천 만 억`). If the joined string has
-  no match, tries each run individually. Returns the matched text without a space before the suffix.
-  Returns `null` when no digit-bearing match exists. Examples: `"1.2M views"` → `"1.2M"`;
-  `"1,234 likes"` → `"1,234"`; `"no numbers here"` → `null`; `null` → `null`.
+- `fun Runs?.extractCountText(): String?` — returns the first human-readable count token in the run
+  texts: a digit sequence, optionally with grouping separators (space, comma, period or full-width
+  punctuation) and an optional compact suffix (`K M B T`; CJK `万 萬 億 亿 兆 千`; Korean `천 만 억`).
+  The concatenation of non-blank trimmed runs is searched first; if it has no match, each run is
+  searched individually. The returned text excludes a space before the suffix. Returns `null` when
+  no digit-bearing count exists. Examples: `"1.2M views"` → `"1.2M"`; `"1,234 likes"` → `"1,234"`;
+  `"no numbers here"` → `null`; `null` → `null`.
 - `fun List<Run>.splitBySeparator(): List<List<Run>>` — splits on runs whose `text` is exactly
   `" • "`. Always returns at least one group (a trailing empty group is legal).
 - `fun List<List<Run>>.clean(): List<List<Run>>` — drops the first group when its first run has no
@@ -626,11 +627,11 @@ compatibility).
 
 ## 7. Page result types and parsers — `com.revenge.innertube.pages`
 
-All page containers are immutable `data class`es. All parsers are stateless, synchronous and pure;
-they never throw for expected missing optional metadata — they return `null` for an unparsable row,
-and callers drop `null`s with `mapNotNull`. A thrown exception is limited to programmer error (e.g.
-non-null assertion in `HistoryPage.fromMusicShelfRenderer`, documented below). Network/page
-assembly is done by `YouTube` (out of scope).
+All page containers are immutable `data class`es. All parsers are stateless, synchronous and pure.
+They return `null` for a row whose required identity is missing; such rows are omitted from the
+resulting list and never abort the page. The only throwing paths are the specific cases called out
+below (Sections 7.3 and 7.8), where the contract is an exception rather than a dropped row.
+Network/page assembly is done by `YouTube` (out of scope).
 
 ### 7.0 `PageHelper`
 
@@ -643,7 +644,7 @@ String?)` and:
 | `isAddLibraryIcon(iconType: String?): Boolean` | true only for `LIBRARY_ADD`, `BOOKMARK_BORDER`. |
 | `isSavedLibraryIcon(iconType: String?): Boolean` | true only for `LIBRARY_SAVED`, `BOOKMARK`, `LIBRARY_REMOVE`. |
 | `extractRuns(columns: List<FlexColumn>, typeLike: String): List<Run>` | Concatenates, in column order then run order, runs whose endpoint music type contains `typeLike`. Endpoint type = watch endpoint `musicVideoType`, else browse endpoint `pageType`; runs with neither are skipped. |
-| `extractLibraryTokensFromMenuItems(items: List<Menu.MenuRenderer.Item>?): LibraryFeedbackTokens` | `null` items → `(null, null)`. Iterates toggle menu items whose icon `isLibraryIcon`. For an add-icon entry the default feedback token is the add token and the toggled token the remove token; for a saved-icon entry the default is the remove token and the toggled the add token. First non-null wins per slot; missing endpoint/token leaves `null`. |
+| `extractLibraryTokensFromMenuItems(items: List<Menu.MenuRenderer.Item>?): LibraryFeedbackTokens` | `null` items → `(null, null)`. For each toggle menu item, in list order, whose icon `isLibraryIcon`: an add-icon entry contributes its default feedback token as the add token and its toggled token as the remove token; a saved-icon entry contributes its default token as the remove token and its toggled token as the add token. The first non-null value wins per slot; a missing endpoint or token leaves that slot `null`. |
 | `extractFeedbackToken(menu: Menu.MenuRenderer.Item.ToggleMenuServiceRenderer?, type: String): String?` | `null` menu → `null`. `LIBRARY_ADD` → default token when currently not-saved, else toggled. `LIBRARY_REMOVE`/`LIBRARY_SAVED` → toggled when not-saved, else default. Any other `type` → default when the icon equals `type`, else toggled. |
 
 ### 7.1 `BrowseResult`
@@ -717,10 +718,9 @@ Companion functions (all pure):
   - `title`: first run from `extractRuns(flexColumns, "MUSIC_VIDEO")`, cleaned with `ApiText.clean`.
   - `artists`: runs from `extractRuns(flexColumns, "MUSIC_PAGE_TYPE_ARTIST")`; if empty, the
     supplied album's artists; otherwise empty list.
-  - `album`: supplied album (`Album(album.title, album.browseId)`), else flex column index 2 first
-    run with a browse id. Unlike most optional fields this path uses a non-null assertion: when
-    neither the supplied album nor the flex column provides a browse id, the parser throws (an
-    assembly error) rather than dropping the row. `YouTube.album` always supplies the album.
+  - `album`: the supplied album (`Album(album.title, album.browseId)`), else the first run of flex
+    column index 2 that carries a browse id. When neither source provides a browse id the call
+    throws; this is an assembly error, not a dropped row. `YouTube.album` always supplies the album.
   - `duration`: first fixed-column run text parsed by `parseTime`.
   - `musicVideoType`, thumbnail (`musicThumbnailRenderer`, else album thumbnail), explicit badge
     (`MUSIC_EXPLICIT_BADGE`), library tokens.
@@ -795,10 +795,9 @@ them.
 `data class HistoryPage(sections: List<HistorySection>?)`, nested
 `HistorySection(title: String, songs: List<SongItem>)`.
 
-- `fromMusicShelfRenderer(renderer): HistorySection` — **non-null contract**: title = first run
-  cleaned (non-null assertion), songs = mapped rows (non-null assertion). A malformed shelf without
-  title/contents may throw; this is accepted behaviour, but `YouTube` only calls it for a real
-  shelf.
+- `fromMusicShelfRenderer(renderer): HistorySection` — **non-null contract**: returns the cleaned
+  first title run and the mapped song rows. A malformed shelf lacking a title or contents throws;
+  this is accepted behaviour because `YouTube` only calls it for a real shelf.
 - Row parser: videoId four-step fallback (required); title first flex-column run cleaned; artists
   from flex column 1's first split group odd runs (empty list if absent); album from flex column 3;
   duration fixed column; thumbnail required; explicit badge; library tokens; `historyRemoveToken`
@@ -893,12 +892,15 @@ String?, endpoint: WatchEndpoint)`.
   MUSIC_VIDEO_TYPE_PODCAST_EPISODE` and an overlay play watch endpoint; id/title required; artists =
   subtitle run whose browse id is `MPSP`; thumbnail required; publishedText = first flex-column-1
   run without a navigation endpoint, trimmed.
-- `parseDuration(runs: List<Run>): Int?`:
-  - Joins run texts, replaces `"•"` with a space, trims. Empty → `null`.
-  - If the joined text contains `":"`, delegate to `String.parseTime()` (Section 11).
-  - Otherwise scan `(\d+)\s*(\p{L}+)` pairs, accumulate: unit starting `h`/`o`/`st` → hours,
-    `m` → minutes, `s` → seconds; unknown units ignored. Return accrued seconds only when at
-    least one unit matched and the total is `> 0`; otherwise `null`.
+- `parseDuration(runs: List<Run>): Int?` — converts a human duration to whole seconds:
+  - The run texts are joined (`"•"` treated as a space) and trimmed. Empty input → `null`.
+  - Text containing `":"` is read in clock form (`"mm:ss"` or `"hh:mm:ss"`), the same rule as
+    `parseTime` (Section 11).
+  - Otherwise each digit group followed by a letter word is read as an amount/unit pair. Units
+    beginning with `h`, `o` or `st` are hours; beginning with `m` are minutes; beginning with `s`
+    are seconds; unrecognised units are ignored.
+  - Returns the total seconds only when at least one unit was recognised and the total is greater
+    than zero; otherwise `null`.
   - Examples: `"23 min"` → 1380; `"1 h 5 min"` → 3900; `"1:05:00"` → 3900; `"45 s"` → 45;
     `"unknown"` → `null`; `"0 min"` → `null`.
 
@@ -1017,7 +1019,7 @@ as declared in Section 7. A token is never invented; absence means `null` (end o
 
 ### 8.2 Continuation-walk rules (contract for helpers built on these pages)
 
-The canonical walk (used by `innertube/utils/Utils.kt` and `YouTube`) must satisfy:
+The canonical continuation walk used by the paging helpers must satisfy:
 
 1. Start from the first page's continuation field.
 2. Maintain a visited set of tokens. Stop when the token is `null` or already visited.
@@ -1038,8 +1040,8 @@ parsed songs list is empty.
 
 ### 8.3 Malformed-row handling
 
-- `mapNotNull` semantics: a row missing its key identity (video/browse id, title, required
-  thumbnail) is dropped silently. The page remains valid with fewer items.
+- A row missing its key identity (video/browse id, title, required thumbnail) is omitted silently.
+  The page remains valid with fewer items.
 - Missing optional metadata yields `null`/empty fields; it never aborts the page.
 - Missing required **envelope** fields (e.g. `MusicResponsiveListItemRenderer.flexColumns`,
   `PlaylistPanelVideoRenderer.selected`, `BrowseResponse.responseContext`) raises
@@ -1118,9 +1120,12 @@ Threading:
 
 ---
 
-## 12. Target files the implementer must write
+## 12. Module surface inventory
 
-Source files (70). All paths relative to the repository root:
+For orientation, the expected source files are listed below. File-level organisation is not part of
+the behavioural contract: an implementation may split or name its own files freely, provided the
+public FQCNs, signatures and wire names in Sections 3–6 are preserved. The test file paths are fixed
+by the acceptance harness. Paths are relative to the repository root.
 
 `innertube/src/main/kotlin/com/revenge/innertube/models/`:
 `AccountInfo.kt`, `Badges.kt`, `Context.kt`, `Continuation.kt`, `ContinuationItemRenderer.kt`,
@@ -1145,7 +1150,7 @@ NextResponse,PlayerResponse,QueueAndSuggestionsResponses,SearchResponse}.kt`.
 `PlaylistPage.kt`, `PodcastPage.kt`, `RelatedPage.kt`, `SearchPage.kt`, `SearchSuggestionPage.kt`,
 `SearchSummaryPage.kt`.
 
-Tests the implementer must write (5):
+Acceptance test files (5, fixed paths):
 
 - `innertube/src/test/kotlin/com/revenge/innertube/models/RunsTest.kt`
 - `innertube/src/test/kotlin/com/revenge/innertube/models/SerializationTest.kt`

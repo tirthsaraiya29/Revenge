@@ -11,6 +11,7 @@ is illustrative.
 > observable contracts below, and are similarity-audited against the original source. A stated
 > constant or formula is a behavioural requirement (pinned by an acceptance test), not a demand
 > to mirror the original code.
+
 Working directory: `c:/Users/tirth/Downloads/Projects/Revenge`.
 Module: `:app` (app sources) with one consumed contract from `:lyrics`, `:core`, `:innertube`,
 `:playback`, `:domain`.
@@ -380,7 +381,7 @@ Public operations mirror the client: `connect`, `disconnect`, `createRoom`, `joi
 
 Constants: sync debounce 1000 ms, position tolerance 2000 ms, playback-position tolerance 3000 ms;
 suppression window after a sent action 300 ms (200 ms after applying a guest sync); host heartbeat
-10 s; queue observation debounce 500 ms; player-ready polls 50 ms.
+10 s; queue observation debounce 500 ms; player-ready wait 5 s.
 
 ### 4.1 Player events (host/controller → server)
 Observed only while in room and `canControlMusic`; suppressed while a sync is being applied.
@@ -402,13 +403,13 @@ The current queue is mapped from timeline windows (unknown metadata → `TrackIn
 Applies only while `isGuestPlaybackRestricted`. Every inbound action sets `isSyncing` and clears it
 after 200 ms.
 - `PLAY`: target = position + max(0, now − serverTime) when serverTime present. If buffering is
-  pending, update `pendingSyncState` and wait for buffer completion. Debounce if already playing,
-  within 2 s and < 1 s since last sync. While playing, seek only when drift > 3 s; while paused,
-  seek when drift > 2 s then play.
+  pending, remember the new target state and wait for buffer completion. Debounce if already
+  playing, within 2 s and < 1 s since last sync. While playing, seek only when drift > 3 s; while
+  paused, seek when drift > 2 s then play.
 - `PAUSE`: analogous; debounce when already paused, in sync and recent; pause then seek if drift > 2 s.
 - `SEEK`: debounce within 1 s; seek only when drift > 2 s.
-- `CHANGE_TRACK`: with non-empty queue → replace queue/state via `applyPlaybackState`; otherwise
-  `syncToTrack(track, false, 0)` (Innertube queue load, buffer-ready handshake).
+- `CHANGE_TRACK`: with a non-empty queue → replace queue and state; otherwise load the track from
+  its radio seed (Innertube queue load, buffer-ready handshake).
 - `SKIP_NEXT` / `SKIP_PREV`: delegate to player; no local queue mutation.
 - `QUEUE_ADD`: resolve `YouTube.queue([track.id])`; insert next or append; preserve `suggestedBy`;
   wrap player mutation in `allowInternalSync`.
@@ -417,10 +418,10 @@ after 200 ms.
 - `SET_VOLUME`: apply only for guests when `ListenTogetherSyncVolumeKey` is true; clamp 0..1 and set
   `service.playerVolume`.
 - `SYNC_QUEUE`: rebuild media items, preserve current media id/position, restore play state, set
-  queue title; cancel a previous `activeSyncJob`; ignored if the player connection changed.
+  queue title; supersede any in-flight queue sync; ignored if the player connection changed.
 
-`handleSyncState` adjusts position by `now − lastUpdate` when playing and applies state with
-`bypassBuffer = true`.
+A received `sync_state` adjusts the position by `now − lastUpdate` when playing and applies the
+state with buffer bypass.
 
 ### 4.3 Buffer handshake and state application
 Applying a playback state (current track, play state, position, optional queue and queue title,
@@ -533,11 +534,11 @@ thumbnail, and `musicVideoType`/`isVideoSong` equivalents required by `SongItem`
   no more pages, or `MAX_FEED_SIZE=300` reached. Up to 3 fetch rounds until one item is added.
 - `select(index)` clamps to `0..lastIndex`; `indexOf(songId)`, `hide(songId)`,
   `lessLikeThis(item)`, `isHidden(songId)`.
-- `append` applies seen/hidden sets, filters, ranks with the tail artists, takes available room,
-  marks newly added as seen, clears the error.
+- `append` filters and ranks new items against the seen set and the tail artists, admits up to the
+  available room, marks them seen, and clears the error.
 - Append-only invariant: a page index, once visible, always maps to the same song for the session.
-- `queueHandle`, `queueSnapshot`, `generation` are session-wide handoff fields used by the
-  coordinator/service; `PREFETCH_THRESHOLD=4` is a UI prefetch hint.
+- The session exposes a queue handle and queue snapshot as the handoff to the coordinator/service;
+  the current generation identifies the live feed. `PREFETCH_THRESHOLD=4` is a UI prefetch hint.
 
 ### 5.5 Coordinator and player port
 `MusicFlowPlayer` (interface): `currentMediaId`, `queueMediaIds`, `ownsQueue(handle)`,
@@ -562,8 +563,9 @@ thumbnail, and `musicVideoType`/`isVideoSong` equivalents required by `SongItem`
 
 `MusicFlowQueue(title, items, startIndex, session)` implements `Queue`:
 `preloadItem = null`; initial status = title, mapped media items, clamped start index; `hasNextPage`
-only while `session.generation == captured generation` and `hasMore`; `nextPage` returns
-`session.loadMore()` mapped to media items (empty when generation changed). `BROWSE_SKIP_THRESHOLD_MS = 10_000`.
+only while the queue still belongs to the live session generation and `hasMore`; `nextPage`
+returns `session.loadMore()` mapped to media items (empty once the generation has changed).
+`BROWSE_SKIP_THRESHOLD_MS = 10_000`.
 
 ### 5.6 Preferences
 `MusicFlowPreferences.from(Preferences)`: enabled/autoplay/autoNext/lyrics/cellularPrefetch/
@@ -599,7 +601,7 @@ hideRecent/dataSaver default true, animatedBackground default false but falls ba
 
 ### 6.3 `SongPlayStatsRepository`
 `recordListenedMs(title, artist, videoId?, artworkUrl?, listenedMs, completed)`:
-- blank title → no-op; key = `trackKeyOf`; runs on IO under a mutex.
+- blank title → no-op; key = `trackKeyOf`; runs on IO; concurrent writes are serialised.
 - Existing row: additive `totalPlayTimeMs`, `playCount +1` only when `completed`, update non-null
   videoId/artwork, `lastPlayedAtMillis = now`.
 - New row: totals = listenedMs, playCount 1/0, skipCount 0, now.
@@ -621,7 +623,7 @@ hideRecent/dataSaver default true, animatedBackground default false but falls ba
 7. Empty result → failure `"Could not generate playlist from seeds"`.
 8. Persist playlist id `"local_taste_daily_mix"`, name `"My Taste Mix"` (clear + insert playlist,
    songs, position maps, in one transaction). Return success with the id.
-Any unexpected exception → `Result.failure(e)`. `persistPlaylist` is protected for override/testing.
+Any unexpected exception → `Result.failure(e)`.
 
 ### 6.5 `RecommendationEngine : LocalTasteEngine`
 Same steps, plus:
@@ -656,7 +658,7 @@ Same steps, plus:
 - `clearCache()`.
 - `GENRE_CACHE_TTL_MILLIS = 3_600_000`.
 
-### 6.7 `TasteProfileProvider` (singleton, open, mutex)
+### 6.7 `TasteProfileProvider` (singleton, open; concurrent access serialised)
 `get(forceRefresh = false): TasteProfile?` layers:
 1. In-memory cache if fresh (< 1 h) and not forced.
 2. Room `TasteProfileDao.get()` if fresh; decode JSON fields; lowercase artists/genres.
@@ -768,7 +770,7 @@ External services:
   `Result.failure("Could not determine location from IP.")`.
 - Device location: `LocationManager` providers GPS → NETWORK → PASSIVE, last-known only, freshness
   ≤ 30 min, newest `elapsedRealtimeNanos` wins; optional reflection-based Play Services fused
-  provider polled up to 2 s (100 ms); any failure → null. Requires location permissions; annotated
+  provider attempted for up to 2 s; any failure → null. Requires location permissions; annotated
   `@SuppressLint("MissingPermission")` — caller must obtain the runtime permission.
 - `WeatherCoverOverlay(imageUrl?, playlistName, weatherInfo?, modifier, shape, placeholderPainter?)`
   is a pure Compose composable (square, rounded, gradient + title + optional weather row); no
@@ -894,16 +896,18 @@ Rules:
   `YouTube.podcast(showId)`; first ever check stores all ids without notifying; afterwards notify
   only for the first id not seen, and record ids only when the notification was actually posted
   (no POST_NOTIFICATIONS → defer so it can notify later). Notification channel `podcast_episodes`,
-  id `showId.hashCode()`, opens `https://music.youtube.com/playlist?list=<showId>` in MainActivity.
-  Missing permission is not an error.
+  a notification id derived from the show id, opens
+  `https://music.youtube.com/playlist?list=<showId>` in MainActivity. Missing permission is not an
+  error.
 - `EpisodeDates.parse(text, now)`: best-effort, locale-aware (device then English month names);
   handles today/yesterday, absolute `D MMM [YYYY]` / `MMM D[, YYYY]` (current year unless future
   when year omitted), and relative `<n> <unit>` for seconds/minutes/hours/days/weeks/months/years
   (Italian + English prefixes); returns null when unrecognised.
 - `LocalFileDownloader.download(context, url, destinationDirUri, fileName, mimeType, userAgent?)`:
   SAF tree document; validate directory writable; create/reuse file; OkHttp `Range: bytes=0-`
-  request; stream with 8 KiB buffer and progress notification on channel `local_downloads` (id =
-  fileName hash, updates ≤ 1/s); Toasts on failure/success; all errors logged. No return value.
+  request; stream to the file with a progress notification on channel `local_downloads` (id
+  derived from the file name, updates ≤ 1/s); Toasts on failure/success; all errors logged. No
+  return value.
 - `LocalMediaIntents`: `String.isLocalMediaId()`, `shareLocalAudio(...)`; keep signatures.
 - `QuickPickSongs.filterQuickPickSongs(songs, excludedSongIds, blockedArtists, hideExplicit,
   hideVideoSongs)`: exclude hidden/`excludedSongIds`, then blocked artists / explicit / video songs;
@@ -935,8 +939,8 @@ Wrapped UI consumes DAO aggregates; the cluster guarantees the following shapes:
 - `SyncStatus { Idle, Syncing, Error(message), Completed }`;
   `SyncState(overallStatus, likedSongs, librarySongs, uploadedSongs, likedAlbums, uploadedAlbums,
   artists, playlists, currentOperation)`.
-- Single-consumer buffered channel processed on IO; exceptions per operation are logged and do not
-  kill the consumer. `syncState` is a `StateFlow`.
+- Operations are processed serially on IO; an exception in one operation is logged and does not
+  stop subsequent operations. `syncState` is a `StateFlow`.
 - All operations are no-ops when not logged in (`SAPISID` present in the InnerTube cookie).
 - Retry: 3 attempts, 1 s initial, doubling. Inter-operation delay 50 ms.
 - Full sync order: liked songs → library songs → uploaded songs → liked albums → uploaded albums →
@@ -1024,13 +1028,14 @@ Required types/signatures (must not drift):
   `StateFlow` is the thread-safe handoff. `events` may drop oldest at overflow. Manager collects on
   Main and must not block.
 - `isSyncing` is the single re-entrancy guard for playback; every entry/exit must be balanced,
-  including `finally`. Generation counters make stale asynchronous applies abort.
+  including on failure. A stale asynchronous application must abort instead of mutating the
+  player.
 - Manager coroutines are `SupervisorJob`; one failed observer must not cancel others.
-- Music Flow session is mutex-serialised; `loadMore` and `reset` are not re-entrant. Generation
-  invalidation makes an old `MusicFlowQueue` stop paging.
+- Music Flow session operations are serialised; `loadMore` and `reset` are not re-entrant.
+  Generation invalidation makes an old `MusicFlowQueue` stop paging.
 - Taste/generation/AI run on `Dispatchers.IO`. `CancellationException` is always rethrown; ordinary
   exceptions become `Result.failure`, logs or null per §6–§7.
-- `SongPlayStatsRepository` and `TasteProfileProvider` serialise writes with a mutex.
+- `SongPlayStatsRepository` and `TasteProfileProvider` serialise their writes.
 - Local scan is one Room transaction; cancellation must not leave a partially applied scan.
 - No source function may throw across a public boundary unless documented (`translate` returns
   `Result`, `get` returns nullable, AI returns null/Unit, scanner throws only DB failures from the

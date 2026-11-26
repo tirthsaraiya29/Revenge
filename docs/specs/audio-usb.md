@@ -624,9 +624,7 @@ Behaviour:
 
 ## 11. `com.revenge.usbaudio.UsbDacAudioSink`
 
-`@UnstableApi class UsbDacAudioSink(private val driver: UsbAudioDriver, var capabilities: DacCapabilities = DacCapabilities(uacVersion = 2), private val dacConnectionProvider: (() -> DacDeviceState.Connected?)? = null) : android.media.exoplayer.audio.AudioSink`
-
-(Use the Media3 package `androidx.media3.exoplayer.audio.AudioSink`.)
+`@UnstableApi class UsbDacAudioSink(private val driver: UsbAudioDriver, var capabilities: DacCapabilities = DacCapabilities(uacVersion = 2), private val dacConnectionProvider: (() -> DacDeviceState.Connected?)? = null) : androidx.media3.exoplayer.audio.AudioSink`
 
 Purpose: bridge Media3 decoded PCM to `UsbAudioDriver`. It renders via the platform `AudioTrack`
 route; it does not bypass the mixer. It must implement the full Media3 `AudioSink` interface (see

@@ -426,8 +426,9 @@ Because `cleanArtist` is the full string, splitting never degrades the display/s
 
 For the extracted title (after §6.4): collapse every run of whitespace to a single space, trim, then
 remove any trailing characters from the set hyphen-minus `-`, en dash `–`, em dash `—`, `|`, `/`,
-and trim again. Internal punctuation and internal spaces are preserved. Examples: `"Alone - "` → `"Alone"`;
-`"  Song   Name  "` → `"Song Name"`; `"Part - Two"` stays `"Part - Two"` when no peel occurred.
+and trim again. Internal punctuation and internal spaces are preserved. Examples:
+`"Alone - "` → `"Alone"`; `"  Song   Name  "` → `"Song Name"`; `"Part - Two"` stays `"Part - Two"`
+when no peel occurred.
 
 ### 6.9 Errors and edge cases
 
