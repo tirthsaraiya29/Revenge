@@ -171,6 +171,7 @@ object NewPipeExtractor {
         utils().getStreamUrl(format, videoId)
 
     fun newPipePlayer(videoId: String): List<Pair<Int, String>> = try {
+        utils()
         val info = StreamInfo.getInfo(NewPipe.getService(0), WATCH_URL + videoId)
         val streams = info.videoStreams + info.audioStreams + info.videoOnlyStreams
         streams.mapNotNull { stream ->
@@ -183,6 +184,7 @@ object NewPipeExtractor {
     }
 
     fun getVideoUrlAndDuration(videoId: String): Pair<String, Long>? = try {
+        utils()
         val info = StreamInfo.getInfo(NewPipe.getService(0), WATCH_URL + videoId)
         val streams = (info.videoStreams + info.videoOnlyStreams).distinctBy { it.content }
         val chosen = chooseVideoStream(streams)
@@ -193,6 +195,7 @@ object NewPipeExtractor {
     }
 
     fun getVideoTracks(videoId: String): List<NewPipeVideoTrack> = try {
+        utils()
         val info = StreamInfo.getInfo(NewPipe.getService(0), WATCH_URL + videoId)
         val bestAudio = info.audioStreams
             .filter { !it.content.isNullOrBlank() }

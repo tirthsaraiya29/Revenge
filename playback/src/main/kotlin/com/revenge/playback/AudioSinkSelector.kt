@@ -2,10 +2,8 @@
 
 package com.revenge.playback
 
-import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.audio.AudioSink
 
-@UnstableApi
 object AudioSinkSelector {
 
     fun selectSink(

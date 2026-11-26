@@ -699,7 +699,7 @@ object YouTube {
             isPodcast = false,
         )
 
-        var related = secondary?.contents.orEmpty().drop(1).flatMap { content ->
+        var related: List<YTItem> = secondary?.contents.orEmpty().drop(1).flatMap { content ->
             val rows = content.musicShelfRenderer?.contents.orEmpty() +
                 content.musicPlaylistShelfRenderer?.contents.orEmpty()
             rows.mapNotNull { item ->

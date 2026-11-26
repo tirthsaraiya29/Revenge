@@ -31,6 +31,38 @@ public final class Uri implements Parcelable {
         return new Uri("file://" + file.getAbsolutePath());
     }
 
+    public static Uri fromParts(String scheme, String ssp, String fragment) {
+        String base = scheme + ":" + ssp;
+        return new Uri(fragment == null ? base : base + "#" + fragment);
+    }
+
+    public static Uri withAppendedPath(Uri baseUri, String pathSegment) {
+        String base = baseUri.toString();
+        return new Uri(base.endsWith("/") ? base + pathSegment : base + "/" + pathSegment);
+    }
+
+    public static String encode(String value) {
+        if (value == null) {
+            return null;
+        }
+        try {
+            return java.net.URLEncoder.encode(value, "UTF-8").replace("+", "%20");
+        } catch (java.io.UnsupportedEncodingException e) {
+            return value;
+        }
+    }
+
+    public static String decode(String value) {
+        if (value == null) {
+            return null;
+        }
+        try {
+            return java.net.URLDecoder.decode(value, "UTF-8");
+        } catch (java.io.UnsupportedEncodingException e) {
+            return value;
+        }
+    }
+
     public String getScheme() {
         int separator = raw.indexOf(':');
         if (separator <= 0) {

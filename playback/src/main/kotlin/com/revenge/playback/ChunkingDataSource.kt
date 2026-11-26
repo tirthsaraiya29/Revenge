@@ -4,7 +4,6 @@ package com.revenge.playback
 
 import android.net.Uri
 import androidx.media3.common.C
-import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSourceException
 import androidx.media3.datasource.DataSpec
@@ -13,7 +12,6 @@ import androidx.media3.datasource.TransferListener
 import java.io.IOException
 import java.io.InterruptedIOException
 
-@UnstableApi
 class ChunkingDataSource(
     private val upstream: DataSource,
     private val chunkSize: Long,

@@ -1,6 +1,5 @@
 package com.revenge.music.db.entities
 
-import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey

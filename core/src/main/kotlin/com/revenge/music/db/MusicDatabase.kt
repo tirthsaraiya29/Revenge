@@ -182,17 +182,19 @@ class MusicDatabase(private val delegate: InternalDatabase) : DatabaseDao by del
     val openHelper: SupportSQLiteOpenHelper get() = delegate.openHelper
 
     fun query(block: MusicDatabase.() -> Unit) {
-        delegate.queryExecutor.execute { runCatching { block(this) } }
+        delegate.queryExecutor.execute { runCatching { block(this@MusicDatabase) } }
     }
 
     fun transaction(block: MusicDatabase.() -> Unit) {
         delegate.transactionExecutor.execute {
-            runCatching { delegate.runInTransaction(Runnable { block(this) }) }
+            runCatching {
+                delegate.runInTransaction(Runnable { block(this@MusicDatabase) })
+            }
         }
     }
 
     suspend fun withTransaction(block: suspend MusicDatabase.() -> Unit) {
-        delegate.withTransaction { block() }
+        delegate.withTransaction { block(this@MusicDatabase) }
     }
 
     fun close() {
@@ -213,10 +215,6 @@ private fun SupportSQLiteDatabase.tableColumns(table: String): Set<String> =
             }
         }
     }
-
-private fun SupportSQLiteDatabase.hasTable(table: String): Boolean =
-    query("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?", arrayOf(table))
-        .use { it.moveToFirst() }
 
 private fun SupportSQLiteDatabase.addColumnIfMissing(table: String, column: String, definition: String) {
     if (column !in tableColumns(table)) {

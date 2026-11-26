@@ -15,9 +15,10 @@ data class MusicResponsiveListItemRenderer(
     val navigationEndpoint: NavigationEndpoint?,
 ) {
     val isSong: Boolean
-        get() = navigationEndpoint == null ||
-            navigationEndpoint.watchEndpoint != null ||
-            navigationEndpoint.watchPlaylistEndpoint != null
+        get() {
+            val endpoint = navigationEndpoint ?: return true
+            return endpoint.watchEndpoint != null || endpoint.watchPlaylistEndpoint != null
+        }
 
     val isPlaylist: Boolean
         get() = navigationEndpoint?.browseEndpoint?.isPlaylistEndpoint == true
