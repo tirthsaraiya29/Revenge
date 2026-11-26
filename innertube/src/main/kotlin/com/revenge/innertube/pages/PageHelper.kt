@@ -116,12 +116,11 @@ internal fun MusicResponsiveListItemRenderer.runsAt(index: Int): List<Run> =
 internal fun MusicResponsiveListItemRenderer.textAt(index: Int): String? =
     runsAt(index).firstOrNull()?.text
 
+internal fun MusicResponsiveListItemRenderer.Overlay.playEndpoint(): NavigationEndpoint? =
+    musicItemThumbnailOverlayRenderer.content.musicPlayButtonRenderer.playNavigationEndpoint
+
 internal fun MusicResponsiveListItemRenderer.overlayPlayEndpoint(): NavigationEndpoint? =
-    overlay
-        ?.musicItemThumbnailOverlayRenderer
-        ?.content
-        ?.musicPlayButtonRenderer
-        ?.playNavigationEndpoint
+    overlay?.playEndpoint()
 
 internal fun MusicResponsiveListItemRenderer.findVideoId(): String? =
     playlistItemData?.videoId
@@ -186,13 +185,3 @@ internal fun List<Button>.findButtonWatchEndpoint(iconType: String): WatchEndpoi
         ?.buttonRenderer
         ?.navigationEndpoint
         ?.anyWatchEndpoint
-
-internal fun List<Run>.oddArtists(): List<com.revenge.innertube.models.Artist> =
-    oddElements().map {
-        com.revenge.innertube.models.Artist(
-            com.revenge.metadata.cleaner.ApiText.clean(it.text),
-            it.navigationEndpoint?.browseEndpoint?.browseId,
-        )
-    }
-
-internal fun Runs?.runList(): List<Run> = this?.runs.orEmpty()

@@ -8,124 +8,52 @@ import com.revenge.innertube.models.SongItem
 import com.revenge.innertube.models.YTItem
 import com.revenge.innertube.models.oddElements
 import com.revenge.innertube.models.splitBySeparator
-import com.revenge.innertube.utils.parseTime
 import com.revenge.metadata.cleaner.ApiText
 
 data class PlaylistPage(
-  val playlist: PlaylistItem,
-  val songs: List<SongItem>,
-  val songsContinuation: String?,
-  val continuation: String?,
-  val related: List<YTItem>? = null,
+    val playlist: PlaylistItem,
+    val songs: List<SongItem>,
+    val songsContinuation: String?,
+    val continuation: String?,
+    val related: List<YTItem>? = null,
 ) {
-  companion object {
-    fun fromMusicResponsiveListItemRenderer(renderer: MusicResponsiveListItemRenderer): SongItem? {
-      val tokens = PageHelper.extractLibraryTokensFromMenuItems(renderer.menu?.menuRenderer?.items)
-      val secondary =
-        renderer.flexColumns
-          .getOrNull(1)
-          ?.musicResponsiveListItemFlexColumnRenderer
-          ?.text
-          ?.runs
-          ?.splitBySeparator()
+    companion object {
+        fun fromMusicResponsiveListItemRenderer(renderer: MusicResponsiveListItemRenderer): SongItem? {
+            val videoId = renderer.findVideoId() ?: return null
+            val title = renderer.textAt(0)?.let(ApiText::clean) ?: return null
 
-      val videoId =
-        renderer.playlistItemData?.videoId
-          ?: renderer.navigationEndpoint?.watchEndpoint?.videoId
-          ?: renderer.overlay
-            ?.musicItemThumbnailOverlayRenderer
-            ?.content
-            ?.musicPlayButtonRenderer
-            ?.playNavigationEndpoint
-            ?.watchEndpoint
-            ?.videoId
-          ?: renderer.flexColumns
-            .firstOrNull()
-            ?.musicResponsiveListItemFlexColumnRenderer
-            ?.text
-            ?.runs
-            ?.firstOrNull()
-            ?.navigationEndpoint
-            ?.watchEndpoint
-            ?.videoId
-          ?: return null
+            val artists = renderer.runsAt(1)
+                .splitBySeparator()
+                .firstOrNull()
+                ?.oddElements()
+                .orEmpty()
+                .map { Artist(ApiText.clean(it.text), it.navigationEndpoint?.browseEndpoint?.browseId) }
 
-      return SongItem(
-        id = videoId,
-        title =
-          renderer.flexColumns
-            .firstOrNull()
-            ?.musicResponsiveListItemFlexColumnRenderer
-            ?.text
-            ?.runs
-            ?.firstOrNull()
-            ?.text
-            ?.let(ApiText::clean) ?: return null,
-        artists =
-          secondary
-            ?.firstOrNull()
-            ?.oddElements()
-            ?.map {
-              Artist(ApiText.clean(it.text), it.navigationEndpoint?.browseEndpoint?.browseId)
+            val albumRun = renderer.runsAt(2).firstOrNull()
+            val albumId = albumRun?.navigationEndpoint?.browseEndpoint?.browseId
+            val album = if (albumRun != null && albumId != null) {
+                Album(ApiText.clean(albumRun.text), albumId)
+            } else {
+                null
             }
-            .orEmpty(),
-        album =
-          renderer.flexColumns
-            .getOrNull(2)
-            ?.musicResponsiveListItemFlexColumnRenderer
-            ?.text
-            ?.runs
-            ?.firstOrNull()
-            ?.let {
-              Album(
-                ApiText.clean(it.text),
-                it.navigationEndpoint?.browseEndpoint?.browseId ?: return@let null,
-              )
-            },
-        duration =
-          renderer.fixedColumns
-            ?.firstOrNull()
-            ?.musicResponsiveListItemFlexColumnRenderer
-            ?.text
-            ?.runs
-            ?.firstOrNull()
-            ?.text
-            ?.parseTime(),
-        musicVideoType = renderer.musicVideoType,
-        thumbnail = renderer.thumbnail?.musicThumbnailRenderer?.getThumbnailUrl() ?: return null,
-        explicit =
-          renderer.badges?.any {
-            it.musicInlineBadgeRenderer?.icon?.iconType == "MUSIC_EXPLICIT_BADGE"
-          } == true,
-        endpoint =
-          renderer.overlay
-            ?.musicItemThumbnailOverlayRenderer
-            ?.content
-            ?.musicPlayButtonRenderer
-            ?.playNavigationEndpoint
-            ?.watchEndpoint,
-        setVideoId =
-          renderer.playlistItemData?.playlistSetVideoId
-            ?: renderer.navigationEndpoint?.watchEndpoint?.playlistSetVideoId
-            ?: renderer.overlay
-              ?.musicItemThumbnailOverlayRenderer
-              ?.content
-              ?.musicPlayButtonRenderer
-              ?.playNavigationEndpoint
-              ?.watchEndpoint
-              ?.playlistSetVideoId
-            ?: renderer.flexColumns
-              .firstOrNull()
-              ?.musicResponsiveListItemFlexColumnRenderer
-              ?.text
-              ?.runs
-              ?.firstOrNull()
-              ?.navigationEndpoint
-              ?.watchEndpoint
-              ?.playlistSetVideoId,
-        libraryAddToken = tokens.addToken,
-        libraryRemoveToken = tokens.removeToken,
-      )
+
+            val thumbnail = renderer.thumbnail?.thumbnailUrl() ?: return null
+            val tokens = renderer.libraryTokens()
+
+            return SongItem(
+                id = videoId,
+                title = title,
+                artists = artists,
+                album = album,
+                duration = renderer.durationSeconds(),
+                musicVideoType = renderer.musicVideoType,
+                thumbnail = thumbnail,
+                explicit = renderer.badges.hasExplicitBadge(),
+                endpoint = renderer.overlayPlayEndpoint()?.watchEndpoint,
+                setVideoId = renderer.findSetVideoId(),
+                libraryAddToken = tokens.addToken,
+                libraryRemoveToken = tokens.removeToken,
+            )
+        }
     }
-  }
 }

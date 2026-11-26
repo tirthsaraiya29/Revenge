@@ -12,43 +12,50 @@ import com.revenge.innertube.utils.parseTime
 import com.revenge.metadata.cleaner.ApiText
 
 data class NextResult(
-  val title: String? = null,
-  val items: List<SongItem>,
-  val currentIndex: Int? = null,
-  val lyricsEndpoint: BrowseEndpoint? = null,
-  val relatedEndpoint: BrowseEndpoint? = null,
-  val continuation: String?,
-  val endpoint: WatchEndpoint,
+    val title: String? = null,
+    val items: List<SongItem>,
+    val currentIndex: Int? = null,
+    val lyricsEndpoint: BrowseEndpoint? = null,
+    val relatedEndpoint: BrowseEndpoint? = null,
+    val continuation: String?,
+    val endpoint: WatchEndpoint,
 )
 
 object NextPage {
-  /** The watch queue the player reads; also where library tokens and setVideoIds come from. */
-  fun fromPlaylistPanelVideoRenderer(renderer: PlaylistPanelVideoRenderer): SongItem? {
-    val byline = renderer.longBylineText?.runs?.splitBySeparator() ?: return null
-    val tokens = PageHelper.extractLibraryTokensFromMenuItems(renderer.menu?.menuRenderer?.items)
+    fun fromPlaylistPanelVideoRenderer(renderer: PlaylistPanelVideoRenderer): SongItem? {
+        val byline = renderer.longBylineText?.runs?.splitBySeparator() ?: return null
+        val firstGroup = byline.getOrNull(0) ?: return null
 
-    return SongItem(
-      id = renderer.videoId ?: return null,
-      title = renderer.title?.runs?.firstOrNull()?.text ?: return null,
-      artists =
-        byline.firstOrNull()?.oddElements()?.map {
-          Artist(name = ApiText.clean(it.text), id = it.navigationEndpoint?.browseEndpoint?.browseId)
-        } ?: return null,
-      album =
-        byline
-          .getOrNull(1)
-          ?.firstOrNull()
-          ?.takeIf { it.navigationEndpoint?.browseEndpoint != null }
-          ?.let { Album(ApiText.clean(it.text), it.navigationEndpoint?.browseEndpoint?.browseId!!) },
-      duration = renderer.lengthText?.runs?.firstOrNull()?.text?.parseTime() ?: return null,
-      musicVideoType = renderer.navigationEndpoint.musicVideoType,
-      thumbnail = renderer.thumbnail.thumbnails.lastOrNull()?.url ?: return null,
-      explicit =
-        renderer.badges?.any {
-          it.musicInlineBadgeRenderer?.icon?.iconType == "MUSIC_EXPLICIT_BADGE"
-        } == true,
-      libraryAddToken = tokens.addToken,
-      libraryRemoveToken = tokens.removeToken,
-    )
-  }
+        val id = renderer.videoId ?: return null
+        val title = renderer.title?.runs?.firstOrNull()?.text?.let(ApiText::clean) ?: return null
+
+        val artists = firstGroup.oddElements().map {
+            Artist(ApiText.clean(it.text), it.navigationEndpoint?.browseEndpoint?.browseId)
+        }
+
+        val albumRun = byline.getOrNull(1)?.firstOrNull()
+        val albumId = albumRun?.navigationEndpoint?.browseEndpoint?.browseId
+        val album = if (albumRun != null && albumId != null) {
+            Album(ApiText.clean(albumRun.text), albumId)
+        } else {
+            null
+        }
+
+        val duration = renderer.lengthText?.runs?.firstOrNull()?.text?.parseTime() ?: return null
+        val thumbnail = renderer.thumbnail.thumbnails.lastOrNull()?.url ?: return null
+        val tokens = PageHelper.extractLibraryTokensFromMenuItems(renderer.menu?.menuRenderer?.items)
+
+        return SongItem(
+            id = id,
+            title = title,
+            artists = artists,
+            album = album,
+            duration = duration,
+            musicVideoType = renderer.navigationEndpoint.musicVideoType,
+            thumbnail = thumbnail,
+            explicit = renderer.badges.hasExplicitBadge(),
+            libraryAddToken = tokens.addToken,
+            libraryRemoveToken = tokens.removeToken,
+        )
+    }
 }

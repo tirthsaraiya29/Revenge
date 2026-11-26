@@ -13,146 +13,90 @@ import com.revenge.innertube.models.splitBySeparator
 import com.revenge.metadata.cleaner.ApiText
 
 object SearchSuggestionPage {
-  fun fromMusicResponsiveListItemRenderer(renderer: MusicResponsiveListItemRenderer): YTItem? =
-    when {
-      renderer.isSong -> {
-        val secondary =
-          renderer.flexColumns
-            .getOrNull(1)
-            ?.musicResponsiveListItemFlexColumnRenderer
-            ?.text
-            ?.runs
-            ?.splitBySeparator()
-            ?.clean()
+    fun fromMusicResponsiveListItemRenderer(renderer: MusicResponsiveListItemRenderer): YTItem? =
+        when {
+            renderer.isSong -> song(renderer)
+            renderer.isArtist -> artist(renderer)
+            renderer.isAlbum -> album(renderer)
+            else -> null
+        }
 
-        val videoId =
-          renderer.playlistItemData?.videoId
-            ?: renderer.navigationEndpoint?.watchEndpoint?.videoId
-            ?: renderer.overlay
-              ?.musicItemThumbnailOverlayRenderer
-              ?.content
-              ?.musicPlayButtonRenderer
-              ?.playNavigationEndpoint
-              ?.watchEndpoint
-              ?.videoId
-            ?: renderer.flexColumns
-              .firstOrNull()
-              ?.musicResponsiveListItemFlexColumnRenderer
-              ?.text
-              ?.runs
-              ?.firstOrNull()
-              ?.navigationEndpoint
-              ?.watchEndpoint
-              ?.videoId
+    private fun song(renderer: MusicResponsiveListItemRenderer): SongItem? {
+        val videoId = renderer.findVideoId() ?: return null
+        val title = renderer.textAt(0)?.let(ApiText::clean) ?: return null
+
+        val secondary = renderer.runsAt(1).splitBySeparator().clean()
+        val artistRuns = secondary.firstOrNull()?.oddElements().orEmpty()
+        if (artistRuns.isEmpty()) return null
+        val artists = artistRuns.map {
+            Artist(ApiText.clean(it.text), it.navigationEndpoint?.browseEndpoint?.browseId)
+        }
+
+        val albumRun = renderer.runsAt(2).firstOrNull()
+        val albumId = albumRun?.navigationEndpoint?.browseEndpoint?.browseId ?: return null
+        val album = Album(ApiText.clean(albumRun.text), albumId)
+
+        val thumbnail = renderer.thumbnail?.thumbnailUrl() ?: return null
+
+        return SongItem(
+            id = videoId,
+            title = title,
+            artists = artists,
+            album = album,
+            duration = null,
+            musicVideoType = renderer.musicVideoType,
+            thumbnail = thumbnail,
+            explicit = renderer.badges.hasExplicitBadge(),
+        )
+    }
+
+    private fun artist(renderer: MusicResponsiveListItemRenderer): ArtistItem? {
+        val browse = renderer.navigationEndpoint?.browseEndpoint ?: return null
+        val title = renderer.textAt(0)?.let(ApiText::clean) ?: return null
+        val thumbnail = renderer.thumbnail?.thumbnailUrl() ?: return null
+        return ArtistItem(
+            id = browse.browseId,
+            title = title,
+            thumbnail = thumbnail,
+            shuffleEndpoint = renderer.menu.findMenuWatchEndpoint("MUSIC_SHUFFLE"),
+            radioEndpoint = renderer.menu.findMenuWatchEndpoint("MIX"),
+        )
+    }
+
+    private fun album(renderer: MusicResponsiveListItemRenderer): AlbumItem? {
+        if (renderer.runsAt(1).isEmpty()) return null
+        val split = renderer.runsAt(1).splitBySeparator()
+
+        val browse = renderer.navigationEndpoint?.browseEndpoint ?: return null
+
+        val shuffleItem = renderer.menu
+            ?.menuRenderer
+            ?.items
+            .orEmpty()
+            .firstOrNull { it.menuNavigationItemRenderer?.icon?.iconType == "MUSIC_SHUFFLE" }
+        val playlistId = shuffleItem
+            ?.menuNavigationItemRenderer
+            ?.navigationEndpoint
+            ?.let { it.watchPlaylistEndpoint?.playlistId ?: it.anyWatchEndpoint?.playlistId }
             ?: return null
 
-        SongItem(
-          id = videoId,
-          title =
-            renderer.flexColumns
-              .firstOrNull()
-              ?.musicResponsiveListItemFlexColumnRenderer
-              ?.text
-              ?.runs
-              ?.firstOrNull()
-              ?.text
-              ?.let(ApiText::clean) ?: return null,
-          artists =
-            secondary?.firstOrNull()?.oddElements()?.map {
-              Artist(ApiText.clean(it.text), it.navigationEndpoint?.browseEndpoint?.browseId)
-            } ?: return null,
-          album =
-            renderer.flexColumns
-              .getOrNull(2)
-              ?.musicResponsiveListItemFlexColumnRenderer
-              ?.text
-              ?.runs
-              ?.firstOrNull()
-              ?.let {
-                Album(
-                  ApiText.clean(it.text),
-                  it.navigationEndpoint?.browseEndpoint?.browseId ?: return null,
-                )
-              },
-          duration = null,
-          musicVideoType = renderer.musicVideoType,
-          thumbnail = renderer.thumbnail?.musicThumbnailRenderer?.getThumbnailUrl() ?: return null,
-          explicit =
-            renderer.badges?.any {
-              it.musicInlineBadgeRenderer?.icon?.iconType == "MUSIC_EXPLICIT_BADGE"
-            } == true,
+        val title = renderer.textAt(0)?.let(ApiText::clean) ?: return null
+        val artistRuns = split.getOrNull(1)?.oddElements().orEmpty()
+        if (artistRuns.isEmpty()) return null
+        val artists = artistRuns.map {
+            Artist(ApiText.clean(it.text), it.navigationEndpoint?.browseEndpoint?.browseId)
+        }
+        val year = split.lastOrNull()?.firstOrNull()?.text?.trim()?.toIntOrNull()
+        val thumbnail = renderer.thumbnail?.thumbnailUrl() ?: return null
+
+        return AlbumItem(
+            browseId = browse.browseId,
+            playlistId = playlistId,
+            title = title,
+            artists = artists,
+            year = year,
+            thumbnail = thumbnail,
+            explicit = renderer.badges.hasExplicitBadge(),
         )
-      }
-      renderer.isArtist ->
-        ArtistItem(
-          id = renderer.navigationEndpoint?.browseEndpoint?.browseId ?: return null,
-          title =
-            renderer.flexColumns
-              .firstOrNull()
-              ?.musicResponsiveListItemFlexColumnRenderer
-              ?.text
-              ?.runs
-              ?.firstOrNull()
-              ?.text
-              ?.let(ApiText::clean) ?: return null,
-          thumbnail = renderer.thumbnail?.musicThumbnailRenderer?.getThumbnailUrl() ?: return null,
-          shuffleEndpoint =
-            renderer.menu
-              ?.menuRenderer
-              ?.items
-              ?.find { it.menuNavigationItemRenderer?.icon?.iconType == "MUSIC_SHUFFLE" }
-              ?.menuNavigationItemRenderer
-              ?.navigationEndpoint
-              ?.watchPlaylistEndpoint,
-          radioEndpoint =
-            renderer.menu
-              ?.menuRenderer
-              ?.items
-              ?.find { it.menuNavigationItemRenderer?.icon?.iconType == "MIX" }
-              ?.menuNavigationItemRenderer
-              ?.navigationEndpoint
-              ?.watchPlaylistEndpoint,
-        )
-      renderer.isAlbum -> {
-        val secondary =
-          renderer.flexColumns
-            .getOrNull(1)
-            ?.musicResponsiveListItemFlexColumnRenderer
-            ?.text
-            ?.runs
-            ?.splitBySeparator() ?: return null
-        AlbumItem(
-          browseId = renderer.navigationEndpoint?.browseEndpoint?.browseId ?: return null,
-          playlistId =
-            renderer.menu
-              ?.menuRenderer
-              ?.items
-              ?.find { it.menuNavigationItemRenderer?.icon?.iconType == "MUSIC_SHUFFLE" }
-              ?.menuNavigationItemRenderer
-              ?.navigationEndpoint
-              ?.watchPlaylistEndpoint
-              ?.playlistId ?: return null,
-          title =
-            renderer.flexColumns
-              .firstOrNull()
-              ?.musicResponsiveListItemFlexColumnRenderer
-              ?.text
-              ?.runs
-              ?.firstOrNull()
-              ?.text
-              ?.let(ApiText::clean) ?: return null,
-          artists =
-            secondary.getOrNull(1)?.oddElements()?.map {
-              Artist(ApiText.clean(it.text), it.navigationEndpoint?.browseEndpoint?.browseId)
-            } ?: return null,
-          year = secondary.lastOrNull()?.firstOrNull()?.text?.toIntOrNull(),
-          thumbnail = renderer.thumbnail?.musicThumbnailRenderer?.getThumbnailUrl() ?: return null,
-          explicit =
-            renderer.badges?.any {
-              it.musicInlineBadgeRenderer?.icon?.iconType == "MUSIC_EXPLICIT_BADGE"
-            } == true,
-        )
-      }
-      else -> null
     }
 }
