@@ -41,10 +41,20 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
+      # Kotlin cannot be extracted buildlessly; CodeQL needs a real build.
+      - uses: android-actions/setup-android@v4
+      - name: Install SDK packages
+        run: |
+          yes | sdkmanager --licenses >/dev/null
+          sdkmanager "platforms;android-37.0" "build-tools;36.0.0"
+      - name: Configure SDK path
+        run: echo "sdk.dir=$ANDROID_HOME" > local.properties
       - uses: github/codeql-action/init@v3
         with:
           languages: java-kotlin
-          build-mode: none
+          build-mode: manual
+      - name: Build for CodeQL
+        run: ./gradlew :app:compileUniversalFossDebugKotlin --console=plain --no-daemon
       - uses: github/codeql-action/analyze@v3
         with:
           category: "/language:java-kotlin"
