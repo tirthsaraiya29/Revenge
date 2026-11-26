@@ -12,32 +12,159 @@ import org.junit.Test
 
 class ResolveLocalMixUseCaseTest {
 
-    private class FakeSongRepository(
-        private val seed: Song? = null,
-        private val likedSongs: List<Song> = emptyList(),
-        private val recentSongs: List<Song> = emptyList(),
-        val recentLimits: MutableList<Int> = mutableListOf(),
-        val calls: MutableList<String> = mutableListOf(),
-    ) : SongRepository {
-        override fun getSong(id: String): Flow<Song?> {
-            calls += "getSong"
-            return flowOf(seed)
-        }
+    @Test
+    fun `a shared artist outranks a liked song and the seed is excluded`() = runTest {
+        val seed = song("seed", artists = listOf(ArtistRef("radiohead-id", "Radiohead")))
+        val repository = FakeSongRepository(
+            seed = seed,
+            liked = listOf(
+                song("related", artists = listOf(ArtistRef("radiohead-id", "Radiohead"))),
+                song("unrelated", liked = true, artists = listOf(ArtistRef("daft-punk-id", "Daft Punk"))),
+            ),
+        )
 
-        override fun getLikedSongs(): Flow<List<Song>> {
-            calls += "getLikedSongs"
-            return flowOf(likedSongs)
-        }
+        val mix = ResolveLocalMixUseCase(repository).invoke("seed")
 
-        override fun getRecentlyPlayed(limit: Int): Flow<List<Song>> {
-            calls += "getRecentlyPlayed"
-            recentLimits += limit
-            return flowOf(recentSongs.take(limit))
-        }
+        assertEquals(listOf("related", "unrelated"), mix.map(Song::id))
+        assertTrue(mix.none { it.id == "seed" })
+    }
 
-        override suspend fun updateLiked(id: String, isLiked: Boolean) = Unit
+    @Test
+    fun `an unknown seed yields an empty list`() = runTest {
+        val repository = FakeSongRepository(
+            seed = null,
+            liked = listOf(song("liked", liked = true)),
+        )
 
-        override suspend fun incrementPlayTime(id: String, durationMs: Long) = Unit
+        assertTrue(ResolveLocalMixUseCase(repository).invoke("missing").isEmpty())
+    }
+
+    @Test
+    fun `artist names match after trimming and lowercasing`() = runTest {
+        val seed = song("seed", artists = listOf(ArtistRef("seed-id", "  The Beatles ")))
+        val repository = FakeSongRepository(
+            seed = seed,
+            liked = listOf(
+                song("name-match", artists = listOf(ArtistRef("other-id", "the beatles"))),
+                song("liked", liked = true),
+            ),
+        )
+
+        val mix = ResolveLocalMixUseCase(repository).invoke("seed", limit = 10)
+
+        assertEquals(listOf("name-match", "liked"), mix.map(Song::id))
+    }
+
+    @Test
+    fun `play time beats a liked song when no artist matches`() = runTest {
+        val seed = song("seed", artists = listOf(ArtistRef("seed-artist-id", "Seed")))
+        val repository = FakeSongRepository(
+            seed = seed,
+            liked = listOf(
+                song("liked", liked = true),
+                song("heavy", playMinutes = 90.0),
+            ),
+        )
+
+        val mix = ResolveLocalMixUseCase(repository).invoke("seed")
+
+        assertEquals(listOf("heavy", "liked"), mix.map(Song::id))
+    }
+
+    @Test
+    fun `the limit is respected and the seed stays out`() = runTest {
+        val repository = FakeSongRepository(
+            seed = song("seed"),
+            liked = (1..6).map { song("s$it") },
+        )
+
+        val mix = ResolveLocalMixUseCase(repository).invoke("seed", limit = 4)
+
+        assertEquals(4, mix.size)
+        assertTrue(mix.none { it.id == "seed" })
+    }
+
+    @Test
+    fun `zero and negative limits return empty without consulting the repository`() = runTest {
+        val repository = FakeSongRepository(
+            seed = song("seed"),
+            liked = listOf(song("liked", liked = true)),
+        )
+
+        assertTrue(ResolveLocalMixUseCase(repository).invoke("seed", limit = 0).isEmpty())
+        assertTrue(ResolveLocalMixUseCase(repository).invoke("seed", limit = -2).isEmpty())
+        assertTrue(repository.calls.isEmpty())
+    }
+
+    @Test
+    fun `history is requested at three times the limit`() = runTest {
+        val repository = FakeSongRepository(
+            seed = song("seed"),
+            recent = listOf(song("r1")),
+        )
+
+        ResolveLocalMixUseCase(repository).invoke("seed", limit = 4)
+
+        assertEquals(listOf(12), repository.recentLimits)
+    }
+
+    @Test
+    fun `a song liked and recently played is kept once with the liked copy`() = runTest {
+        val repository = FakeSongRepository(
+            seed = song("seed"),
+            liked = listOf(song("shared", liked = true)),
+            recent = listOf(song("shared", playMinutes = 5.0), song("recent-only")),
+        )
+
+        val mix = ResolveLocalMixUseCase(repository).invoke("seed")
+
+        assertEquals(2, mix.size)
+        assertEquals(1, mix.count { it.id == "shared" })
+        assertTrue(mix.single { it.id == "shared" }.liked)
+        assertEquals(listOf("shared", "recent-only"), mix.map(Song::id))
+    }
+
+    @Test
+    fun `a seed present in both sources never appears in the mix`() = runTest {
+        val seed = song("seed")
+        val repository = FakeSongRepository(
+            seed = seed,
+            liked = listOf(seed, song("other")),
+            recent = listOf(seed),
+        )
+
+        val mix = ResolveLocalMixUseCase(repository).invoke("seed")
+
+        assertEquals(listOf("other"), mix.map(Song::id))
+    }
+
+    @Test
+    fun `blank artist ids never match by id`() = runTest {
+        val seed = song("seed", artists = listOf(ArtistRef("", "unique")))
+        val repository = FakeSongRepository(
+            seed = seed,
+            liked = listOf(
+                song("blank-id-other", artists = listOf(ArtistRef("", "other"))),
+                song("liked", liked = true),
+            ),
+        )
+
+        val mix = ResolveLocalMixUseCase(repository).invoke("seed")
+
+        assertEquals(listOf("liked", "blank-id-other"), mix.map(Song::id))
+    }
+
+    @Test
+    fun `equal scores keep liked-source order before recent-only songs`() = runTest {
+        val repository = FakeSongRepository(
+            seed = song("seed"),
+            liked = listOf(song("liked-a"), song("liked-b")),
+            recent = listOf(song("recent-a")),
+        )
+
+        val mix = ResolveLocalMixUseCase(repository).invoke("seed")
+
+        assertEquals(listOf("liked-a", "liked-b", "recent-a"), mix.map(Song::id))
     }
 
     private fun song(
@@ -45,7 +172,7 @@ class ResolveLocalMixUseCaseTest {
         liked: Boolean = false,
         playMinutes: Double = 0.0,
         artists: List<ArtistRef> = emptyList(),
-    ) = Song(
+    ): Song = Song(
         id = id,
         title = id,
         artists = artists,
@@ -56,140 +183,32 @@ class ResolveLocalMixUseCaseTest {
         totalPlayTimeMs = (playMinutes * 60_000).toLong(),
     )
 
-    private fun artist(id: String, name: String) = ArtistRef(id, name)
+    private class FakeSongRepository(
+        private val seed: Song? = null,
+        private val liked: List<Song> = emptyList(),
+        private val recent: List<Song> = emptyList(),
+    ) : SongRepository {
+        val recentLimits = mutableListOf<Int>()
+        val calls = mutableListOf<String>()
 
-    @Test
-    fun `C1 shared artist ranks first and seed is excluded`() = runTest {
-        val seed = song("seed", artists = listOf(artist("r1", "Radiohead")))
-        val related = song("related", artists = listOf(artist("r2", "Radiohead")))
-        val unrelated = song("unrelated", liked = true, artists = listOf(artist("d1", "Daft Punk")))
-        val useCase = ResolveLocalMixUseCase(
-            FakeSongRepository(seed = seed, likedSongs = listOf(unrelated), recentSongs = listOf(related, seed)),
-        )
+        override fun getSong(id: String): Flow<Song?> {
+            calls += "getSong"
+            return flowOf(seed)
+        }
 
-        val result = useCase.invoke("seed", 10).map { it.id }
+        override fun getLikedSongs(): Flow<List<Song>> {
+            calls += "getLikedSongs"
+            return flowOf(liked)
+        }
 
-        assertEquals(listOf("related", "unrelated"), result)
-    }
+        override fun getRecentlyPlayed(limit: Int): Flow<List<Song>> {
+            calls += "getRecentlyPlayed"
+            recentLimits += limit
+            return flowOf(if (limit <= 0) emptyList() else recent.take(limit))
+        }
 
-    @Test
-    fun `C2 unknown seed yields an empty list`() = runTest {
-        val useCase = ResolveLocalMixUseCase(FakeSongRepository(seed = null))
+        override suspend fun updateLiked(id: String, isLiked: Boolean) = Unit
 
-        assertTrue(useCase.invoke("missing", 10).isEmpty())
-    }
-
-    @Test
-    fun `C3 artist names are matched after trimming and case folding`() = runTest {
-        val seed = song("seed", artists = listOf(artist("seed-id", "  The Beatles ")))
-        val nameMatch = song("name-match", artists = listOf(artist("other-id", "the beatles")))
-        val liked = song("liked", liked = true, artists = listOf(artist("x", "Someone")))
-        val useCase = ResolveLocalMixUseCase(
-            FakeSongRepository(seed = seed, likedSongs = listOf(liked), recentSongs = listOf(nameMatch)),
-        )
-
-        assertEquals(listOf("name-match", "liked"), useCase.invoke("seed", 10).map { it.id })
-    }
-
-    @Test
-    fun `C4 play time beats liked when no artist matches`() = runTest {
-        val seed = song("seed", artists = listOf(artist("s", "Seed")))
-        val liked = song("liked", liked = true, playMinutes = 0.0, artists = listOf(artist("l", "Other")))
-        val heavy = song("heavy", liked = false, playMinutes = 90.0, artists = listOf(artist("h", "Other2")))
-        val useCase = ResolveLocalMixUseCase(
-            FakeSongRepository(seed = seed, likedSongs = listOf(liked), recentSongs = listOf(heavy)),
-        )
-
-        assertEquals(listOf("heavy", "liked"), useCase.invoke("seed", 2).map { it.id })
-    }
-
-    @Test
-    fun `C5 limit is respected and seed is never included`() = runTest {
-        val seed = song("seed", artists = listOf(artist("s", "Seed")))
-        val others = (1..6).map { song("o$it") }
-        val useCase = ResolveLocalMixUseCase(
-            FakeSongRepository(seed = seed, recentSongs = others + seed),
-        )
-
-        val result = useCase.invoke("seed", 4).map { it.id }
-
-        assertEquals(4, result.size)
-        assertTrue(result.none { it == "seed" })
-    }
-
-    @Test
-    fun `C6 non-positive limit returns empty without consulting repositories`() = runTest {
-        val repo = FakeSongRepository(seed = song("seed"))
-        val useCase = ResolveLocalMixUseCase(repo)
-
-        assertTrue(useCase.invoke("seed", 0).isEmpty())
-        assertTrue(useCase.invoke("seed", -2).isEmpty())
-        assertTrue(repo.calls.isEmpty())
-    }
-
-    @Test
-    fun `C7 history window is three times the requested limit`() = runTest {
-        val repo = FakeSongRepository(seed = song("seed"))
-        val useCase = ResolveLocalMixUseCase(repo)
-
-        useCase.invoke("seed", 4)
-
-        assertEquals(listOf(12), repo.recentLimits)
-    }
-
-    @Test
-    fun `C8 liked and recent overlap keeps the liked entry`() = runTest {
-        val seed = song("seed")
-        val likedCopy = song("a", liked = true, playMinutes = 10.0)
-        val recentCopy = song("a", liked = false, playMinutes = 0.0)
-        val useCase = ResolveLocalMixUseCase(
-            FakeSongRepository(seed = seed, likedSongs = listOf(likedCopy), recentSongs = listOf(recentCopy)),
-        )
-
-        val result = useCase.invoke("seed", 10)
-
-        assertEquals(1, result.size)
-        assertEquals(600_000L, result.single().totalPlayTimeMs)
-    }
-
-    @Test
-    fun `C9 seed appearing in liked and recent is excluded`() = runTest {
-        val seed = song("seed")
-        val useCase = ResolveLocalMixUseCase(
-            FakeSongRepository(
-                seed = seed,
-                likedSongs = listOf(seed, song("other")),
-                recentSongs = listOf(seed),
-            ),
-        )
-
-        val result = useCase.invoke("seed", 10).map { it.id }
-
-        assertEquals(listOf("other"), result)
-    }
-
-    @Test
-    fun `C10 blank seed artist ids never match by id`() = runTest {
-        val seed = song("seed", artists = listOf(artist("", "X")))
-        val noMatch = song("no-match", liked = true, artists = listOf(artist("", "Y")))
-        val nameMatch = song("name-match", artists = listOf(artist("n", "X")))
-        val useCase = ResolveLocalMixUseCase(
-            FakeSongRepository(seed = seed, recentSongs = listOf(noMatch, nameMatch)),
-        )
-
-        assertEquals(listOf("name-match", "no-match"), useCase.invoke("seed", 10).map { it.id })
-    }
-
-    @Test
-    fun `C11 equal scores keep liked order before recent-only songs`() = runTest {
-        val seed = song("seed")
-        val l1 = song("l1")
-        val l2 = song("l2")
-        val r1 = song("r1")
-        val useCase = ResolveLocalMixUseCase(
-            FakeSongRepository(seed = seed, likedSongs = listOf(l1, l2), recentSongs = listOf(r1)),
-        )
-
-        assertEquals(listOf("l1", "l2", "r1"), useCase.invoke("seed", 3).map { it.id })
+        override suspend fun incrementPlayTime(id: String, durationMs: Long) = Unit
     }
 }

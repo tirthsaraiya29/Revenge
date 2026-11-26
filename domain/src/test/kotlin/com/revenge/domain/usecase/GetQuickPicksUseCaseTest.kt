@@ -8,28 +8,111 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class GetQuickPicksUseCaseTest {
 
-    private class FakeSongRepository(
-        private val likedSongs: List<Song> = emptyList(),
-        private val recentSongs: List<Song> = emptyList(),
-        val recentLimits: MutableList<Int> = mutableListOf(),
-    ) : SongRepository {
-        override fun getSong(id: String): Flow<Song?> = flowOf(null)
+    @Test
+    fun `ranking places the heftiest history first, then liked, then light history`() = runTest {
+        val repository = FakeSongRepository(
+            liked = listOf(song("liked", liked = true, playMinutes = 2.0)),
+            recent = listOf(song("rarely", playMinutes = 0.5), song("heavy", playMinutes = 45.0)),
+        )
 
-        override fun getLikedSongs(): Flow<List<Song>> = flowOf(likedSongs)
+        val picks = GetQuickPicksUseCase(repository).invoke(limit = 3).first()
 
-        override fun getRecentlyPlayed(limit: Int): Flow<List<Song>> {
-            recentLimits += limit
-            return flowOf(recentSongs.take(limit))
-        }
+        assertEquals(listOf("heavy", "liked", "rarely"), picks.map(Song::id))
+    }
 
-        override suspend fun updateLiked(id: String, isLiked: Boolean) = Unit
+    @Test
+    fun `a song in both sources is emitted once`() = runTest {
+        val repository = FakeSongRepository(
+            liked = listOf(song("shared", liked = true)),
+            recent = listOf(song("shared"), song("extra")),
+        )
 
-        override suspend fun incrementPlayTime(id: String, durationMs: Long) = Unit
+        val picks = GetQuickPicksUseCase(repository).invoke(limit = 10).first()
+
+        assertEquals(2, picks.size)
+        assertEquals(setOf("shared", "extra"), picks.map(Song::id).toSet())
+        assertEquals(1, picks.count { it.id == "shared" })
+    }
+
+    @Test
+    fun `history is requested at twice the limit`() = runTest {
+        val repository = FakeSongRepository(
+            recent = (1..20).map { song("r$it") },
+            liked = emptyList(),
+        )
+
+        GetQuickPicksUseCase(repository).invoke(limit = 4).first()
+
+        assertEquals(listOf(8), repository.recentLimits)
+    }
+
+    @Test
+    fun `at most limit items are emitted`() = runTest {
+        val repository = FakeSongRepository(
+            recent = (1..10).map { song("r$it") },
+        )
+
+        val picks = GetQuickPicksUseCase(repository).invoke(limit = 3).first()
+
+        assertEquals(3, picks.size)
+    }
+
+    @Test
+    fun `play time saturates at one hour and equal scores keep arrival order`() = runTest {
+        val repository = FakeSongRepository(
+            recent = listOf(song("one-hour", playMinutes = 60.0), song("ten-hours", playMinutes = 600.0)),
+        )
+
+        val picks = GetQuickPicksUseCase(repository).invoke(limit = 2).first()
+
+        assertEquals(listOf("one-hour", "ten-hours"), picks.map(Song::id))
+    }
+
+    @Test
+    fun `empty sources yield an empty list`() = runTest {
+        val picks = GetQuickPicksUseCase(FakeSongRepository()).invoke().first()
+
+        assertTrue(picks.isEmpty())
+    }
+
+    @Test
+    fun `zero and negative limits yield empty lists`() = runTest {
+        val repository = FakeSongRepository(recent = listOf(song("r1")))
+
+        assertTrue(GetQuickPicksUseCase(repository).invoke(limit = 0).first().isEmpty())
+        assertTrue(GetQuickPicksUseCase(repository).invoke(limit = -3).first().isEmpty())
+    }
+
+    @Test
+    fun `liked source membership scores the bonus even when the entity field is false`() = runTest {
+        val repository = FakeSongRepository(
+            liked = listOf(song("shared", liked = true)),
+            recent = listOf(song("shared", playMinutes = 0.0), song("plain", playMinutes = 0.0)),
+        )
+
+        val picks = GetQuickPicksUseCase(repository).invoke(limit = 5).first()
+
+        assertEquals("shared", picks.first().id)
+        assertFalse(picks.first().liked)
+    }
+
+    @Test
+    fun `an enormous limit saturates without throwing and returns the available candidates`() = runTest {
+        val repository = FakeSongRepository(
+            liked = listOf(song("c")),
+            recent = listOf(song("a"), song("b")),
+        )
+
+        val picks = GetQuickPicksUseCase(repository).invoke(limit = Int.MAX_VALUE).first()
+
+        assertEquals(setOf("a", "b", "c"), picks.map(Song::id).toSet())
+        assertEquals(Int.MAX_VALUE, repository.recentLimits.single())
     }
 
     private fun song(
@@ -37,7 +120,7 @@ class GetQuickPicksUseCaseTest {
         liked: Boolean = false,
         playMinutes: Double = 0.0,
         artists: List<ArtistRef> = emptyList(),
-    ) = Song(
+    ): Song = Song(
         id = id,
         title = id,
         artists = artists,
@@ -48,90 +131,24 @@ class GetQuickPicksUseCaseTest {
         totalPlayTimeMs = (playMinutes * 60_000).toLong(),
     )
 
-    private suspend fun idsOf(useCase: GetQuickPicksUseCase, limit: Int): List<String> =
-        useCase(limit).first().map { it.id }
+    private class FakeSongRepository(
+        private val single: Song? = null,
+        private val liked: List<Song> = emptyList(),
+        private val recent: List<Song> = emptyList(),
+    ) : SongRepository {
+        val recentLimits = mutableListOf<Int>()
 
-    @Test
-    fun `B1 ranking puts heavy playtime first then liked then rare`() = runTest {
-        val liked = listOf(song("liked", liked = true, playMinutes = 2.0))
-        val recent = listOf(song("rarely", playMinutes = 0.5), song("heavy", playMinutes = 45.0))
-        val useCase = GetQuickPicksUseCase(FakeSongRepository(likedSongs = liked, recentSongs = recent))
+        override fun getSong(id: String): Flow<Song?> = flowOf(single)
 
-        assertEquals(listOf("heavy", "liked", "rarely"), idsOf(useCase, 3))
-    }
+        override fun getLikedSongs(): Flow<List<Song>> = flowOf(liked)
 
-    @Test
-    fun `B2 shared songs are de-duplicated`() = runTest {
-        val shared = song("shared")
-        val useCase = GetQuickPicksUseCase(
-            FakeSongRepository(likedSongs = listOf(shared), recentSongs = listOf(shared, song("extra"))),
-        )
+        override fun getRecentlyPlayed(limit: Int): Flow<List<Song>> {
+            recentLimits += limit
+            return flowOf(if (limit <= 0) emptyList() else recent.take(limit))
+        }
 
-        val result = useCase(10).first()
-        assertEquals(2, result.size)
-        assertEquals(1, result.count { it.id == "shared" })
-    }
+        override suspend fun updateLiked(id: String, isLiked: Boolean) = Unit
 
-    @Test
-    fun `B3 history window is twice the requested limit`() = runTest {
-        val repo = FakeSongRepository()
-        val useCase = GetQuickPicksUseCase(repo)
-
-        useCase(4).first()
-
-        assertEquals(listOf(8), repo.recentLimits)
-    }
-
-    @Test
-    fun `B4 limit caps the result size`() = runTest {
-        val recent = (1..10).map { song("s$it", playMinutes = it.toDouble()) }
-        val useCase = GetQuickPicksUseCase(FakeSongRepository(recentSongs = recent))
-
-        assertEquals(3, useCase(3).first().size)
-    }
-
-    @Test
-    fun `B5 play time is capped and ties keep insertion order`() = runTest {
-        val recent = listOf(song("one-hour", playMinutes = 60.0), song("ten-hours", playMinutes = 600.0))
-        val useCase = GetQuickPicksUseCase(FakeSongRepository(recentSongs = recent))
-
-        assertEquals(listOf("one-hour", "ten-hours"), idsOf(useCase, 2))
-    }
-
-    @Test
-    fun `B6 empty sources yield an empty list`() = runTest {
-        val useCase = GetQuickPicksUseCase(FakeSongRepository())
-
-        assertTrue(useCase(5).first().isEmpty())
-    }
-
-    @Test
-    fun `B7 non-positive limits yield an empty list`() = runTest {
-        val recent = listOf(song("a", playMinutes = 10.0))
-        val useCase = GetQuickPicksUseCase(FakeSongRepository(recentSongs = recent))
-
-        assertTrue(useCase(0).first().isEmpty())
-        assertTrue(useCase(-3).first().isEmpty())
-    }
-
-    @Test
-    fun `B8 liked-source membership drives the bonus over the entity field`() = runTest {
-        // "shared" is in the liked source but its recent copy has liked == false.
-        val shared = song("shared", liked = false, playMinutes = 0.0)
-        val longer = song("longer", liked = false, playMinutes = 20.0)
-        val useCase = GetQuickPicksUseCase(
-            FakeSongRepository(likedSongs = listOf(shared), recentSongs = listOf(shared, longer)),
-        )
-
-        assertEquals(listOf("shared", "longer"), idsOf(useCase, 2))
-    }
-
-    @Test
-    fun `B9 large limit does not overflow and is bounded by candidates`() = runTest {
-        val recent = (1..3).map { song("s$it") }
-        val useCase = GetQuickPicksUseCase(FakeSongRepository(recentSongs = recent))
-
-        val result = useCase(Int.MAX_VALUE).first()
-        assertEquals(3, result.size)
+        override suspend fun incrementPlayTime(id: String, durationMs: Long) = Unit
     }
 }
