@@ -178,7 +178,7 @@ constructor(
       val totalSources = sources.size
       for ((index, source) in sources.withIndex()) {
         onProgress(progress(source.title, index, totalSources, 0, 0))
-        val tracks = fetchTracks(source)
+        val tracks = fetchTracks(source) ?: continue
         val matched =
           matchInOrder(tracks) { matchedInSource ->
             onProgress(progress(source.title, index, totalSources, matchedInSource, tracks.size))
@@ -217,7 +217,9 @@ constructor(
         }
         else -> return@withContext
       }
-    val tracks = fetchTracks(source)
+    // Abort the destructive mirror on any pagination failure: a partial track list
+    // must never replace the user's local playlist.
+    val tracks = fetchTracks(source) ?: return@withContext
     val existing = loadLocalSongs(localPlaylistId)
     val matched = mutableListOf<SongItem>()
     for (track in tracks) {
@@ -318,7 +320,7 @@ constructor(
     }
   }
 
-  private suspend fun fetchTracks(source: SpotifyImportSource): List<SpotifyTrack> {
+  private suspend fun fetchTracks(source: SpotifyImportSource): List<SpotifyTrack>? {
     val tracks = mutableListOf<SpotifyTrack>()
     var offset = 0
     while (true) {
@@ -327,7 +329,7 @@ constructor(
       when (source) {
         is SpotifyImportSource.LikedSongs -> {
           val result = withAuthRetry { Spotify.likedSongs(limit = PAGE, offset = offset) }
-          if (result.isFailure) break
+          if (result.isFailure) return null
           val paging = result.getOrThrow()
           items = paging.items.mapNotNull { it.track }
           total = paging.total
@@ -335,7 +337,7 @@ constructor(
         is SpotifyImportSource.Playlist -> {
           val result =
             withAuthRetry { Spotify.playlistTracks(source.playlist.id, PAGE, offset) }
-          if (result.isFailure) break
+          if (result.isFailure) return null
           val paging = result.getOrThrow()
           items = paging.items.mapNotNull { it.track }
           total = paging.total

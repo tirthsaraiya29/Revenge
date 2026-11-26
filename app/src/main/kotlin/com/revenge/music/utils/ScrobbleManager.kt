@@ -84,7 +84,7 @@ class ScrobbleManager(private val scope: CoroutineScope) {
       currentArtist = metadata.artists.joinToString(", ") { it.name }.ifBlank { "Unknown Artist" }
       currentAlbum = metadata.album?.title
       currentDuration =
-        duration?.takeIf { it > 0 }?.toInt() ?: metadata.duration.takeIf { it > 0 } ?: 0
+        duration?.takeIf { it > 0 }?.let { (it / 1000).toInt() } ?: metadata.duration.takeIf { it > 0 } ?: 0
     }
     if (newTrack) submitNowPlayingIfEnabled()
     startTicker()
@@ -111,7 +111,7 @@ class ScrobbleManager(private val scope: CoroutineScope) {
     if (metadata != null && metadata.id != currentId) {
       onSongStart(metadata, duration)
     } else if (duration != null && duration > 0 && metadata == null) {
-      currentDuration = duration.toInt()
+      currentDuration = (duration / 1000).toInt()
     }
     playing = isPlaying
     if (isPlaying) startTicker() else onSongPause()
