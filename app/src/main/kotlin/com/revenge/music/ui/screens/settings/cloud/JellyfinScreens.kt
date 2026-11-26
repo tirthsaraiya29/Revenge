@@ -103,6 +103,7 @@ fun JellyfinLoginScreen(
           errorMessage = null
         },
         label = { Text("Server URL & Port") },
+        // nosemgrep: revenge-cleartext-endpoint -- LAN Jellyfin servers are commonly HTTP.
         placeholder = { Text("http://192.168.1.100:8096") },
         singleLine = true,
         modifier = Modifier.fillMaxWidth(),
@@ -119,6 +120,7 @@ fun JellyfinLoginScreen(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
       ) {
         SuggestionChip(
+          // nosemgrep: revenge-cleartext-endpoint -- explicit user choice for LAN servers.
           onClick = { if (!serverUrl.startsWith("http")) serverUrl = "http://$serverUrl" },
           label = { Text("Add http://") },
         )
@@ -206,6 +208,7 @@ fun JellyfinLoginScreen(
           }
           val normalizedUrl =
             if (!serverUrl.startsWith("http://") && !serverUrl.startsWith("https://")) {
+              // nosemgrep: revenge-cleartext-endpoint -- user-configured LAN server.
               "http://$serverUrl"
             } else serverUrl
 

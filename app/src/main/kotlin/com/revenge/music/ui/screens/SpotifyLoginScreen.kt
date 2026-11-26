@@ -75,6 +75,7 @@ fun SpotifyLoginScreen(
             android.view.ViewGroup.LayoutParams.MATCH_PARENT,
             android.view.ViewGroup.LayoutParams.MATCH_PARENT,
           )
+        // nosemgrep: revenge-webview-javascript -- Spotify OAuth page needs JS.
         settings.javaScriptEnabled = true
         settings.domStorageEnabled = true
         settings.setSupportZoom(true)

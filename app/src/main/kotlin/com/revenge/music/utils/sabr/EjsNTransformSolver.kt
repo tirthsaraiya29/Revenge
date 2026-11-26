@@ -114,7 +114,8 @@ object EjsNTransformSolver {
     init {
       val settings = webView.settings
       @Suppress("SetJavaScriptEnabled")
-      settings.javaScriptEnabled = true
+      // nosemgrep: revenge-webview-javascript -- n-transform solver needs the JS runtime.
+    settings.javaScriptEnabled = true
       settings.allowFileAccess = true
       @Suppress("DEPRECATION")
       settings.allowFileAccessFromFileURLs = true

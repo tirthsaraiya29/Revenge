@@ -132,6 +132,7 @@ fun NavidromeLoginScreen(
           label = { Text("Add https://") },
         )
         SuggestionChip(
+          // nosemgrep: revenge-cleartext-endpoint -- explicit user choice for LAN servers.
           onClick = { if (!serverUrl.startsWith("http")) serverUrl = "http://$serverUrl" },
           label = { Text("Add http://") },
         )

@@ -46,6 +46,7 @@ private constructor(
   init {
     val webViewSettings = webView.settings
     //noinspection SetJavaScriptEnabled we want to use JavaScript!
+    // nosemgrep: revenge-webview-javascript -- BotGuard/PO-token requires the YouTube JS runtime.
     webViewSettings.javaScriptEnabled = true
     webViewSettings.userAgentString = USER_AGENT
     webViewSettings.blockNetworkLoads = true // the WebView does not need internet access
@@ -339,6 +340,8 @@ private constructor(
 
   companion object {
     private const val TAG = "PoTokenWebView"
+    // Public Innertube web-client API key (shipped in every YouTube web page), not a secret.
+    // nosemgrep: revenge-hardcoded-credential
     private const val GOOGLE_API_KEY = "AIzaSyDyT5W0Jh49F30Pqqtyfdf7pDLFKLJoAnw"
     private const val REQUEST_KEY = "O43z0dpjhgX20SCx4KAo"
     private const val USER_AGENT =

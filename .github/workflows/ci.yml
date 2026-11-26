@@ -39,14 +39,14 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
-      - uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@v4
       - uses: gradle/actions/setup-gradle@v4
         with:
           cache-read-only: false
       - name: Install SDK packages
         run: |
           yes | sdkmanager --licenses >/dev/null
-          sdkmanager "platforms;android-37.0" "ndk;28.2.13676358" "cmake;3.22.1"
+          sdkmanager "platforms;android-37.0" "build-tools;36.0.0"
       - name: Configure SDK path
         run: echo "sdk.dir=$ANDROID_HOME" > local.properties
       - name: Test
