@@ -70,6 +70,7 @@ object Paxsenix {
     album: String? = null,
   ): Result<String> {
     return try {
+      http()
       val target = trackTarget(title, artist, duration)
       val ranked = findCandidates(target, album)
       if (ranked.isEmpty()) {
@@ -97,6 +98,7 @@ object Paxsenix {
     callback: (String) -> Unit,
   ) {
     try {
+      http()
       val target = trackTarget(title, artist, duration)
       val ranked = findCandidates(target, album = null)
       if (ranked.isEmpty()) {

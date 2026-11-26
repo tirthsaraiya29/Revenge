@@ -57,11 +57,26 @@ object LyricsUtils {
             return parseRich(rawLines).sorted().take(MAX_ENTRIES)
         }
 
-        if (looksStructured || safeCanParse(decoded)) {
+        val plainLrc = rawLines
+            .filterNot(::isMetadataLine)
+            .all(::isStandardLrcLine)
+
+        if (looksStructured || (safeCanParse(decoded) && !plainLrc)) {
             parseWithAccompanist(decoded, looksStructured)?.let { return it.sorted().take(MAX_ENTRIES) }
         }
 
         return parseStandard(rawLines).sorted().take(MAX_ENTRIES)
+    }
+
+    private fun isMetadataLine(line: String): Boolean =
+        METADATA_PREFIXES.any { line.trimStart().startsWith(it) }
+
+    private fun isStandardLrcLine(line: String): Boolean {
+        if (line.startsWith("<") && line.trimEnd().endsWith(">")) return true
+        val stamps = TIME_REGEX.findAll(line).toList()
+        if (stamps.isEmpty() || stamps.first().range.first != 0) return false
+        val prefix = line.substring(0, stamps.last().range.last + 1)
+        return TIME_REGEX.replace(prefix, "").all { it.isWhitespace() }
     }
 
     fun findCurrentLineIndex(lines: List<LyricsEntry>, position: Long): Int {

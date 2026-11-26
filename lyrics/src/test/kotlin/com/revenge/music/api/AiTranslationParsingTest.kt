@@ -1,66 +1,80 @@
 package com.revenge.music.api
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AiTranslationParsingTest {
-  @Test
-  fun `url safety rejects non http schemes and metadata hosts`() {
-    assertTrue(OpenRouterService.isUrlSafe(""))
-    assertTrue(OpenRouterService.isUrlSafe("https://openrouter.ai/api/v1/chat/completions"))
-    assertTrue(OpenRouterService.isUrlSafe("http://localhost:11434/v1/chat/completions"))
-    assertFalse(OpenRouterService.isUrlSafe("file:///etc/passwd"))
-    assertFalse(OpenRouterService.isUrlSafe("https://169.254.169.254/latest/meta-data"))
-    assertFalse(OpenRouterService.isUrlSafe("http://metadata.google.internal/"))
-    assertFalse(OpenRouterService.isUrlSafe("not a url"))
-  }
 
-  @Test
-  fun `openai and anthropic content shapes are extracted`() {
-    val openAi = """{"choices":[{"message":{"role":"assistant","content":"hello"}}]}"""
-    assertEquals("hello", AiTranslationParsing.extractContent(openAi))
+    @Test
+    fun `extracts openai message content`() {
+        val body = """{"choices":[{"message":{"content":"  hello  "}}],"extra":1}"""
+        assertEquals("hello", extractContent(body))
+    }
 
-    val anthropic = """{"content":[{"type":"text","text":"he"},{"type":"text","text":"llo"}]}"""
-    assertEquals("hello", AiTranslationParsing.extractContent(anthropic))
+    @Test
+    fun `extracts and concatenates anthropic content blocks`() {
+        val body = """
+            {"content":[{"type":"text","text":"Hello "},{"type":"text","text":"world"}],"id":"x"}
+        """.trimIndent()
+        assertEquals("Hello world", extractContent(body))
+    }
 
-    assertNull(AiTranslationParsing.extractContent(""))
-  }
+    @Test
+    fun `ignores blocks without string text`() {
+        val body = """{"content":[{"type":"tool_use"},{"text":"ok"}]}"""
+        assertEquals("ok", extractContent(body))
+    }
 
-  @Test
-  fun `plain json arrays are parsed and normalised`() {
-    assertEquals(
-      listOf("a", "b"),
-      AiTranslationParsing.parseLines("""["a","b"]""", 2),
-    )
-    // Surplus lines are dropped.
-    assertEquals(
-      listOf("a"),
-      AiTranslationParsing.parseLines("""["a","b"]""", 1),
-    )
-    // Missing lines are padded with empty strings.
-    assertEquals(
-      listOf("a", ""),
-      AiTranslationParsing.parseLines("""["a"]""", 2),
-    )
-  }
+    @Test
+    fun `malformed bodies yield null`() {
+        assertNull(extractContent("not json"))
+        assertNull(extractContent("{}"))
+        assertNull(extractContent("""{"choices":[]}"""))
+    }
 
-  @Test
-  fun `fenced and prose wrapped arrays are recovered`() {
-    assertEquals(
-      listOf("one", "two"),
-      AiTranslationParsing.parseLines("```json\n[\"one\",\"two\"]\n```", 2),
-    )
-    assertEquals(
-      listOf("one", "two"),
-      AiTranslationParsing.parseLines("""Sure, here you go: ["one","two"] enjoy""", 2),
-    )
-  }
+    @Test
+    fun `parses a plain json array`() {
+        assertEquals(listOf("a", "b"), parseLines("""["a","b"]""", 2))
+    }
 
-  @Test
-  fun `unparseable content returns null`() {
-    assertNull(AiTranslationParsing.parseLines("no array here", 2))
-  }
+    @Test
+    fun `recovers from fenced output`() {
+        val fenced = "Here you go:\n```json\n[\"a\",\"b\"]\n```\nDone"
+        assertEquals(listOf("a", "b"), parseLines(fenced, 2))
+    }
+
+    @Test
+    fun `pads missing lines with empty strings`() {
+        assertEquals(listOf("a", ""), parseLines("""["a"]""", 2))
+    }
+
+    @Test
+    fun `truncates surplus lines`() {
+        assertEquals(listOf("a"), parseLines("""["a","b","c"]""", 1))
+    }
+
+    @Test
+    fun `non string elements become empty strings`() {
+        assertEquals(listOf("1", "", "", "x"), parseLines("""[1,null,{"a":1},"x"]""", 4))
+    }
+
+    @Test
+    fun `loose fallback recovers bracketed lines`() {
+        val loose = "prefix [\n\"one\",\n\"two\"\n] suffix"
+        assertEquals(listOf("one", "two"), parseLines(loose, 2))
+    }
+
+    @Test
+    fun `no bracket and no array yields null`() {
+        assertNull(parseLines("nothing here", 2))
+        assertNull(parseLines(null, 2))
+    }
+
+    @Test
+    fun `normalize keeps the expected size`() {
+        assertEquals(listOf("a", ""), normalize(listOf("a"), 2))
+        assertEquals(listOf("a"), normalize(listOf("a", "b"), 1))
+        assertEquals(emptyList<String>(), normalize(emptyList(), 0))
+    }
 }

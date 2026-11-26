@@ -1,5 +1,6 @@
 package com.revenge.simpmusic
 
+import com.revenge.simpmusic.models.LyricsData
 import com.revenge.simpmusic.models.SimpMusicApiResponse
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
@@ -8,70 +9,65 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class LyricsModelsTest {
-  private val json =
-    Json {
-      isLenient = true
-      ignoreUnknownKeys = true
-      explicitNulls = false
-    }
+private val json = Json {
+  isLenient = true
+  ignoreUnknownKeys = true
+}
 
+class LyricsModelsTest {
   @Test
-  fun `decodes the response envelope and api field names`() {
-    val payload =
-      """
+  fun `decodes wire names and ignores unknown keys`() {
+    val fixture = """
       {
         "type": "success",
-        "data": [{
-          "id": "1",
-          "videoId": "abc",
-          "songTitle": "Title",
-          "artistName": "Artist",
-          "albumName": "Album",
-          "durationSeconds": 201,
-          "syncedLyrics": "[00:01.00]line",
-          "plainLyric": "line",
-          "richSyncLyrics": "{}",
-          "vote": 4,
-          "unknownField": true
-        }]
+        "data": [
+          {
+            "id": "id1",
+            "videoId": "video1",
+            "songTitle": "Song",
+            "artistName": "Artist",
+            "albumName": "Album",
+            "durationSeconds": 120,
+            "syncedLyrics": "[00:01.00]synced",
+            "plainLyric": "plain",
+            "richSyncLyrics": "rich",
+            "vote": 3,
+            "unknown": true
+          }
+        ]
       }
-      """.trimIndent()
+    """.trimIndent()
 
-    val response = json.decodeFromString<SimpMusicApiResponse>(payload)
+    val response = json.decodeFromString<SimpMusicApiResponse>(fixture)
 
     assertTrue(response.success)
-    assertEquals(1, response.data.size)
-    val lyrics = response.data.single()
-    assertEquals("1", lyrics.id)
-    assertEquals("abc", lyrics.videoId)
-    assertEquals("Title", lyrics.title)
-    assertEquals("Artist", lyrics.artist)
-    assertEquals("Album", lyrics.album)
-    assertEquals(201, lyrics.duration)
-    assertEquals("[00:01.00]line", lyrics.syncedLyrics)
-    assertEquals("line", lyrics.plainLyrics)
-    assertEquals("{}", lyrics.richSyncLyrics)
-    assertEquals(4, lyrics.vote)
+    val data = response.data.single()
+    assertEquals("id1", data.id)
+    assertEquals("video1", data.videoId)
+    assertEquals("Song", data.title)
+    assertEquals("Artist", data.artist)
+    assertEquals("Album", data.album)
+    assertEquals(120, data.duration)
+    assertEquals("[00:01.00]synced", data.syncedLyrics)
+    assertEquals("plain", data.plainLyrics)
+    assertEquals("rich", data.richSyncLyrics)
+    assertEquals(3, data.vote)
   }
 
   @Test
-  fun `non success type is not successful`() {
-    val response = json.decodeFromString<SimpMusicApiResponse>("""{"type":"error"}""")
+  fun `empty envelope is unsuccessful with no data`() {
+    val response = json.decodeFromString<SimpMusicApiResponse>("{}")
     assertFalse(response.success)
     assertTrue(response.data.isEmpty())
-    assertEquals("error", response.type)
-    assertTrue(json.decodeFromString<SimpMusicApiResponse>("{}").data.isEmpty())
   }
 
   @Test
-  fun `missing fields decode to null defaults`() {
-    val response =
-      json.decodeFromString<SimpMusicApiResponse>("""{"type":"success","data":[{}]}""")
-    val lyrics = response.data.single()
-    assertNull(lyrics.id)
-    assertNull(lyrics.title)
-    assertNull(lyrics.duration)
-    assertNull(lyrics.plainLyrics)
+  fun `missing lyric fields decode to null`() {
+    val data = json.decodeFromString<LyricsData>("""{"songTitle":"Only title"}""")
+    assertEquals("Only title", data.title)
+    assertNull(data.syncedLyrics)
+    assertNull(data.plainLyrics)
+    assertNull(data.richSyncLyrics)
+    assertNull(data.duration)
   }
 }

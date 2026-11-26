@@ -1,129 +1,200 @@
 package com.revenge.simpmusic
 
 import com.revenge.simpmusic.models.LyricsData
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.HttpClientEngineBase
+import io.ktor.client.engine.HttpClientEngineConfig
+import io.ktor.client.request.HttpRequestData
+import io.ktor.client.request.HttpResponseData
+import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpProtocolVersion
+import io.ktor.http.HttpStatusCode
+import io.ktor.http.headersOf
+import io.ktor.util.date.GMTDate
+import io.ktor.utils.io.ByteReadChannel
+import io.ktor.utils.io.InternalAPI
+import java.util.concurrent.CopyOnWriteArrayList
+import kotlinx.coroutines.runBlocking
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 
-class LyricsSelectionTest {
-  private fun track(
-    duration: Int? = null,
-    rich: String? = null,
-    synced: String? = null,
-    plain: String? = null,
-  ) = LyricsData(
-    duration = duration,
-    richSyncLyrics = rich,
-    syncedLyrics = synced,
-    plainLyrics = plain,
+@OptIn(InternalAPI::class)
+private class FakeEngine(
+  private val handler: suspend (HttpRequestData) -> HttpResponseData,
+) : HttpClientEngineBase("simpmusic-fake") {
+  val requests = CopyOnWriteArrayList<String>()
+
+  override val config: HttpClientEngineConfig = HttpClientEngineConfig()
+
+  override suspend fun execute(data: HttpRequestData): HttpResponseData {
+    requests.add(data.url.toString())
+    return handler(data)
+  }
+}
+
+private fun reply(data: HttpRequestData, status: HttpStatusCode, body: String): HttpResponseData =
+  HttpResponseData(
+    status,
+    GMTDate(),
+    headersOf(HttpHeaders.ContentType, "application/json"),
+    HttpProtocolVersion.HTTP_1_1,
+    ByteReadChannel(body),
+    data.executionContext,
   )
 
-  @Test
-  fun `duration distance treats missing duration as zero`() {
-    assertEquals(120, track(duration = null).durationDistance(120))
-    assertEquals(20, track(duration = 100).durationDistance(120))
-    assertEquals(20, track(duration = 140).durationDistance(120))
+private fun data(
+  duration: Int? = 100,
+  synced: String? = null,
+  plain: String? = null,
+  rich: String? = null,
+): LyricsData = LyricsData(
+  duration = duration,
+  syncedLyrics = synced,
+  plainLyrics = plain,
+  richSyncLyrics = rich,
+)
+
+class LyricsSelectionTest {
+  @Before
+  fun setUp() {
+    SimpMusicLyrics.testClient = null
+  }
+
+  @After
+  fun tearDown() {
+    SimpMusicLyrics.testClient = null
   }
 
   @Test
-  fun `matches duration accepts anything when target is not positive`() {
-    assertTrue(track(duration = 10).matchesDuration(0))
-    assertTrue(track(duration = 10).matchesDuration(-5))
+  fun `duration distance treats a missing duration as zero`() {
+    assertEquals(120, data(duration = null).durationDistance(120))
+    assertEquals(20, data(duration = 100).durationDistance(120))
   }
 
   @Test
-  fun `matches duration honours the ten second tolerance`() {
-    assertTrue(track(duration = 110).matchesDuration(120))
-    assertTrue(track(duration = 130).matchesDuration(120))
-    assertFalse(track(duration = 131).matchesDuration(120))
-    assertFalse(track(duration = 109).matchesDuration(120))
+  fun `duration matching allows ten seconds of slack`() {
+    assertTrue(data(duration = 500).matchesDuration(0))
+    assertTrue(data(duration = 500).matchesDuration(-5))
+    assertTrue(data(duration = 110).matchesDuration(120))
+    assertTrue(data(duration = 130).matchesDuration(120))
+    assertFalse(data(duration = 109).matchesDuration(120))
+    assertFalse(data(duration = 131).matchesDuration(120))
   }
 
   @Test
-  fun `best text prefers rich sync over synced over plain`() {
-    assertEquals("rich", track(rich = "rich", synced = "synced", plain = "plain").bestLyricsText())
-    assertEquals("synced", track(synced = "synced", plain = "plain").bestLyricsText())
-    assertEquals("plain", track(plain = "plain").bestLyricsText())
-    assertNull(track().bestLyricsText())
+  fun `lyrics preference is rich then synced then plain`() {
+    assertEquals("rich", data(rich = "rich", synced = "synced", plain = "plain").bestLyricsText())
+    assertEquals("synced", data(rich = " ", synced = "synced", plain = "plain").bestLyricsText())
+    assertEquals("plain", data(synced = "", plain = "plain").bestLyricsText())
+    assertNull(data(synced = " ", plain = "").bestLyricsText())
   }
 
   @Test
-  fun `best text skips blank values`() {
-    assertEquals("plain", track(rich = "  ", synced = "", plain = "plain").bestLyricsText())
-    assertNull(track(rich = " ", synced = "\n", plain = "").bestLyricsText())
-  }
-
-  @Test
-  fun `select without duration keeps the first api result`() {
-    val tracks = listOf(track(plain = "first"), track(plain = "second"))
+  fun `selection uses the first result for an unknown duration`() {
+    val tracks = listOf(data(duration = 300, plain = "first"), data(duration = 100, plain = "second"))
     assertEquals("first", selectLyrics(tracks, 0))
   }
 
   @Test
-  fun `select with duration picks the closest candidate`() {
-    val tracks =
-      listOf(
-        track(duration = 240, plain = "far"),
-        track(duration = 202, plain = "close"),
-        track(duration = 215, plain = "mid"),
-      )
-    assertEquals("close", selectLyrics(tracks, 200))
-  }
-
-  @Test
-  fun `select rejects candidates outside tolerance`() {
-    val tracks = listOf(track(duration = 300, plain = "wrong"))
-    assertNull(selectLyrics(tracks, 200))
-  }
-
-  @Test
-  fun `select returns null for empty input`() {
+  fun `selection picks the closest matching duration`() {
+    val tracks = listOf(
+      data(duration = 240, plain = "far"),
+      data(duration = 202, plain = "closest"),
+      data(duration = 215, plain = "mid"),
+    )
+    assertEquals("closest", selectLyrics(tracks, 200))
+    assertNull(selectLyrics(listOf(data(duration = 300, plain = "none")), 200))
     assertNull(selectLyrics(emptyList(), 200))
   }
 
   @Test
-  fun `select falls back from rich to synced to plain within a candidate`() {
-    assertEquals("synced", selectLyrics(listOf(track(duration = 200, synced = "synced")), 200))
-    assertEquals("plain", selectLyrics(listOf(track(duration = 200, plain = "plain")), 200))
+  fun `alternative collection orders by distance and emits one plain document`() {
+    val tracks = listOf(
+      data(duration = 104, synced = "S104", plain = "P104"),
+      data(duration = 101, synced = "S101"),
+      data(duration = 150, synced = "S150"),
+      data(duration = 102, synced = "S102", plain = "P102"),
+    )
+
+    assertEquals(listOf("S101", "S102", "P102", "S104"), collectAlternativeLyrics(tracks, 100))
   }
 
   @Test
-  fun `alternatives are ordered by duration closeness`() {
-    val tracks =
-      listOf(
-        track(duration = 208, synced = "far"),
-        track(duration = 201, synced = "close"),
-      )
-    assertEquals(listOf("close", "far"), collectAlternativeLyrics(tracks, 200))
+  fun `alternative collection is capped at five documents`() {
+    val tracks = (1..8).map { index -> data(duration = 100, synced = "S$index") }
+    assertEquals(5, collectAlternativeLyrics(tracks, 100).size)
   }
 
   @Test
-  fun `alternatives skip duration mismatches`() {
-    val tracks = listOf(track(duration = 400, synced = "wrong"), track(duration = 200, synced = "ok"))
-    assertEquals(listOf("ok"), collectAlternativeLyrics(tracks, 200))
+  fun `primary failure falls through to the fallback`() = runBlocking {
+    val engine = FakeEngine { request ->
+      val host = request.url.host
+      if (host == "api-lyrics.simpmusic.org") {
+        reply(request, HttpStatusCode.InternalServerError, "")
+      } else {
+        reply(request, HttpStatusCode.OK, """{"type":"success","data":[{"songTitle":"x","durationSeconds":100,"plainLyric":"fallback"}]}""")
+      }
+    }
+    SimpMusicLyrics.testClient = HttpClient(engine)
+
+    val tracks = SimpMusicLyrics.getLyricsByVideoId("v1")
+
+    assertEquals(1, tracks.size)
+    assertEquals("fallback", tracks.single().plainLyrics)
+    assertEquals(2, engine.requests.size)
   }
 
   @Test
-  fun `alternatives emit plain text at most once`() {
-    val tracks =
-      listOf(
-        track(duration = 200, rich = "rich1", plain = "plain1"),
-        track(duration = 201, synced = "synced2", plain = "plain2"),
-      )
-    assertEquals(listOf("rich1", "plain1", "synced2"), collectAlternativeLyrics(tracks, 200))
+  fun `unsuccessful primary payload does not trigger the fallback`() = runBlocking {
+    val engine = FakeEngine { request ->
+      reply(request, HttpStatusCode.OK, """{"type":"error","data":[{"songTitle":"x"}]}""")
+    }
+    SimpMusicLyrics.testClient = HttpClient(engine)
+
+    val tracks = SimpMusicLyrics.getLyricsByVideoId("v1")
+
+    assertTrue(tracks.isEmpty())
+    assertEquals(1, engine.requests.size)
   }
 
   @Test
-  fun `alternatives ignore blank values`() {
-    val tracks = listOf(track(duration = 200, rich = " ", synced = "", plain = " "), track(duration = 200, plain = "ok"))
-    assertEquals(listOf("ok"), collectAlternativeLyrics(tracks, 200))
+  fun `transport failures on both endpoints yield an empty list`() = runBlocking {
+    val engine = FakeEngine { request -> reply(request, HttpStatusCode.InternalServerError, "") }
+    SimpMusicLyrics.testClient = HttpClient(engine)
+
+    val tracks = SimpMusicLyrics.getLyricsByVideoId("v1")
+
+    assertTrue(tracks.isEmpty())
+    assertEquals(2, engine.requests.size)
   }
 
   @Test
-  fun `alternatives are capped`() {
-    val tracks = (0 until 10).map { track(duration = 200, synced = "s$it") }
-    assertEquals(MAX_ALTERNATE_LYRICS, collectAlternativeLyrics(tracks, 200).size)
+  fun `getLyrics fails when no candidate matches the duration`() = runBlocking {
+    val engine = FakeEngine { request ->
+      reply(request, HttpStatusCode.OK, """{"type":"success","data":[{"songTitle":"x","durationSeconds":500,"plainLyric":"far"}]}""")
+    }
+    SimpMusicLyrics.testClient = HttpClient(engine)
+
+    val result = SimpMusicLyrics.getLyrics("v1", 100)
+
+    assertTrue(result.isFailure)
+    assertEquals("Lyrics unavailable", result.exceptionOrNull()?.message)
+  }
+
+  @Test
+  fun `getLyrics succeeds with an unsynced document`() = runBlocking {
+    val engine = FakeEngine { request ->
+      reply(request, HttpStatusCode.OK, """{"type":"success","data":[{"songTitle":"x","durationSeconds":100,"plainLyric":"plain text"}]}""")
+    }
+    SimpMusicLyrics.testClient = HttpClient(engine)
+
+    val result = SimpMusicLyrics.getLyrics("v1", 100)
+
+    assertEquals("plain text", result.getOrNull())
   }
 }

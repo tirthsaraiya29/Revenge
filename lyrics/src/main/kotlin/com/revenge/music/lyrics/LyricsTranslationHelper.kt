@@ -92,6 +92,7 @@ object LyricsTranslationHelper {
     internal var persistenceScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     internal var workDispatcher: CoroutineDispatcher = Dispatchers.IO
     internal var translationDelegate: TranslationDelegate? = null
+    internal var logger: (suspend (Context, String, String) -> Unit)? = null
 
     private val cache = HashMap<String, List<String>>()
 
@@ -266,7 +267,7 @@ object LyricsTranslationHelper {
         val cached = getCachedTranslations(lyrics, mode, targetLanguage)
         if (cached != null && cached.size >= nonEmpty.size) {
             assignTranslations(nonEmpty, cached)
-            AiLogger.log(context, "Lyrics Translation", "Translated lyrics for $songId")
+            logTranslation(context, songId)
             persist(songId, database, targetLanguage, mode, cached)
             reportSuccess()
             return
@@ -320,8 +321,17 @@ object LyricsTranslationHelper {
         }
 
         assignTranslations(nonEmpty, translated)
-        AiLogger.log(context, "Lyrics Translation", "Translated lyrics for $songId")
+        logTranslation(context, songId)
         reportSuccess()
+    }
+
+    private suspend fun logTranslation(context: Context, songId: String) {
+        val seam = logger
+        if (seam != null) {
+            seam(context, "Lyrics Translation", "Translated lyrics for $songId")
+        } else {
+            AiLogger.log(context, "Lyrics Translation", "Translated lyrics for $songId")
+        }
     }
 
     private fun assignTranslations(entries: List<LyricsEntry>, translated: List<String>) {
