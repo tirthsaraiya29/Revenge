@@ -309,7 +309,10 @@ class PreferenceKeysTest {
 
     private fun facadeFields(): List<Field> {
         val facade = Class.forName("com.revenge.music.constants.PreferenceKeysKt")
-        return facade.declaredFields.filter { Preferences.Key::class.java.isAssignableFrom(it.type) }
+        return facade.declaredFields
+            .filter { Preferences.Key::class.java.isAssignableFrom(it.type) }
+            // Kotlin top-level vals compile to private static fields.
+            .onEach { it.isAccessible = true }
     }
 
     private fun declaredType(field: Field): String {

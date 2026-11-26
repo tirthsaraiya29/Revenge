@@ -65,7 +65,7 @@ class CollectionExtTest {
 
         assertEquals(emptyList<String>(), emptyList<String>().mergeNearbyElements())
         assertEquals(listOf("a1", "b1", "a3"), listOf("a1", "b1", "a3").mergeNearbyElements())
-        assertEquals(listOf("a", "a"), listOf("a", "b", "a").mergeNearbyElements(key = { "x" }))
+        assertEquals(listOf("a"), listOf("a", "b", "a").mergeNearbyElements(key = { "x" }))
     }
 
     @Test

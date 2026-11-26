@@ -1,5 +1,6 @@
 package com.revenge.music.utils
 
+import android.net.ConnectivityManager
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
@@ -27,11 +28,14 @@ import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
+import org.robolectric.Shadows
+import org.robolectric.annotation.Config
 import java.io.File
 
 private enum class ProbeEnum { FIRST, SECOND }
 
 @RunWith(RobolectricTestRunner::class)
+@Config(sdk = [28])
 class DataStoreHelpersTest {
 
     @get:Rule
@@ -108,6 +112,8 @@ class DataStoreHelpersTest {
 
     @Test
     fun `connectivity observer reports false without a network and unregisters safely`() {
+        Shadows.shadowOf(context.getSystemService(ConnectivityManager::class.java))
+            .setActiveNetworkInfo(null)
         val observer = NetworkConnectivityObserver(context)
         assertFalse(observer.isCurrentlyConnected())
         observer.unregister()

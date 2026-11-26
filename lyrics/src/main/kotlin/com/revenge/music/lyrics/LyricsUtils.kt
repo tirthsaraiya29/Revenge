@@ -199,6 +199,7 @@ object LyricsUtils {
             val agentMatch = agentRegex.find(text)
             val agent = agentMatch?.groupValues?.getOrNull(1)
             if (agentMatch != null) text = text.removeRange(agentMatch.range)
+            if (isBackground || agentMatch != null) text = text.trim()
 
             if (text.isBlank()) {
                 if (stamps.size > 1 && original.isNotBlank()) {

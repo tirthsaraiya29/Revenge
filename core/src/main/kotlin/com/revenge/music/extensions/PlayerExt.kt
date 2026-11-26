@@ -52,11 +52,24 @@ val Player.currentMetadata: MediaMetadata?
     get() = currentMediaItem?.metadata
 
 val Player.mediaItems: List<MediaItem>
-    get() = object : AbstractList<MediaItem>() {
+    get() = object : AbstractMutableList<MediaItem>() {
         override val size: Int
             get() = mediaItemCount
 
         override fun get(index: Int): MediaItem = getMediaItemAt(index)
+
+        // Live read-only view: MutableList in shape so mutation reaches the contract's throw.
+        override fun add(index: Int, element: MediaItem) {
+            throw UnsupportedOperationException("media items view is read only")
+        }
+
+        override fun set(index: Int, element: MediaItem): MediaItem {
+            throw UnsupportedOperationException("media items view is read only")
+        }
+
+        override fun removeAt(index: Int): MediaItem {
+            throw UnsupportedOperationException("media items view is read only")
+        }
     }
 
 fun Player.findNextMediaItemById(mediaId: String): MediaItem? {

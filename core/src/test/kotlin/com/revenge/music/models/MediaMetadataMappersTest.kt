@@ -213,7 +213,11 @@ class MediaMetadataMappersTest {
             artists = emptyList(),
             duration = 0,
         )
-        val taggedItem = MediaItem.Builder().setMediaId("tagged").setTag(tagged).build()
+        val taggedItem = MediaItem.Builder()
+            .setMediaId("tagged")
+            .setUri("https://example.com/tagged")
+            .setTag(tagged)
+            .build()
         assertSame(tagged, taggedItem.metadata)
 
         assertNull(MediaItem.Builder().build().metadata)

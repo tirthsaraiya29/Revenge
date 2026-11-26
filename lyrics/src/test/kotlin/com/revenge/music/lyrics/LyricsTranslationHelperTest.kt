@@ -20,8 +20,10 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
+import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
+@Config(sdk = [35])
 class LyricsTranslationHelperTest {
 
     private lateinit var context: Context
@@ -31,6 +33,7 @@ class LyricsTranslationHelperTest {
         context = RuntimeEnvironment.getApplication()
         LyricsTranslationHelper.cancelTranslation()
         LyricsTranslationHelper.clearCache()
+        LyricsTranslationHelper.triggerClearTranslations()
         LyricsTranslationHelper.resetStatus()
         LyricsTranslationHelper.setCompositionActive(true)
         LyricsTranslationHelper.translationDelegate = null

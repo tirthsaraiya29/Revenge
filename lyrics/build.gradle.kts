@@ -9,6 +9,7 @@ android {
     namespace = "com.revenge.lyrics"
     compileSdk = 37
     defaultConfig { minSdk = 26 }
+    testOptions { unitTests { isIncludeAndroidResources = true } }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_21
         targetCompatibility = JavaVersion.VERSION_21
