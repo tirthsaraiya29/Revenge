@@ -4,54 +4,52 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 data class Runs(
-  val runs: List<Run>?,
+    val runs: List<Run>?,
 )
 
 @Serializable
 data class Run(
-  val text: String,
-  val navigationEndpoint: NavigationEndpoint?,
+    val text: String,
+    val navigationEndpoint: NavigationEndpoint? = null,
 )
 
-// Counts may use compact suffixes across locales (K/M/B/T plus CJK and Korean units).
-private const val COMPACT_SUFFIX = "KkMmBbTt\\u4e07\\u842c\\u5104\\u4ebf\\u5146\\u5343\\ucc9c\\ub9cc\\uc5b5"
-private val COUNT_REGEX =
-  Regex("""\p{Nd}[\p{Nd}\s,.，．]*[$COMPACT_SUFFIX]*""")
-private val SEPARATED_SUFFIX_REGEX = Regex("""\s+(?=[$COMPACT_SUFFIX]$)""")
+private const val COUNT_SUFFIXES = "KMBT万萬億亿兆千천만억"
+private const val COUNT_SEPARATORS = " \\s,.\\uFF0C\\uFF0E\\u3001"
 
-/** Finds the human count (e.g. "1.2M views") inside a run list. */
+private val countRegex = Regex("\\d+(?:[$COUNT_SEPARATORS]\\d+)*(?:\\s?[$COUNT_SUFFIXES])?")
+private val spaceBeforeSuffixRegex = Regex("\\s(?=[$COUNT_SUFFIXES])")
+
+private fun findCountToken(text: String): String? {
+    val match = countRegex.find(text)?.value ?: return null
+    return match.replace(spaceBeforeSuffixRegex, "")
+}
+
 fun Runs?.extractCountText(): String? {
-  val texts = this?.runs?.map { it.text.trim() }?.filter { it.isNotEmpty() }.orEmpty()
-  return texts.joinToString(separator = "").extractCountValue()
-    ?: texts.firstNotNullOfOrNull { it.extractCountValue() }
+    val runs = this?.runs ?: return null
+    val combined = runs.map { it.text.trim() }.filter { it.isNotEmpty() }.joinToString("")
+    findCountToken(combined)?.let { return it }
+    return runs.firstNotNullOfOrNull { findCountToken(it.text.trim()) }
 }
 
-private fun String.extractCountValue(): String? =
-  COUNT_REGEX.find(this)?.value?.trim()?.replace(SEPARATED_SUFFIX_REGEX, "")?.takeIf { value ->
-    value.any { it.isDigit() }
-  }
-
-/** Splits a run list on the " • " separators YouTube Music inserts between metadata parts. */
 fun List<Run>.splitBySeparator(): List<List<Run>> {
-  val sections = mutableListOf<List<Run>>()
-  var current = mutableListOf<Run>()
-  forEach { run ->
-    if (run.text == " • ") {
-      sections.add(current)
-      current = mutableListOf()
-    } else {
-      current.add(run)
+    val groups = mutableListOf<MutableList<Run>>(mutableListOf())
+    for (run in this) {
+        if (run.text == " • ") {
+            groups.add(mutableListOf())
+        } else {
+            groups.last().add(run)
+        }
     }
-  }
-  sections.add(current)
-  return sections
+    return groups
 }
 
-/** Drops a leading "Artist • " prefix when it is plain text rather than a linked run. */
 fun List<List<Run>>.clean(): List<List<Run>> {
-  val first = getOrNull(0)?.getOrNull(0)
-  val keep = first?.navigationEndpoint != null || first?.text?.contains(Regex("[&,]")) != false
-  return if (keep) this else drop(1)
+    val first = firstOrNull() ?: return this
+    val firstRun = first.firstOrNull()
+    val text = firstRun?.text
+    val looksLikeLinkedOrMultiValue = text != null && (text.contains('&') || text.contains(','))
+    val drop = firstRun?.navigationEndpoint == null && !looksLikeLinkedOrMultiValue
+    return if (drop) drop(1) else this
 }
 
 fun List<Run>.oddElements(): List<Run> = filterIndexed { index, _ -> index % 2 == 0 }
