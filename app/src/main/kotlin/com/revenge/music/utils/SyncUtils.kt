@@ -123,6 +123,16 @@ class SyncUtils @Inject constructor(
         activeJob = null
     }
 
+    /** Drops every row that only exists because of a YouTube account sync. */
+    suspend fun clearAllSyncedContent() = mutex.withLock {
+        withContext(Dispatchers.IO) {
+            database.withTransaction {
+                database.clearSyncedPlaylists()
+                database.clearSetVideoIds()
+            }
+        }
+    }
+
     fun tryAutoSync() {
         scope.launch {
             if (!isLoggedIn()) return@launch
@@ -164,7 +174,12 @@ class SyncUtils @Inject constructor(
                             runCatching { YouTube.likeVideo(operation.song.id, true) }
                         }
                     SyncOperation.CleanupDuplicates -> runCatching { cleanupDuplicates() }
-                    SyncOperation.ClearAllSynced -> runCatching { }
+                    SyncOperation.ClearAllSynced -> {
+                        database.withTransaction {
+                            database.clearSyncedPlaylists()
+                            database.clearSetVideoIds()
+                        }
+                    }
                 }
                 _syncState.value = _syncState.value.copy(
                     overallStatus = SyncStatus.Completed,

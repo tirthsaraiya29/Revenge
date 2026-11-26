@@ -2,14 +2,21 @@ package com.revenge.music.utils
 
 import android.content.Context
 import android.content.SharedPreferences
+import dagger.hilt.android.qualifiers.ApplicationContext
+import javax.inject.Inject
+import javax.inject.Singleton
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /** Tracks which podcast-show browse ids the user has followed at least once. */
-class PodcastShowStore private constructor(
-    private val preferences: SharedPreferences,
+@Singleton
+class PodcastShowStore @Inject constructor(
+    @ApplicationContext context: Context,
 ) {
+    private val preferences: SharedPreferences =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
     private val _ids = MutableStateFlow(
         preferences.getStringSet(KEY, emptySet())?.toSet() ?: emptySet(),
     )
@@ -23,15 +30,7 @@ class PodcastShowStore private constructor(
     }
 
     companion object {
+        private const val PREFS_NAME = "podcast_shows"
         private const val KEY = "show_ids"
-
-        @Volatile private var instance: PodcastShowStore? = null
-
-        fun getInstance(context: Context): PodcastShowStore =
-            instance ?: synchronized(this) {
-                instance ?: PodcastShowStore(
-                    context.getSharedPreferences("podcast_shows", Context.MODE_PRIVATE),
-                ).also { instance = it }
-            }
     }
 }

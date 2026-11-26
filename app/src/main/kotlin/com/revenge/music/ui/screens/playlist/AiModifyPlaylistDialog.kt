@@ -14,6 +14,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.revenge.music.LocalDatabase
 import com.revenge.music.R
 import com.revenge.music.ai.AiPlaylistModifier
 import com.revenge.music.db.entities.PlaylistSong
@@ -26,6 +27,7 @@ fun AiModifyPlaylistDialog(
   onDismiss: () -> Unit,
 ) {
   val context = LocalContext.current
+  val database = LocalDatabase.current
   val coroutineScope = rememberCoroutineScope()
 
   var prompt by remember { mutableStateOf("") }
@@ -92,7 +94,7 @@ fun AiModifyPlaylistDialog(
                   isProcessing = true
                   logs = "Starting modification...\n"
                   coroutineScope.launch {
-                    AiPlaylistModifier.modifyPlaylist(
+                    AiPlaylistModifier(database).modifyPlaylist(
                       context = context,
                       playlistId = playlistId,
                       currentSongs = currentSongs,

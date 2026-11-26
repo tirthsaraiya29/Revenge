@@ -34,6 +34,7 @@ class NewEpisodesWorker @AssistedInject constructor(
     @Assisted appContext: Context,
     @Assisted params: WorkerParameters,
     private val database: MusicDatabase,
+    private val podcastShows: PodcastShowStore,
 ) : CoroutineWorker(appContext, params) {
 
     companion object {
@@ -59,7 +60,7 @@ class NewEpisodesWorker @AssistedInject constructor(
 
     override suspend fun doWork(): Result {
         createChannel()
-        val shows = PodcastShowStore.getInstance(applicationContext).ids.value
+        val shows = podcastShows.ids.value
         if (shows.isEmpty()) return Result.success()
 
         val followed = runCatching {

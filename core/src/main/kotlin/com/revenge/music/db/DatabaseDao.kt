@@ -1431,6 +1431,12 @@ interface DatabaseDao {
     )
     suspend fun pruneLocalArtists()
 
+    @Query("DELETE FROM playlist WHERE browseId IS NOT NULL")
+    suspend fun clearSyncedPlaylists()
+
+    @Query("DELETE FROM set_video_id")
+    suspend fun clearSetVideoIds()
+
     @Query("SELECT * FROM artist WHERE id IN (:ids)")
     suspend fun getArtistEntitiesByIds(ids: List<String>): List<ArtistEntity>
 
