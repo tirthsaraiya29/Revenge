@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
 import coil3.imageLoader
+import coil3.request.allowHardware
 import coil3.toBitmap
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata as Media3Metadata
@@ -131,7 +132,7 @@ object AutomotiveArtwork {
     val mac = Mac.getInstance("HmacSHA256")
     mac.init(SecretKeySpec(secret(context), "HmacSHA256"))
     val digest = mac.doFinal(url.toByteArray(Charsets.UTF_8))
-    return digest.take(16).joinToString("") { "%02x".format(it) }
+    return digest.take(16).joinToString("") { "%02x".format(it.toInt() and 0xff) }
   }
 
   private fun secret(context: Context): ByteArray {
@@ -148,7 +149,7 @@ object AutomotiveArtwork {
   internal fun sha256Hex(value: String): String =
     MessageDigest.getInstance("SHA-256")
       .digest(value.toByteArray(Charsets.UTF_8))
-      .joinToString("") { "%02x".format(it) }
+      .joinToString("") { "%02x".format(it.toInt() and 0xff) }
 
   private suspend fun loadWithCoil(url: String): Bitmap? {
     val request =
@@ -194,6 +195,13 @@ fun MediaMetadata.withAutomotiveArtworkUri(context: Context): MediaMetadata {
   val mapped = AutomotiveArtwork.contentUriFor(context, Uri.parse(original)) ?: return this
   if (mapped.toString() == original) return this
   return copy(thumbnailUrl = mapped.toString())
+}
+
+fun Media3Metadata.withAutomotiveArtworkUri(context: Context): Media3Metadata {
+  val artwork = artworkUri ?: return this
+  val mapped = AutomotiveArtwork.contentUriFor(context, artwork) ?: return this
+  if (mapped == artwork) return this
+  return buildUpon().setArtworkUri(mapped).build()
 }
 
 fun MediaItem.withAutomotiveArtworkUri(context: Context): MediaItem {

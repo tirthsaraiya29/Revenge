@@ -26,14 +26,14 @@ class SpotifyQueueTest {
     override fun getCached(trackId: String): SongItem? = null
   }
 
-  private fun track(id: String, index: Int = id.hashCode()): SpotifyTrack =
+  private fun track(id: String): SpotifyTrack =
     SpotifyTrack(
       id = id,
       name = "Song $id",
       artists = listOf(SpotifySimpleArtist(name = "Artist")),
       durationMs = 180_000,
       uri = "spotify:track:$id",
-    ).also { _ -> index }
+    )
 
   private fun song(id: String): SongItem =
     SongItem(

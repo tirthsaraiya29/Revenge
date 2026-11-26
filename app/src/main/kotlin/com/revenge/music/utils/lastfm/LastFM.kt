@@ -206,6 +206,6 @@ object LastFM {
 
   internal fun md5Hex(value: String): String {
     val bytes = MessageDigest.getInstance("MD5").digest(value.toByteArray(Charsets.UTF_8))
-    return bytes.joinToString("") { "%02x".format(it) }
+    return bytes.joinToString("") { "%02x".format(it.toInt() and 0xff) }
   }
 }

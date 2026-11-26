@@ -240,7 +240,8 @@ class ListenTogetherManager(
     val now = System.currentTimeMillis()
     val desiredPosition =
       (payload.position ?: 0L) + max(0L, now - (payload.serverTime ?: now))
-    val key = "${payload.action}:${payload.trackId}:${desiredPosition}"
+    val key =
+      "${payload.action}:${payload.trackId}:${payload.position}:${payload.serverTime}"
     if (key == lastActionKey && now - lastActionAt <= 1_000) return
     lastActionKey = key
     lastActionAt = now
