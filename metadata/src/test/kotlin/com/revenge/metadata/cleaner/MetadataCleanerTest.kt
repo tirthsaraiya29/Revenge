@@ -1,221 +1,360 @@
 package com.revenge.metadata.cleaner
 
 import com.revenge.metadata.models.VersionType
+import java.util.concurrent.Callable
+import java.util.concurrent.Executors
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MetadataCleanerTest {
 
-  @Test
-  fun `strips official video and quality tags`() {
-    val result = MetadataCleaner.clean("Alan Walker - Faded (Official Music Video) [4K]", "Alan Walker")
+    private fun clean(title: String, artist: String = "") = MetadataCleaner.clean(title, artist)
 
-    assertEquals("Faded", result.cleanTitle)
-    assertEquals("Alan Walker", result.primaryArtist)
-    assertEquals("Alan Walker", result.cleanArtist)
-    assertNull(result.version)
-    assertTrue(result.junkTags.any { it.contains("Official Music Video", ignoreCase = true) })
-    assertTrue(result.junkTags.any { it.contains("4K", ignoreCase = true) })
-  }
+    // §11.2 CleanerRules surface
 
-  @Test
-  fun `keeps remix as version info`() {
-    val result =
-      MetadataCleaner.clean(
-        "Illenium - Crawl Outta Love (The Glitch Mob Remix) [Official Audio]",
-        "Illenium",
-      )
+    @Test
+    fun versionPatternPrecedenceMatchesSpec() {
+        assertEquals(
+            listOf(
+                VersionType.REMIX,
+                VersionType.LIVE,
+                VersionType.ACOUSTIC,
+                VersionType.REMASTER,
+                VersionType.INSTRUMENTAL,
+                VersionType.COVER,
+                VersionType.RADIO_EDIT,
+                VersionType.EXTENDED,
+                VersionType.SLOWED,
+                VersionType.SPED_UP,
+            ),
+            CleanerRules.VERSION_PATTERNS.map { it.second },
+        )
+    }
 
-    assertEquals("Crawl Outta Love", result.cleanTitle)
-    assertEquals("Illenium", result.primaryArtist)
-    assertNotNull(result.version)
-    assertEquals(VersionType.REMIX, result.version?.type)
-    assertEquals("The Glitch Mob Remix", result.version?.description)
-    assertEquals("Crawl Outta Love (The Glitch Mob Remix)", result.toDisplayTitle())
-    assertEquals("Crawl Outta Love", result.toSearchQuery().first)
-  }
+    @Test
+    fun artistSeparatorsMatchSpec() {
+        assertEquals(
+            listOf(" & ", ", ", " feat. ", " feat ", " ft. ", " ft ", " featuring ", " and ", " x ", " X "),
+            CleanerRules.ARTIST_SEPARATORS,
+        )
+    }
 
-  @Test
-  fun `extracts featuring credit from bracket`() {
-    val result =
-      MetadataCleaner.clean(
-        "Major Lazer - Lean On (feat. MØ) (Official Lyric Video)",
-        "Major Lazer",
-      )
+    @Test
+    fun versionKeywordsClassifyAsDocumented() {
+        val cases = listOf(
+            "Remix" to VersionType.REMIX,
+            "Flip" to VersionType.REMIX,
+            "Bootleg" to VersionType.REMIX,
+            "VIP" to VersionType.REMIX,
+            "Re-edit" to VersionType.REMIX,
+            "Club Mix" to VersionType.REMIX,
+            "Dub" to VersionType.REMIX,
+            "Live" to VersionType.LIVE,
+            "Session" to VersionType.LIVE,
+            "Unplugged" to VersionType.LIVE,
+            "In Concert" to VersionType.LIVE,
+            "Acoustic" to VersionType.ACOUSTIC,
+            "Orchestral" to VersionType.ACOUSTIC,
+            "Symphonic" to VersionType.ACOUSTIC,
+            "Remastered" to VersionType.REMASTER,
+            "Deluxe" to VersionType.REMASTER,
+            "Anniversary" to VersionType.REMASTER,
+            "Instrumental" to VersionType.INSTRUMENTAL,
+            "Karaoke" to VersionType.INSTRUMENTAL,
+            "Cover" to VersionType.COVER,
+            "Radio Edit" to VersionType.RADIO_EDIT,
+            "Edit" to VersionType.RADIO_EDIT,
+            "Extended" to VersionType.EXTENDED,
+            "Extended Mix" to VersionType.EXTENDED,
+            "Slowed" to VersionType.SLOWED,
+            "Slowed + Reverb" to VersionType.SLOWED,
+            "Reverb" to VersionType.SLOWED,
+            "Sped Up" to VersionType.SPED_UP,
+            "Nightcore" to VersionType.SPED_UP,
+        )
+        for ((keyword, expected) in cases) {
+            val actual = CleanerRules.VERSION_PATTERNS.first { it.first.containsMatchIn(keyword) }.second
+            assertEquals("keyword=$keyword", expected, actual)
+        }
+    }
 
-    assertEquals("Lean On", result.cleanTitle)
-    assertEquals("Major Lazer", result.primaryArtist)
-    assertTrue(result.featuredArtists.contains("MØ"))
-  }
+    @Test
+    fun remixTakesPrecedenceOverLive() {
+        val actual = CleanerRules.VERSION_PATTERNS.first { it.first.containsMatchIn("Remix Live") }.second
+        assertEquals(VersionType.REMIX, actual)
+    }
 
-  @Test
-  fun `scrubs Topic channel suffix`() {
-    val result = MetadataCleaner.clean("Yellow", "Coldplay - Topic")
+    @Test
+    fun junkPatternsMatchTheirFragments() {
+        val fragments = listOf(
+            "(Official Music Video)",
+            "[HD]",
+            "【Official MV】",
+            "「Official Audio」",
+            "Song | Official Video",
+            "Song // Official Video",
+            "#shorts",
+            "Song - Official Video",
+        )
+        fragments.forEachIndexed { index, fragment ->
+            assertTrue("pattern $index", CleanerRules.JUNK_PATTERNS[index].containsMatchIn(fragment))
+        }
+    }
 
-    assertEquals("Yellow", result.cleanTitle)
-    assertEquals("Coldplay", result.primaryArtist)
-  }
+    @Test
+    fun featuringPatternsExposeCaptureGroup() {
+        val parenthesised = CleanerRules.FEATURING_PATTERNS[0].find("Song (feat. X)")!!
+        assertEquals("X", parenthesised.groupValues[1])
 
-  @Test
-  fun `splits camel case VEVO channel name`() {
-    val result = MetadataCleaner.clean("Blank Space", "TaylorSwiftVEVO")
+        val bracketed = CleanerRules.FEATURING_PATTERNS[1].find("Song [ft. Y]")!!
+        assertEquals("Y", bracketed.groupValues[1])
 
-    assertEquals("Blank Space", result.cleanTitle)
-    assertEquals("Taylor Swift", result.primaryArtist)
-  }
+        val inline = CleanerRules.FEATURING_PATTERNS[2].find("Song featuring Z")!!
+        assertEquals("Z", inline.groupValues[1].trim())
+    }
 
-  @Test
-  fun `removes CJK bracket tags`() {
-    val result = MetadataCleaner.clean("RADWIMPS - 前前前世 【Official MV】", "RADWIMPS")
+    // §11.3 Junk and brackets
 
-    assertEquals("前前前世", result.cleanTitle)
-    assertEquals("RADWIMPS", result.primaryArtist)
-  }
+    @Test
+    fun removesBracketedUploadJunk() {
+        val result = clean("Alan Walker - Faded (Official Music Video) [4K]", "Alan Walker")
+        assertEquals("Faded", result.cleanTitle)
+        assertEquals("Alan Walker", result.primaryArtist)
+        assertEquals("Alan Walker", result.cleanArtist)
+        assertNull(result.version)
+        assertTrue(result.junkTags.any { it.contains("Official Music Video", ignoreCase = true) })
+        assertTrue(result.junkTags.any { it.contains("4K", ignoreCase = true) })
+    }
 
-  @Test
-  fun `removes trailing pipe status`() {
-    val result = MetadataCleaner.clean("Song Name | Official Visualizer 2024", "Artist")
+    @Test
+    fun removesPipeTrailer() {
+        val result = clean("Song Name | Official Visualizer 2024", "Artist")
+        assertEquals("Song Name", result.cleanTitle)
+        assertTrue(result.junkTags.any { it.contains("Visualizer", ignoreCase = true) })
+    }
 
-    assertEquals("Song Name", result.cleanTitle)
-    assertEquals("Artist", result.primaryArtist)
-    assertTrue(result.junkTags.any { it.contains("Visualizer", ignoreCase = true) })
-  }
+    @Test
+    fun removesHashtags() {
+        val result = clean("Best Song Ever #shorts #trending", "Artist")
+        assertEquals("Best Song Ever", result.cleanTitle)
+        assertTrue(result.junkTags.contains("#shorts"))
+        assertTrue(result.junkTags.contains("#trending"))
+    }
 
-  @Test
-  fun `detects live version`() {
-    val result = MetadataCleaner.clean("Hotel California (Live on MTV 1994) [HD]", "Eagles")
+    @Test
+    fun removesCjkCornerBracketJunk() {
+        val result = clean("RADWIMPS - 前前前世 【Official MV】", "RADWIMPS")
+        assertEquals("前前前世", result.cleanTitle)
+        assertEquals("RADWIMPS", result.primaryArtist)
+    }
 
-    assertEquals("Hotel California", result.cleanTitle)
-    assertEquals(VersionType.LIVE, result.version?.type)
-    assertEquals("Live on MTV 1994", result.version?.description)
-  }
+    @Test
+    fun doesNotPeelJunkOnlyRightSide() {
+        val result = clean("Alone - (Official Video)", "Marshmello")
+        assertEquals("Alone", result.cleanTitle)
+        assertEquals("Marshmello", result.primaryArtist)
+    }
 
-  @Test
-  fun `detects acoustic version`() {
-    val result = MetadataCleaner.clean("Take On Me (Acoustic Version)", "a-ha")
+    @Test
+    fun doesNotPeelWhenRightSideIsJunkWords() {
+        val result = clean("Alan Walker - Official Music Video", "Alan Walker - Topic")
+        assertEquals("Alan Walker", result.primaryArtist)
+        assertTrue(result.cleanTitle != "Official Music Video")
+    }
 
-    assertEquals("Take On Me", result.cleanTitle)
-    assertEquals(VersionType.ACOUSTIC, result.version?.type)
-  }
+    // §11.4 Versions
 
-  @Test
-  fun `detects slowed reverb version`() {
-    val result = MetadataCleaner.clean("After Dark (Slowed + Reverb)", "Mr. Kitty")
+    @Test
+    fun extractsRemixVersion() {
+        val result = clean(
+            "Illenium - Crawl Outta Love (The Glitch Mob Remix) [Official Audio]",
+            "Illenium",
+        )
+        assertEquals("Crawl Outta Love", result.cleanTitle)
+        assertEquals(VersionType.REMIX, result.version!!.type)
+        assertEquals("The Glitch Mob Remix", result.version!!.description)
+        assertEquals("Crawl Outta Love (The Glitch Mob Remix)", result.toDisplayTitle())
+        assertEquals("Crawl Outta Love", result.toSearchQuery().first)
+    }
 
-    assertEquals("After Dark", result.cleanTitle)
-    assertEquals(VersionType.SLOWED, result.version?.type)
-    assertEquals("Slowed + Reverb", result.version?.description)
-  }
+    @Test
+    fun extractsLiveVersion() {
+        val result = clean("Hotel California (Live on MTV 1994) [HD]", "Eagles")
+        assertEquals("Hotel California", result.cleanTitle)
+        assertEquals(VersionType.LIVE, result.version!!.type)
+        assertEquals("Live on MTV 1994", result.version!!.description)
+    }
 
-  @Test
-  fun `detects extended and instrumental variants`() {
-    assertEquals(
-      VersionType.EXTENDED,
-      MetadataCleaner.clean("Tune (Extended Mix)", "Artist").version?.type,
-    )
-    assertEquals(
-      VersionType.INSTRUMENTAL,
-      MetadataCleaner.clean("Tune (Instrumental)", "Artist").version?.type,
-    )
-  }
+    @Test
+    fun extractsAcousticVersion() {
+        assertEquals(VersionType.ACOUSTIC, clean("Take On Me (Acoustic Version)", "a-ha").version!!.type)
+    }
 
-  @Test
-  fun `splits multiple artists but keeps full display name`() {
-    val result = MetadataCleaner.clean("Title", "Calvin Harris & Dua Lipa")
+    @Test
+    fun extractsSlowedVersion() {
+        val result = clean("After Dark (Slowed + Reverb)", "Mr. Kitty")
+        assertEquals(VersionType.SLOWED, result.version!!.type)
+        assertEquals("Slowed + Reverb", result.version!!.description)
+    }
 
-    assertEquals("Calvin Harris", result.primaryArtist)
-    assertEquals("Calvin Harris & Dua Lipa", result.cleanArtist)
-    assertTrue(result.featuredArtists.contains("Dua Lipa"))
-    assertEquals("Calvin Harris & Dua Lipa", result.toSearchQuery().second)
-  }
+    @Test
+    fun extractsExtendedAndInstrumental() {
+        assertEquals(VersionType.EXTENDED, clean("Tune (Extended Mix)", "Artist").version!!.type)
+        assertEquals(VersionType.INSTRUMENTAL, clean("Tune (Instrumental)", "Artist").version!!.type)
+    }
 
-  @Test
-  fun `does not peel a bracketed junk suffix into the title`() {
-    val result = MetadataCleaner.clean("Alone - (Official Video)", "Marshmello")
+    @Test
+    fun keepsFirstVersionAndRemovesBothBrackets() {
+        val result = clean("Song Name (Remix) (Live)", "Artist")
+        assertEquals("Song Name", result.cleanTitle)
+        assertEquals(VersionType.REMIX, result.version!!.type)
+    }
 
-    assertEquals("Alone", result.cleanTitle)
-    assertEquals("Marshmello", result.primaryArtist)
-  }
+    // §11.5 Featuring and splitting
 
-  @Test
-  fun `does not treat junk-only right hand side as title`() {
-    val result = MetadataCleaner.clean("Alan Walker - Official Music Video", "Alan Walker - Topic")
+    @Test
+    fun extractsFeaturedArtistFromBracket() {
+        val result = clean("Major Lazer - Lean On (feat. MØ) (Official Lyric Video)", "Major Lazer")
+        assertEquals("Lean On", result.cleanTitle)
+        assertTrue(result.featuredArtists.contains("MØ"))
+    }
 
-    assertEquals("Alan Walker", result.primaryArtist)
-    assertTrue(result.cleanTitle != "Official Music Video")
-  }
+    @Test
+    fun peelsArtistAndExtractsInlineFeaturing() {
+        val result = clean("Major Lazer & DJ Snake - Lean On feat. MØ", "")
+        assertEquals("Lean On", result.cleanTitle)
+        assertEquals("Major Lazer", result.primaryArtist)
+        assertTrue(result.featuredArtists.contains("DJ Snake"))
+        assertTrue(result.featuredArtists.contains("MØ"))
+    }
 
-  @Test
-  fun `decodes entities and smart quotes`() {
-    val result = MetadataCleaner.clean("Rock &amp; Roll &#39;King&#39; “Edition”", "Artist")
+    @Test
+    fun splitsMultipleArtistsButKeepsFullDisplayArtist() {
+        val result = clean("Title", "Calvin Harris & Dua Lipa")
+        assertEquals("Calvin Harris", result.primaryArtist)
+        assertEquals("Calvin Harris & Dua Lipa", result.cleanArtist)
+        assertTrue(result.featuredArtists.contains("Dua Lipa"))
+        assertEquals("Calvin Harris & Dua Lipa", result.toSearchQuery().second)
+    }
 
-    assertEquals("Rock & Roll 'King' \"Edition\"", result.cleanTitle)
-  }
+    @Test
+    fun keepsFullArtistForSearchQuery() {
+        assertEquals("Simon & Garfunkel", clean("X", "Simon & Garfunkel").toSearchQuery().second)
+        assertEquals("Earth, Wind & Fire", clean("X", "Earth, Wind & Fire").toSearchQuery().second)
+        assertEquals("Florence and the Machine", clean("X", "Florence and the Machine").toSearchQuery().second)
+    }
 
-  @Test
-  fun `strips hashtags into junk tags`() {
-    val result = MetadataCleaner.clean("Best Song Ever #shorts #trending", "Artist")
+    @Test
+    fun removesPrimaryFromFeaturedAndDeduplicates() {
+        val sameAsPrimary = clean("Song (feat. Artist)", "Artist")
+        assertTrue(sameAsPrimary.featuredArtists.isEmpty())
 
-    assertEquals("Best Song Ever", result.cleanTitle)
-    assertTrue(result.junkTags.contains("#shorts"))
-    assertTrue(result.junkTags.contains("#trending"))
-  }
+        val duplicated = clean("Song (feat. Dua Lipa)", "Calvin Harris & Dua Lipa")
+        assertEquals(listOf("Dua Lipa"), duplicated.featuredArtists)
+    }
 
-  @Test
-  fun `combines featured artists from artist field and title`() {
-    val result = MetadataCleaner.clean("Major Lazer & DJ Snake - Lean On feat. MØ", "")
+    // §11.6 Channel scrubbing
 
-    assertEquals("Lean On", result.cleanTitle)
-    assertEquals("Major Lazer", result.primaryArtist)
-    assertTrue(result.featuredArtists.contains("DJ Snake"))
-    assertTrue(result.featuredArtists.contains("MØ"))
-  }
+    @Test
+    fun scrubsTopicSuffix() {
+        assertEquals("Coldplay", clean("Yellow", "Coldplay - Topic").primaryArtist)
+    }
 
-  @Test
-  fun `keeps full multi word artist in search query`() {
-    assertEquals(
-      "Simon & Garfunkel",
-      MetadataCleaner.clean("The Sound of Silence", "Simon & Garfunkel").toSearchQuery().second,
-    )
-    assertEquals(
-      "Earth, Wind & Fire",
-      MetadataCleaner.clean("September", "Earth, Wind & Fire").toSearchQuery().second,
-    )
-    assertEquals(
-      "Florence and the Machine",
-      MetadataCleaner.clean("Dog Days Are Over", "Florence and the Machine").toSearchQuery().second,
-    )
-  }
+    @Test
+    fun scrubsVevoSuffixWithCamelSplit() {
+        assertEquals("Taylor Swift", clean("Blank Space", "TaylorSwiftVEVO").primaryArtist)
+    }
 
-  @Test
-  fun `leaves clean input unchanged`() {
-    val result = MetadataCleaner.clean("Simple Song", "Simple Artist")
+    @Test
+    fun scrubsChannelSuffixes() {
+        assertEquals("Some Band", clean("X", "SomeBandVEVO").primaryArtist)
+        assertEquals("ABC", clean("X", "ABCVEVO").primaryArtist)
+        assertEquals("Some Band", clean("X", "Some Band Records").primaryArtist)
+        assertEquals("Some Band", clean("X", "Some Band Official").primaryArtist)
+    }
 
-    assertEquals("Simple Song", result.cleanTitle)
-    assertEquals("Simple Artist", result.primaryArtist)
-    assertEquals(listOf<String>(), result.featuredArtists)
-    assertEquals(listOf<String>(), result.junkTags)
-    assertNull(result.version)
-  }
+    // §11.7 Sanitisation and dash handling
 
-  @Test
-  fun `handles empty input`() {
-    val result = MetadataCleaner.clean("", "")
+    @Test
+    fun sanitisesEntitiesAndTypographicQuotes() {
+        val result = clean("Rock &amp; Roll &#39;King&#39; “Edition”", "Artist")
+        assertEquals("Rock & Roll 'King' \"Edition\"", result.cleanTitle)
+    }
 
-    assertEquals("", result.cleanTitle)
-    assertEquals("", result.primaryArtist)
-    assertEquals("", result.cleanArtist)
-    assertTrue(result.featuredArtists.isEmpty())
-  }
+    @Test
+    fun removesEmojiFromTitleAndArtist() {
+        val result = clean("Song 🎵 Name", "Artist 🎤")
+        assertEquals("Song Name", result.cleanTitle)
+        assertEquals("Artist", result.primaryArtist)
+    }
 
-  @Test
-  fun `does not split on dash when artist does not match`() {
-    val result = MetadataCleaner.clean("Part - Two", "Someone")
+    @Test
+    fun doesNotPeelUnrelatedArtistPrefix() {
+        val result = clean("Part - Two", "Someone")
+        assertEquals("Part - Two", result.cleanTitle)
+        assertEquals("Someone", result.primaryArtist)
+    }
 
-    assertEquals("Part - Two", result.cleanTitle)
-    assertEquals("Someone", result.primaryArtist)
-  }
+    @Test
+    fun isIdempotentOnCleanInput() {
+        val result = clean("Simple Song", "Simple Artist")
+        assertEquals("Simple Song", result.cleanTitle)
+        assertEquals("Simple Artist", result.primaryArtist)
+        assertTrue(result.featuredArtists.isEmpty())
+        assertTrue(result.junkTags.isEmpty())
+        assertNull(result.version)
+    }
+
+    @Test
+    fun handlesEmptyInput() {
+        val result = clean("", "")
+        assertEquals("", result.cleanTitle)
+        assertEquals("", result.primaryArtist)
+        assertEquals("", result.cleanArtist)
+        assertTrue(result.featuredArtists.isEmpty())
+    }
+
+    @Test
+    fun echoesRawArguments() {
+        val result = MetadataCleaner.clean("Rock &amp; Roll 🎵", "Some &amp; Artist")
+        assertEquals("Rock &amp; Roll 🎵", result.rawTitle)
+        assertEquals("Some &amp; Artist", result.rawArtist)
+    }
+
+    // §11.9 Non-functional
+
+    @Test
+    fun neverThrowsOnMalformedInput() {
+        val inputs = listOf("", "   ", "(", "]", "&", "&#;", "&#xZZ;", "(((", "【】", "「", "#", "|", "//", " - ")
+        for (input in inputs) {
+            val result = MetadataCleaner.clean(input, input)
+            assertEquals(input, result.rawTitle)
+            ApiText.clean(input)
+        }
+    }
+
+    @Test
+    fun concurrentCallsMatchSequentialResults() {
+        val inputs = listOf(
+            "Alan Walker - Faded (Official Music Video) [4K]" to "Alan Walker",
+            "Hotel California (Live on MTV 1994) [HD]" to "Eagles",
+            "Major Lazer & DJ Snake - Lean On feat. MØ" to "",
+        )
+        val expected = inputs.map { (title, artist) -> MetadataCleaner.clean(title, artist) }
+
+        val pool = Executors.newFixedThreadPool(4)
+        try {
+            val tasks = inputs.map { (title, artist) ->
+                Callable { MetadataCleaner.clean(title, artist) }
+            }.toList()
+            val repeated = pool.invokeAll(tasks + tasks + tasks).map { it.get() }
+            repeated.forEachIndexed { index, actual ->
+                assertEquals(expected[index % inputs.size], actual)
+            }
+        } finally {
+            pool.shutdown()
+        }
+    }
 }

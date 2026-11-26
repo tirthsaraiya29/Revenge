@@ -8,166 +8,150 @@ import kotlin.math.pow
 import kotlin.math.sin
 import kotlin.math.sqrt
 
-/**
- * Direct form I biquad section using the RBJ audio EQ cookbook responses.
- *
- * Coefficients are derived once from the constructor arguments; only the
- * per-channel history is mutable while streaming. Left and right channels keep
- * independent state so [processStereo] can be used on interleaved audio.
- *
- * Sample rate and frequency are clamped to a usable range, so the filter stays
- * finite even when callers pass a frequency at or beyond Nyquist.
- */
 class BiquadFilter(
-  sampleRate: Int,
-  frequency: Double,
-  gain: Double,
-  q: Double = DEFAULT_Q,
-  filterType: FilterType = FilterType.PK,
+    sampleRate: Int,
+    frequency: Double,
+    gain: Double,
+    q: Double = 1.41,
+    filterType: FilterType = FilterType.PK
 ) {
-  private val b0: Double
-  private val b1: Double
-  private val b2: Double
-  private val a1: Double
-  private val a2: Double
+    private val b0: Double
+    private val b1: Double
+    private val b2: Double
+    private val a1: Double
+    private val a2: Double
 
-  private val left = ChannelState()
-  private val right = ChannelState()
+    private var leftX1 = 0.0
+    private var leftX2 = 0.0
+    private var leftY1 = 0.0
+    private var leftY2 = 0.0
 
-  init {
-    val rate = if (sampleRate >= MIN_SAMPLE_RATE) sampleRate.toDouble() else DEFAULT_SAMPLE_RATE.toDouble()
-    val safeFrequency = frequency
-      .takeIf { it.isFinite() }
-      ?.coerceIn(MIN_FREQUENCY, rate / 2.0 - 1.0)
-      ?: MIN_FREQUENCY
-    val safeGain = (gain.takeIf { it.isFinite() } ?: 0.0).coerceIn(MIN_GAIN, MAX_GAIN)
-    val safeQ = q.takeIf { it.isFinite() && it > 0.0 } ?: DEFAULT_Q
+    private var rightX1 = 0.0
+    private var rightX2 = 0.0
+    private var rightY1 = 0.0
+    private var rightY2 = 0.0
 
-    val omega = 2.0 * PI * safeFrequency / rate
-    val (b, a) =
-      when (filterType) {
-        FilterType.LSC -> shelf(omega, safeGain, lowShelf = true)
-        FilterType.HSC -> shelf(omega, safeGain, lowShelf = false)
-        FilterType.PK,
-        FilterType.LPQ,
-        FilterType.HPQ -> peaking(omega, safeGain, safeQ)
-      }
+    init {
+        val rate = if (sampleRate >= 22) sampleRate else 44100
+        val safeFrequency = if (frequency.isFinite()) {
+            frequency.coerceIn(10.0, rate / 2.0 - 1.0)
+        } else {
+            10.0
+        }
+        val safeGain = if (gain.isFinite()) gain.coerceIn(-120.0, 120.0) else 0.0
+        val safeQ = if (!q.isFinite() || q <= 0.0) 1.41 else q
 
-    val denominator = a[0]
-    if (denominator.isFinite() && abs(denominator) > EPSILON) {
-      b0 = b[0] / denominator
-      b1 = b[1] / denominator
-      b2 = b[2] / denominator
-      a1 = a[1] / denominator
-      a2 = a[2] / denominator
-    } else {
-      // Degenerate coefficients would emit NaN; pass audio through untouched.
-      b0 = 1.0
-      b1 = 0.0
-      b2 = 0.0
-      a1 = 0.0
-      a2 = 0.0
+        val coefficients = derive(safeFrequency, safeGain, safeQ, filterType, rate)
+        b0 = coefficients[0]
+        b1 = coefficients[1]
+        b2 = coefficients[2]
+        a1 = coefficients[3]
+        a2 = coefficients[4]
     }
-  }
 
-  fun processSample(input: Double): Double = step(left, input)
-
-  fun processStereo(inputLeft: Double, inputRight: Double): Pair<Double, Double> =
-    step(left, inputLeft) to step(right, inputRight)
-
-  fun reset() {
-    left.reset()
-    right.reset()
-  }
-
-  private fun step(state: ChannelState, input: Double): Double {
-    val output =
-      b0 * input + b1 * state.x1 + b2 * state.x2 - a1 * state.y1 - a2 * state.y2
-    state.x2 = state.x1
-    state.x1 = input
-    state.y2 = state.y1
-    state.y1 = output
-    return output
-  }
-
-  /** Returns (numerator, denominator) coefficients before a0 normalisation. */
-  private fun peaking(omega: Double, gainDb: Double, q: Double): Pair<DoubleArray, DoubleArray> {
-    val amplitude = 10.0.pow(gainDb / 40.0)
-    val sine = sin(omega)
-    val cosine = cos(omega)
-    val alpha = sine / (2.0 * q)
-    val numerator = doubleArrayOf(1.0 + alpha * amplitude, -2.0 * cosine, 1.0 - alpha * amplitude)
-    val denominator = doubleArrayOf(1.0 + alpha / amplitude, -2.0 * cosine, 1.0 - alpha / amplitude)
-    return numerator to denominator
-  }
-
-  private fun shelf(
-    omega: Double,
-    gainDb: Double,
-    lowShelf: Boolean,
-  ): Pair<DoubleArray, DoubleArray> {
-    val amplitude = 10.0.pow(gainDb / 40.0)
-    val rootAmplitude = sqrt(amplitude)
-    val cosine = cos(omega)
-    val alpha = sin(omega) / 2.0 * SQRT_TWO
-    val sum = amplitude + 1.0
-    val difference = amplitude - 1.0
-    val alphaTerm = 2.0 * rootAmplitude * alpha
-
-    val numerator: DoubleArray
-    val denominator: DoubleArray
-    if (lowShelf) {
-      numerator =
-        doubleArrayOf(
-          amplitude * (sum - difference * cosine + alphaTerm),
-          2.0 * amplitude * (difference - sum * cosine),
-          amplitude * (sum - difference * cosine - alphaTerm),
-        )
-      denominator =
-        doubleArrayOf(
-          sum + difference * cosine + alphaTerm,
-          -2.0 * (difference + sum * cosine),
-          sum + difference * cosine - alphaTerm,
-        )
-    } else {
-      numerator =
-        doubleArrayOf(
-          amplitude * (sum + difference * cosine + alphaTerm),
-          -2.0 * amplitude * (difference + sum * cosine),
-          amplitude * (sum + difference * cosine - alphaTerm),
-        )
-      denominator =
-        doubleArrayOf(
-          sum - difference * cosine + alphaTerm,
-          2.0 * (difference - sum * cosine),
-          sum - difference * cosine - alphaTerm,
-        )
+    fun processSample(input: Double): Double {
+        val output = b0 * input + b1 * leftX1 + b2 * leftX2 - a1 * leftY1 - a2 * leftY2
+        leftX2 = leftX1
+        leftX1 = input
+        leftY2 = leftY1
+        leftY1 = output
+        return output
     }
-    return numerator to denominator
-  }
 
-  private class ChannelState {
-    var x1 = 0.0
-    var x2 = 0.0
-    var y1 = 0.0
-    var y2 = 0.0
+    fun processStereo(inputLeft: Double, inputRight: Double): Pair<Double, Double> {
+        val leftOutput = b0 * inputLeft + b1 * leftX1 + b2 * leftX2 - a1 * leftY1 - a2 * leftY2
+        leftX2 = leftX1
+        leftX1 = inputLeft
+        leftY2 = leftY1
+        leftY1 = leftOutput
+
+        val rightOutput = b0 * inputRight + b1 * rightX1 + b2 * rightX2 - a1 * rightY1 - a2 * rightY2
+        rightX2 = rightX1
+        rightX1 = inputRight
+        rightY2 = rightY1
+        rightY1 = rightOutput
+
+        return leftOutput to rightOutput
+    }
 
     fun reset() {
-      x1 = 0.0
-      x2 = 0.0
-      y1 = 0.0
-      y2 = 0.0
+        leftX1 = 0.0
+        leftX2 = 0.0
+        leftY1 = 0.0
+        leftY2 = 0.0
+        rightX1 = 0.0
+        rightX2 = 0.0
+        rightY1 = 0.0
+        rightY2 = 0.0
     }
-  }
 
-  private companion object {
-    const val DEFAULT_Q = 1.41
-    const val DEFAULT_SAMPLE_RATE = 44100
-    const val MIN_SAMPLE_RATE = 22
-    const val MIN_FREQUENCY = 10.0
-    const val MIN_GAIN = -120.0
-    const val MAX_GAIN = 120.0
-    const val EPSILON = 1e-12
-    val SQRT_TWO = sqrt(2.0)
-  }
+    private fun derive(
+        frequency: Double,
+        gainDb: Double,
+        q: Double,
+        filterType: FilterType,
+        sampleRate: Int
+    ): DoubleArray {
+        val a = 10.0.pow(gainDb / 40.0)
+        val omega = 2.0 * PI * frequency / sampleRate
+        val sinOmega = sin(omega)
+        val cosOmega = cos(omega)
+
+        val raw = when (filterType) {
+            FilterType.PK, FilterType.LPQ, FilterType.HPQ -> {
+                val alpha = sinOmega / (2.0 * q)
+                doubleArrayOf(
+                    1.0 + alpha * a,
+                    -2.0 * cosOmega,
+                    1.0 - alpha * a,
+                    1.0 + alpha / a,
+                    -2.0 * cosOmega,
+                    1.0 - alpha / a
+                )
+            }
+
+            FilterType.LSC -> {
+                val alpha = sinOmega / 2.0 * sqrt(2.0)
+                val beta = 2.0 * sqrt(a) * alpha
+                val sum = a + 1.0
+                val diff = a - 1.0
+                doubleArrayOf(
+                    a * (sum - diff * cosOmega + beta),
+                    2.0 * a * (diff - sum * cosOmega),
+                    a * (sum - diff * cosOmega - beta),
+                    sum + diff * cosOmega + beta,
+                    -2.0 * (diff + sum * cosOmega),
+                    sum + diff * cosOmega - beta
+                )
+            }
+
+            FilterType.HSC -> {
+                val alpha = sinOmega / 2.0 * sqrt(2.0)
+                val beta = 2.0 * sqrt(a) * alpha
+                val sum = a + 1.0
+                val diff = a - 1.0
+                doubleArrayOf(
+                    a * (sum + diff * cosOmega + beta),
+                    -2.0 * a * (diff + sum * cosOmega),
+                    a * (sum + diff * cosOmega - beta),
+                    sum - diff * cosOmega + beta,
+                    2.0 * (diff - sum * cosOmega),
+                    sum - diff * cosOmega - beta
+                )
+            }
+        }
+
+        val a0 = raw[3]
+        if (!a0.isFinite() || abs(a0) <= 1e-12) {
+            return doubleArrayOf(1.0, 0.0, 0.0, 0.0, 0.0)
+        }
+
+        return doubleArrayOf(
+            raw[0] / a0,
+            raw[1] / a0,
+            raw[2] / a0,
+            raw[4] / a0,
+            raw[5] / a0
+        )
+    }
 }
