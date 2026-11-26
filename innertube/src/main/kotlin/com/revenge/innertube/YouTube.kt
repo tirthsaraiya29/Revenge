@@ -1,7 +1,9 @@
 package com.revenge.innertube
 
 import com.revenge.innertube.models.*
-import com.revenge.innertube.models.comment.Comment
+import com.revenge.innertube.models.WatchEndpoint.WatchEndpointMusicSupportedConfigs.WatchEndpointMusicConfig.Companion.MUSIC_VIDEO_TYPE_ATV
+import com.revenge.innertube.models.WatchEndpoint.WatchEndpointMusicSupportedConfigs.WatchEndpointMusicConfig.Companion.MUSIC_VIDEO_TYPE_PODCAST_EPISODE
+import com.revenge.innertube.models.comment.CommentThreadRenderer.Comment
 import com.revenge.innertube.models.comment.CommentRenderer
 import com.revenge.innertube.models.comment.CommentResponse
 import com.revenge.innertube.models.comment.CommentThreadRenderer
@@ -110,7 +112,7 @@ object YouTube {
     private fun sectionContents(response: BrowseResponse): List<SectionListRenderer.Content> {
         val result = mutableListOf<SectionListRenderer.Content>()
         response.contents?.sectionListRenderer?.contents?.let(result::addAll)
-        response.contents?.singleColumnBrowseResultsRenderer?.tabs?.tabs.orEmpty().forEach { tab ->
+        response.contents?.singleColumnBrowseResultsRenderer?.tabs.orEmpty().forEach { tab ->
             tab?.tabRenderer?.content?.sectionListRenderer?.contents?.let(result::addAll)
         }
         response.contents?.twoColumnBrowseResultsRenderer?.tabs.orEmpty().forEach { tab ->
@@ -120,7 +122,7 @@ object YouTube {
     }
 
     private fun primarySectionList(response: BrowseResponse): SectionListRenderer? =
-        response.contents?.singleColumnBrowseResultsRenderer?.tabs?.tabs?.firstOrNull()
+        response.contents?.singleColumnBrowseResultsRenderer?.tabs?.firstOrNull()
             ?.tabRenderer?.content?.sectionListRenderer
             ?: response.contents?.twoColumnBrowseResultsRenderer?.tabs?.firstOrNull()
                 ?.tabRenderer?.content?.sectionListRenderer
@@ -666,7 +668,7 @@ object YouTube {
 
         val header = playlistHeader(response)
         val allPodcast = rows.isNotEmpty() && rows.all { content ->
-            content.musicResponsiveListItemRenderer?.musicVideoType == WatchEndpoint.MUSIC_VIDEO_TYPE_PODCAST_EPISODE
+            content.musicResponsiveListItemRenderer?.musicVideoType == MUSIC_VIDEO_TYPE_PODCAST_EPISODE
         }
         if (header == null || allPodcast) {
             val podcastPage = podcast(playlistId).getOrNull()
@@ -798,7 +800,7 @@ object YouTube {
                 .body<BrowseResponse>()
             val section = response.continuationContents?.sectionListContinuation
             val sections = section?.contents.orEmpty().mapNotNull { content ->
-                content.musicCarouselShelfRenderer?.let { HomePage.fromMusicCarouselShelfRenderer(it) }
+                content.musicCarouselShelfRenderer?.let { HomePage.Section.fromMusicCarouselShelfRenderer(it) }
             }
             HomePage(null, sections, section?.continuations.orEmpty().getContinuation())
                 .filterBlockedArtists()
@@ -809,7 +811,7 @@ object YouTube {
             val list = primarySectionList(response)
             val sections = list?.contents.orEmpty()
                 .mapNotNull { content ->
-                    content.musicCarouselShelfRenderer?.let { HomePage.fromMusicCarouselShelfRenderer(it) }
+                    content.musicCarouselShelfRenderer?.let { HomePage.Section.fromMusicCarouselShelfRenderer(it) }
                 }
                 .filterNot { it.isStationListenTogether }
             val chips = list?.header?.chipCloudRenderer?.chips?.mapNotNull {
@@ -890,7 +892,7 @@ object YouTube {
 
     private suspend fun fetchLibrary(browseId: String, tabIndex: Int): LibraryPage {
         val response = innerTube.browse(YouTubeClient.WEB_REMIX, browseId, setLogin = true).body<BrowseResponse>()
-        val tabs = response.contents?.singleColumnBrowseResultsRenderer?.tabs?.tabs
+        val tabs = response.contents?.singleColumnBrowseResultsRenderer?.tabs
             ?: response.contents?.twoColumnBrowseResultsRenderer?.tabs
         val sectionList = tabs?.getOrNull(tabIndex)?.tabRenderer?.content?.sectionListRenderer
             ?: primarySectionList(response)
@@ -1326,21 +1328,21 @@ object YouTube {
             content.musicCarouselShelfRenderer?.contents.orEmpty().forEach { item ->
                 item.musicTwoRowItemRenderer?.let { accept(RelatedPage.fromMusicTwoRowItemRenderer(it)) }
                 item.musicResponsiveListItemRenderer?.let { row ->
-                    if (row.musicVideoType == WatchEndpoint.MUSIC_VIDEO_TYPE_ATV) {
+                    if (row.musicVideoType == MUSIC_VIDEO_TYPE_ATV) {
                         accept(RelatedPage.fromMusicResponsiveListItemRenderer(row))
                     }
                 }
             }
             content.musicShelfRenderer?.contents.orEmpty().forEach { item ->
                 item.musicResponsiveListItemRenderer?.let { row ->
-                    if (row.musicVideoType == WatchEndpoint.MUSIC_VIDEO_TYPE_ATV) {
+                    if (row.musicVideoType == MUSIC_VIDEO_TYPE_ATV) {
                         accept(RelatedPage.fromMusicResponsiveListItemRenderer(row))
                     }
                 }
             }
             content.itemSectionRenderer?.contents.orEmpty().forEach { item ->
                 item.musicResponsiveListItemRenderer?.let { row ->
-                    if (row.musicVideoType == WatchEndpoint.MUSIC_VIDEO_TYPE_ATV) {
+                    if (row.musicVideoType == MUSIC_VIDEO_TYPE_ATV) {
                         accept(RelatedPage.fromMusicResponsiveListItemRenderer(row))
                     }
                 }

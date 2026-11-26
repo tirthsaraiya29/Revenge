@@ -18,8 +18,8 @@ import com.revenge.innertube.models.body.NextBody
 import com.revenge.innertube.models.body.PlaylistDeleteBody
 import com.revenge.innertube.models.body.SearchBody
 import com.revenge.innertube.models.body.SubscribeBody
+import com.revenge.innertube.models.ReturnYouTubeDislikeResponse
 import com.revenge.innertube.models.response.NextResponse
-import com.revenge.innertube.models.response.ReturnYouTubeDislikeResponse
 import com.revenge.innertube.utils.parseCookieString
 import com.revenge.innertube.utils.sha1
 import com.revenge.metadata.cleaner.ApiText
@@ -468,7 +468,7 @@ class InnerTube {
             client,
             playlistId,
             EditPlaylistBody.Action.SetCustomThumbnailAction(
-                addedCustomThumbnail = EditPlaylistBody.Action.SetCustomThumbnailAction.AddedCustomThumbnail(
+                addedCustomThumbnail = EditPlaylistBody.Action.AddedCustomThumbnail(
                     playlistScottyEncryptedBlobId = blobId,
                 ),
             ),

@@ -155,7 +155,11 @@ data class CommentResponse(
         )
 
         @Serializable
-        class Toolbar
+        data class Toolbar(
+            val likeCountNotliked: String? = null,
+            val likeCountLiked: String? = null,
+            val replyCount: Int? = null,
+        )
     }
 
     @Serializable
@@ -174,7 +178,7 @@ data class CommentResponse(
         data class Toolbar(
             val likeCountNotliked: String? = null,
             val likeCountLiked: String? = null,
-            val replyCount: String? = null,
+            val replyCount: Int? = null,
         )
     }
 }
