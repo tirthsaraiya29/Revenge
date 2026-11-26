@@ -276,4 +276,49 @@ class PaxsenixCoreTest {
     assertEquals("No matching track found on Paxsenix", result.exceptionOrNull()?.message)
     assertEquals(expectedQueries, engine.requests.size)
   }
+
+  @Test
+  fun `getLyrics searches, ranks and fetches the best candidate`() = runBlocking {
+    val engine = FakeEngine { data ->
+      when (data.url.encodedPath) {
+        "/apple-music/search" ->
+          reply(
+            data,
+            HttpStatusCode.OK,
+            """[{"id":"a","trackName":"Song","artistName":"Artist","duration":100000}]""",
+          )
+        "/apple-music/lyrics" ->
+          reply(data, HttpStatusCode.OK, """{"elrc":"[00:01.00]<00:01.00>Hi"}""")
+        else -> reply(data, HttpStatusCode.NotFound, "")
+      }
+    }
+    Paxsenix.testClient = HttpClient(engine) { expectSuccess = true }
+
+    val result = Paxsenix.getLyrics("Song", "Artist", 100)
+
+    assertEquals("[00:01.00]<00:01.00>Hi", result.getOrNull())
+  }
+
+  @Test
+  fun `getAllLyrics delivers exactly one best candidate`() = runBlocking {
+    val engine = FakeEngine { data ->
+      when (data.url.encodedPath) {
+        "/apple-music/search" ->
+          reply(
+            data,
+            HttpStatusCode.OK,
+            """[{"id":"a","trackName":"Song","artistName":"Artist","duration":100000}]""",
+          )
+        "/apple-music/lyrics" ->
+          reply(data, HttpStatusCode.OK, """{"plain":"plain lyrics"}""")
+        else -> reply(data, HttpStatusCode.NotFound, "")
+      }
+    }
+    Paxsenix.testClient = HttpClient(engine) { expectSuccess = true }
+
+    val delivered = ArrayList<String>()
+    Paxsenix.getAllLyrics("Song", "Artist", 100) { delivered.add(it) }
+
+    assertEquals(listOf("plain lyrics"), delivered)
+  }
 }

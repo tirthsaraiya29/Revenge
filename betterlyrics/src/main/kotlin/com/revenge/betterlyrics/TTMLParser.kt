@@ -7,7 +7,9 @@ import javax.xml.parsers.DocumentBuilderFactory
 import kotlin.math.roundToLong
 import org.w3c.dom.Element
 import org.w3c.dom.Node
+import org.xml.sax.ErrorHandler
 import org.xml.sax.InputSource
+import org.xml.sax.SAXParseException
 
 private const val TTML_METADATA_NS = "http://www.w3.org/ns/ttml#metadata"
 
@@ -37,6 +39,17 @@ private fun hardenedBuilder(): DocumentBuilder {
   }
   return factory.newDocumentBuilder().apply {
     setEntityResolver { _, _ -> InputSource(StringReader("")) }
+    setErrorHandler(object : ErrorHandler {
+      override fun warning(exception: SAXParseException) = Unit
+
+      override fun error(exception: SAXParseException) {
+        throw exception
+      }
+
+      override fun fatalError(exception: SAXParseException) {
+        throw exception
+      }
+    })
   }
 }
 
