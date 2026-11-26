@@ -253,7 +253,7 @@ data class SyncStatePayload(
   @SerialName("is_playing") val isPlaying: Boolean = false,
   val position: Long? = null,
   @SerialName("last_update") val lastUpdate: Long = 0L,
-  val queue: List<TrackInfo> = emptyList(),
+  val queue: List<TrackInfo>? = null,
   val volume: Float? = null,
 )
 
