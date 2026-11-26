@@ -14,10 +14,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -36,7 +38,9 @@ data class EpisodeState(val fraction: Float, val finished: Boolean, val remainin
  */
 @Composable
 fun rememberEpisodeState(item: SongItem): EpisodeState? {
-  val entries by PodcastProgress.entries.collectAsState()
+  val context = LocalContext.current
+  val progress = remember { PodcastProgress.getInstance(context) }
+  val entries by progress.entries.collectAsState()
   val local = entries[item.id]
   if (local != null) {
     local.fraction?.let {

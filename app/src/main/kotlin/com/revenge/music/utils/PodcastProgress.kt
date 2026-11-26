@@ -2,9 +2,9 @@ package com.revenge.music.utils
 
 import android.content.Context
 import android.content.SharedPreferences
-import com.revenge.innertube.models.HomePage
 import com.revenge.innertube.models.PODCAST_BROWSE_PREFIX
 import com.revenge.innertube.models.SongItem
+import com.revenge.innertube.pages.HomePage
 import com.revenge.music.models.MediaMetadata
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -55,6 +55,9 @@ class PodcastProgress private constructor(
     private val _speed = MutableStateFlow(settings.getFloat(SPEED_KEY, 1f))
     val speed: StateFlow<Float> = _speed.asStateFlow()
 
+    private val _entries = MutableStateFlow(allLocked().associateBy { it.id })
+    val entries: StateFlow<Map<String, EpisodeProgress>> = _entries.asStateFlow()
+
     fun get(mediaId: String): EpisodeProgress? = synchronized(lock) {
         val raw = progress.getString(mediaId, null) ?: return null
         runCatching {
@@ -63,10 +66,13 @@ class PodcastProgress private constructor(
     }
 
     fun inProgress(): List<EpisodeProgress> = synchronized(lock) {
-        allLocked()
+        inProgress(_entries.value)
+    }
+
+    fun inProgress(entries: Map<String, EpisodeProgress>): List<EpisodeProgress> =
+        entries.values
             .filter { it.isInProgress }
             .sortedByDescending { it.updatedAt }
-    }
 
     fun update(metadata: MediaMetadata, positionMs: Long, durationMs: Long) {
         synchronized(lock) {
@@ -127,7 +133,7 @@ class PodcastProgress private constructor(
         val percent = song.playedPercent ?: return false
         if (percent <= 0) return false
         val durationMs = (song.duration ?: 0).toLong() * 1000
-        val finished = percent >= 95
+        val finished = percent >= REMOTE_PLAYED_PERCENT
         if (!finished && durationMs <= 0) return false
         val position = if (durationMs > 0) durationMs * percent / 100 else 0
         synchronized(lock) {
@@ -231,12 +237,14 @@ class PodcastProgress private constructor(
                 .forEach { editor.remove(it.id) }
         }
         editor.apply()
+        _entries.value = allLocked().associateBy { it.id }
     }
 
     companion object {
         const val SKIP_BACK_MS = 15_000L
         const val SKIP_FORWARD_MS = 30_000L
         const val MAX_ENTRIES = 500
+        const val REMOTE_PLAYED_PERCENT = 95
         private const val MIN_TRACKING_POSITION_MS = 30_000L
         private const val REMOTE_AHEAD_MS = 60_000L
         private const val SPEED_KEY = "podcast_speed"
@@ -272,6 +280,7 @@ class PodcastProgress private constructor(
                     persistLocked(entry.copy(finished = true))
                 }
             }
+            _entries.value = allLocked().associateBy { it.id }
         }
     }
 }

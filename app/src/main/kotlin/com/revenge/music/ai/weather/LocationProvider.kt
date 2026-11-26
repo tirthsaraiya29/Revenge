@@ -26,7 +26,7 @@ class LocationProvider @Inject constructor(
             LocationManager.NETWORK_PROVIDER,
             LocationManager.PASSIVE_PROVIDER,
         )) {
-            val location = runCatching { manager.lastKnownLocation(provider) }.getOrNull()
+            val location = runCatching { manager.getLastKnownLocation(provider) }.getOrNull()
             if (location != null) candidates += location
         }
         val now = System.currentTimeMillis()

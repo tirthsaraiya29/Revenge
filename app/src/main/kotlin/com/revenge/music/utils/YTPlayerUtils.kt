@@ -14,6 +14,7 @@ import com.revenge.innertube.models.YouTubeClient.Companion.TVHTML5
 import com.revenge.innertube.models.YouTubeClient.Companion.VISIONOS
 import com.revenge.innertube.models.YouTubeClient.Companion.WEB_CREATOR
 import com.revenge.innertube.models.YouTubeClient.Companion.WEB_REMIX
+import com.revenge.innertube.models.response.PlayerConfig
 import com.revenge.innertube.models.response.PlayerResponse
 import com.revenge.music.constants.AudioQuality
 import com.revenge.music.utils.YTPlayerUtils.MAIN_CLIENT
@@ -213,7 +214,7 @@ object YTPlayerUtils {
     STREAM_FALLBACK_CLIENTS.indexOf(TVHTML5).takeIf { it >= 0 } ?: 0
 
   data class PlaybackData(
-    val audioConfig: PlayerResponse.PlayerConfig.AudioConfig?,
+    val audioConfig: PlayerConfig.AudioConfig?,
     val videoDetails: PlayerResponse.VideoDetails?,
     val playbackTracking: PlayerResponse.PlaybackTracking?,
     val format: PlayerResponse.StreamingData.Format,
@@ -250,7 +251,7 @@ object YTPlayerUtils {
 
     PlaybackData(
       audioConfig =
-        com.revenge.innertube.models.response.PlayerResponse.PlayerConfig.AudioConfig(
+        PlayerConfig.AudioConfig(
           loudnessDb = extracted.loudnessDb,
           perceptualLoudnessDb = extracted.perceptualLoudnessDb,
         ),

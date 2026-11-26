@@ -14,7 +14,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 
 fun interface WeatherTransport {
-    suspend fun get(url: String, headers: Map<String, String> = emptyMap()): String
+    suspend fun get(url: String, headers: Map<String, String>): String
 }
 
 class OkHttpWeatherTransport : WeatherTransport {
@@ -53,7 +53,7 @@ class WeatherRepository @Inject constructor() {
             val url = "https://api.open-meteo.com/v1/forecast?latitude=$latitude" +
                 "&longitude=$longitude&current=temperature_2m,relative_humidity_2m," +
                 "apparent_temperature,is_day,weather_code,wind_speed_10m"
-            val body = activeTransport().get(url)
+            val body = activeTransport().get(url, emptyMap())
             if (body.isBlank()) error("Empty weather response")
             val root = json.parseToJsonElement(body).jsonObject
             val current = root["current"]?.jsonObject ?: error("Missing current weather")

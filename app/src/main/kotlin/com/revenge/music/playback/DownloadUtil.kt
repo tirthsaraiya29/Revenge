@@ -156,7 +156,7 @@ constructor(
               format.mimeType.split("codecs=").getOrNull(1)?.removeSurrounding("\"") ?: "opus",
             bitrate = format.bitrate,
             sampleRate = format.audioSampleRate,
-            contentLength = format.contentLength ?: 0L,
+            contentLength = format.contentLength?.toInt() ?: 0,
             loudnessDb = playbackData.audioConfig?.loudnessDb,
             perceptualLoudnessDb = playbackData.audioConfig?.perceptualLoudnessDb,
             playbackUrl = playbackData.playbackTracking?.videostatsPlaybackUrl?.baseUrl,

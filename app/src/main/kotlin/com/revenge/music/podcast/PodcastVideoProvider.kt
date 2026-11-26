@@ -1,8 +1,8 @@
 package com.revenge.music.podcast
 
+import com.revenge.innertube.NewPipeExtractor
+import com.revenge.innertube.NewPipeVideoTrack
 import com.revenge.innertube.YouTube
-import com.revenge.innertube.models.NewPipeExtractor
-import com.revenge.innertube.models.NewPipeVideoTrack
 import com.revenge.innertube.models.SongItem
 import com.revenge.innertube.models.YouTubeClient
 import com.revenge.innertube.models.response.PlayerResponse
@@ -53,13 +53,14 @@ object PodcastVideoProvider {
             }
             if (results.isEmpty()) return@runCatching null
             val wanted = cleanTitle.lowercase(Locale.ROOT)
-            results.firstOrNull { song ->
+            val match = results.firstOrNull { song ->
                 song.musicVideoType == OMV && titleMatches(song.title, wanted)
             } ?: results.firstOrNull { it.musicVideoType == OMV }
                 ?: results.firstOrNull { song ->
                     officialTitle.containsMatchIn(song.title) && song.musicVideoType != ATV
                 }
                 ?: results.firstOrNull { it.musicVideoType != ATV }
+            match?.id
         }.getOrNull()
     }
 
@@ -96,7 +97,7 @@ object PodcastVideoProvider {
 
         val byHeight = LinkedHashMap<Int, MutableList<Candidate>>()
         streaming.formats.orEmpty()
-            .filter { it.height != null && it.height >= 144 }
+            .filter { (it.height ?: 0) >= 144 }
             .forEach { format ->
                 val url = streamUrl(format, videoId) ?: return@forEach
                 val height = format.height ?: return@forEach
@@ -105,7 +106,7 @@ object PodcastVideoProvider {
             }
         if (audio != null) {
             streaming.adaptiveFormats
-                .filter { !it.isAudio && it.height != null && it.height >= 144 }
+                .filter { !it.isAudio && (it.height ?: 0) >= 144 }
                 .forEach { format ->
                     val url = streamUrl(format, videoId) ?: return@forEach
                     val height = format.height ?: return@forEach

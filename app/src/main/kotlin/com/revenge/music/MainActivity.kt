@@ -276,6 +276,7 @@ class MainActivity : ComponentActivity() {
 
   @Inject lateinit var database: MusicDatabase
   @Inject lateinit var localTasteEngine: com.revenge.music.generate.LocalTasteEngine
+  @Inject lateinit var aiRecommendationHelper: AiRecommendationHelper
 
   @Inject lateinit var downloadUtil: DownloadUtil
 
@@ -434,7 +435,7 @@ class MainActivity : ComponentActivity() {
         val currentDay = System.currentTimeMillis() / (1000 * 60 * 60 * 24)
         if (lastUpdate != currentDay) {
           dataStore.edit { it[LastAiRecommendationUpdateDayKey] = currentDay }
-          AiRecommendationHelper.generateRecommendations(this@MainActivity)
+          aiRecommendationHelper.generateRecommendations(this@MainActivity)
         }
       }
 
@@ -467,7 +468,7 @@ class MainActivity : ComponentActivity() {
         val currentDay = System.currentTimeMillis() / (1000 * 60 * 60 * 24)
         if (lastUpdate != currentDay) {
           dataStore.edit { it[LastAiRecommendationUpdateDayKey] = currentDay }
-          AiRecommendationHelper.generateRecommendations(this@MainActivity)
+          aiRecommendationHelper.generateRecommendations(this@MainActivity)
         }
       }
 

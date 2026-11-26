@@ -38,11 +38,11 @@ class SpotifyQueue(
 
   private var initialized = false
 
-  override suspend fun getInitialStatus(): Status =
+  override suspend fun getInitialStatus(): Queue.Status =
     withContext(Dispatchers.IO) {
       if (tracks.isEmpty()) {
         initialized = true
-        return@withContext Status(title = title, items = emptyList(), mediaItemIndex = 0)
+        return@withContext Queue.Status(title = title, items = emptyList(), mediaItemIndex = 0)
       }
 
       val items = mutableListOf<MediaItem>()
@@ -61,7 +61,7 @@ class SpotifyQueue(
         }
       }
       initialized = true
-      Status(
+      Queue.Status(
         title = title,
         items = items,
         mediaItemIndex = if (items.isEmpty()) 0 else selected.coerceIn(0, items.lastIndex),

@@ -79,6 +79,7 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
+import com.revenge.innertube.NewPipeVideoTrack
 import com.revenge.innertube.YouTube
 import com.revenge.innertube.models.PODCAST_BROWSE_PREFIX
 import com.revenge.innertube.models.WatchEndpoint.WatchEndpointMusicSupportedConfigs.WatchEndpointMusicConfig.Companion.MUSIC_VIDEO_TYPE_ATV
@@ -86,7 +87,6 @@ import com.revenge.innertube.models.WatchEndpoint.WatchEndpointMusicSupportedCon
 import com.revenge.music.LocalPlayerConnection
 import com.revenge.music.R
 import com.revenge.music.podcast.PodcastVideoProvider
-import com.revenge.music.podcast.VideoTrackOption
 import com.revenge.music.utils.PodcastProgress
 import com.revenge.music.utils.makeTimeString
 import kotlinx.coroutines.delay
@@ -95,7 +95,7 @@ import okhttp3.OkHttpClient
 
 private fun buildMediaSource(
   context: Context,
-  option: VideoTrackOption,
+  option: NewPipeVideoTrack,
   okHttpClient: OkHttpClient,
 ): MediaSource {
   val okHttpFactory = OkHttpDataSource.Factory(okHttpClient)
@@ -142,6 +142,7 @@ private fun buildMediaSource(
 fun PodcastVideoScreen(navController: NavController) {
   val context = LocalContext.current
   val playerConnection = LocalPlayerConnection.current ?: return
+  val progress = remember { PodcastProgress.getInstance(context) }
   val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
   val activity = context as? Activity
 
@@ -156,8 +157,8 @@ fun PodcastVideoScreen(navController: NavController) {
   val isEpisode =
     mediaMetadata?.let { metadata ->
       val durationMs = maxOf(playerConnection.player.duration, metadata.duration * 1000L)
-      PodcastProgress.get(metadata.id) != null ||
-        PodcastProgress.isEpisode(metadata, durationMs) ||
+      progress.get(metadata.id) != null ||
+        progress.isEpisode(metadata, durationMs) ||
         metadata.musicVideoType == MUSIC_VIDEO_TYPE_PODCAST_EPISODE ||
         metadata.artists.any { it.id?.startsWith(PODCAST_BROWSE_PREFIX) == true }
     } == true
@@ -253,8 +254,8 @@ fun PodcastVideoScreen(navController: NavController) {
       .build()
   }
 
-  var tracks by remember { mutableStateOf<List<VideoTrackOption>>(emptyList()) }
-  var selectedTrack by remember { mutableStateOf<VideoTrackOption?>(null) }
+  var tracks by remember { mutableStateOf<List<NewPipeVideoTrack>>(emptyList()) }
+  var selectedTrack by remember { mutableStateOf<NewPipeVideoTrack?>(null) }
   var isLoadingTracks by remember { mutableStateOf(true) }
 
   var controlsVisible by remember { mutableStateOf(true) }

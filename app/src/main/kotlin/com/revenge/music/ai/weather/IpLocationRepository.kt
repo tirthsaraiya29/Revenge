@@ -37,7 +37,7 @@ class IpLocationRepository @Inject constructor() {
     }
 
     private suspend fun primary(): IpLocation? = runCatching {
-        val body = activeTransport().get("https://ipwho.is/")
+        val body = activeTransport().get("https://ipwho.is/", emptyMap())
         if (body.isBlank()) return@runCatching null
         val root = json.parseToJsonElement(body).jsonObject
         val success = root["success"]?.jsonPrimitive?.booleanOrNull ?: false

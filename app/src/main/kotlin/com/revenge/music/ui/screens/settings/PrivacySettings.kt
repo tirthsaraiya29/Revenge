@@ -22,6 +22,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
@@ -40,6 +41,7 @@ import com.revenge.music.ui.component.Material3SettingsGroup
 import com.revenge.music.ui.component.Material3SettingsItem
 import com.revenge.music.ui.utils.backToMain
 import com.revenge.music.utils.rememberPreference
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -51,6 +53,7 @@ fun PrivacySettings(
   val scrollState = androidx.compose.foundation.rememberScrollState()
 
   val database = LocalDatabase.current
+  val scope = rememberCoroutineScope()
   val (pauseListenHistory, onPauseListenHistoryChange) =
     rememberPreference(key = PauseListenHistoryKey, defaultValue = false)
   val (pauseSearchHistory, onPauseSearchHistoryChange) =
@@ -80,7 +83,7 @@ fun PrivacySettings(
         TextButton(
           onClick = {
             showClearListenHistoryDialog = false
-            database.query { clearListenHistory() }
+            scope.launch { database.clearListenHistory() }
           },
         ) {
           Text(text = stringResource(android.R.string.ok))
@@ -111,7 +114,7 @@ fun PrivacySettings(
         TextButton(
           onClick = {
             showClearSearchHistoryDialog = false
-            database.query { clearSearchHistory() }
+            scope.launch { database.clearSearchHistory() }
           },
         ) {
           Text(text = stringResource(android.R.string.ok))

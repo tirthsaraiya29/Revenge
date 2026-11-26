@@ -34,6 +34,7 @@ import com.revenge.music.spotify.models.SpotifyPlaylistOwner
 import com.revenge.music.spotify.models.SpotifyPlaylistTrack
 import com.revenge.music.spotify.models.SpotifyPlaylistTracksRef
 import com.revenge.music.spotify.models.SpotifyRecommendations
+import com.revenge.music.spotify.models.SpotifySavedTrack
 import com.revenge.music.spotify.models.SpotifySearchResult
 import com.revenge.music.spotify.models.SpotifySimpleAlbum
 import com.revenge.music.spotify.models.SpotifySimpleArtist
@@ -804,7 +805,7 @@ object Spotify {
       name = obj.str("name").orEmpty(),
       description = obj.str("description"),
       images =
-        imagesFrom(obj.obj("images")?.arr("items")?.flatMap { it.asObj()?.arr("sources").orEmpty() })
+        imagesFromList(obj.obj("images")?.arr("items")?.flatMap { it.asObj()?.arr("sources").orEmpty() }.orEmpty())
           .ifEmpty { imagesFrom(obj["images"]) },
       owner =
         owner?.let {
@@ -975,7 +976,7 @@ object Spotify {
       href = body.str("href"),
     )
 
-  private fun imagesFrom(elements: List<JsonElement>): List<SpotifyImage> =
+  private fun imagesFromList(elements: List<JsonElement>): List<SpotifyImage> =
     imagesFrom(JsonArray(elements))
 
   private fun imagesFrom(element: JsonElement?): List<SpotifyImage> {

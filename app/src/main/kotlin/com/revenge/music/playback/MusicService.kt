@@ -257,6 +257,8 @@ class MusicService : MediaLibraryService(), Player.Listener, PlaybackStatsListen
   private var trackedAccumulatedPlayMs: Long = 0L
   private var trackedPlayStartTs: Long = 0L
 
+  private val podcastProgress by lazy { PodcastProgress.getInstance(this) }
+
   /** Resolves and embeds the current cover; cancelled when the track changes. */
   private val sessionBitmapLoader by lazy { CoilBitmapLoader(this, scope) }
 
@@ -1503,7 +1505,7 @@ class MusicService : MediaLibraryService(), Player.Listener, PlaybackStatsListen
       }
     }
 
-    scope.launch { PodcastProgress.speed.collect { applyEpisodeSpeed() } }
+    scope.launch { podcastProgress.speed.collect { applyEpisodeSpeed() } }
   }
 
   /** Waits for the saved queue to be back in the player, within a bound. */
@@ -1541,16 +1543,16 @@ class MusicService : MediaLibraryService(), Player.Listener, PlaybackStatsListen
   internal val isCurrentEpisode: Boolean
     get() {
       val metadata = player.currentMetadata ?: return false
-      return PodcastProgress.get(metadata.id) != null ||
-        PodcastProgress.isEpisode(metadata, maxOf(player.duration, metadata.duration * 1000L))
+      return podcastProgress.get(metadata.id) != null ||
+        podcastProgress.isEpisode(metadata, maxOf(player.duration, metadata.duration * 1000L))
     }
 
   private fun isNextItemEpisode(): Boolean {
     val index = player.nextMediaItemIndex
     if (index == C.INDEX_UNSET) return false
     val metadata = player.getMediaItemAt(index).metadata ?: return false
-    return PodcastProgress.get(metadata.id) != null ||
-      PodcastProgress.isEpisode(metadata, metadata.duration * 1000L)
+    return podcastProgress.get(metadata.id) != null ||
+      podcastProgress.isEpisode(metadata, metadata.duration * 1000L)
   }
 
   /** Music speed to go back to once an episode is over. */
@@ -1560,7 +1562,7 @@ class MusicService : MediaLibraryService(), Player.Listener, PlaybackStatsListen
   private fun applyEpisodeSpeed() {
     if (isCurrentEpisode) {
       if (speedBeforeEpisode == null) speedBeforeEpisode = player.playbackParameters
-      val speed = PodcastProgress.speed.value
+      val speed = podcastProgress.speed.value
       if (player.playbackParameters.speed != speed) {
         player.playbackParameters = PlaybackParameters(speed, 1f)
       }
@@ -1700,8 +1702,8 @@ class MusicService : MediaLibraryService(), Player.Listener, PlaybackStatsListen
     for (index in player.mediaItemCount - 1 downTo current + 1) {
       val metadata = player.getMediaItemAt(index).metadata ?: continue
       if (
-        PodcastProgress.get(metadata.id) == null &&
-          !PodcastProgress.isEpisode(metadata, metadata.duration * 1000L)
+        podcastProgress.get(metadata.id) == null &&
+          !podcastProgress.isEpisode(metadata, metadata.duration * 1000L)
       ) {
         player.removeMediaItem(index)
       }
@@ -1785,12 +1787,12 @@ class MusicService : MediaLibraryService(), Player.Listener, PlaybackStatsListen
   private fun savePodcastPosition() {
     val metadata = player.currentMetadata ?: return
     if (
-      PodcastProgress.get(metadata.id) == null &&
-        !PodcastProgress.isEpisode(metadata, player.duration)
+      podcastProgress.get(metadata.id) == null &&
+        !podcastProgress.isEpisode(metadata, player.duration)
     ) {
       return
     }
-    PodcastProgress.update(metadata, player.currentPosition, player.duration)
+    podcastProgress.update(metadata, player.currentPosition, player.duration)
   }
 
   /**
@@ -1800,10 +1802,10 @@ class MusicService : MediaLibraryService(), Player.Listener, PlaybackStatsListen
   private fun resumePodcastPosition(mediaItem: MediaItem?, previous: MediaItem?, reason: Int) {
     // An episode that played to its end is done.
     if (previous != null && reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) {
-      PodcastProgress.markFinished(previous.mediaId)
+      podcastProgress.markFinished(previous.mediaId)
     }
-    val progress = mediaItem?.mediaId?.let(PodcastProgress::get) ?: return
-    PodcastProgress.restore(progress.id)
+    val progress = mediaItem?.mediaId?.let(podcastProgress::get) ?: return
+    podcastProgress.restore(progress.id)
     if (progress.isInProgress && player.currentPosition < RESUME_START_WINDOW_MS) {
       player.seekTo(progress.positionMs)
     }
@@ -2239,9 +2241,9 @@ class MusicService : MediaLibraryService(), Player.Listener, PlaybackStatsListen
         .setSessionCommand(MediaSessionConstants.CommandEpisodeSkipForward)
         .build(),
       CommandButton.Builder()
-        .setDisplayName(PodcastProgress.speedLabel(PodcastProgress.speed.value))
+        .setDisplayName(podcastProgress.speedLabel(podcastProgress.speed.value))
         // Android Auto shows only the icon, so the icon carries the speed itself.
-        .setIconResId(speedIcon(PodcastProgress.speed.value))
+        .setIconResId(speedIcon(podcastProgress.speed.value))
         .setSessionCommand(MediaSessionConstants.CommandEpisodeSpeed)
         .build(),
     )
@@ -2274,7 +2276,7 @@ class MusicService : MediaLibraryService(), Player.Listener, PlaybackStatsListen
               ?: YTPlayerUtils.playerResponseForMetadata(mediaId, null).getOrNull()?.videoDetails)
             ?.lengthSeconds
             ?.toInt() ?: -1
-    database.query {
+    database.withTransaction {
       if (song == null) insert(mediaMetadata.copy(duration = duration))
       else {
         var updatedSong = song.song
@@ -2294,10 +2296,10 @@ class MusicService : MediaLibraryService(), Player.Listener, PlaybackStatsListen
       val relatedEndpoint =
         YouTube.next(WatchEndpoint(videoId = mediaId)).getOrNull()?.relatedEndpoint ?: return
       val relatedPage = YouTube.related(relatedEndpoint).getOrNull() ?: return
-      database.query {
+      database.withTransaction {
         relatedPage.songs
           .map(SongItem::toMediaMetadata)
-          .onEach(::insert)
+          .onEach { insert(it) }
           .map { RelatedSongMap(songId = mediaId, relatedSongId = it.id) }
           .forEach(::insert)
       }
@@ -3398,7 +3400,7 @@ class MusicService : MediaLibraryService(), Player.Listener, PlaybackStatsListen
     )
       return
     // Restored episodes can lose their type but keep their progress.
-    if (PodcastProgress.get(seed.mediaId) != null) return
+    if (podcastProgress.get(seed.mediaId) != null) return
     val seedId = seed.mediaId
     // The radio needs a YouTube video id; local, addon and cloud songs have none.
     if (!YOUTUBE_VIDEO_ID.matches(seedId)) return
@@ -4424,7 +4426,7 @@ class MusicService : MediaLibraryService(), Player.Listener, PlaybackStatsListen
             downloadCache.getContentMetadata(mediaId),
           )
           .takeIf { it != androidx.media3.common.C.LENGTH_UNSET.toLong() }
-          ?: dbFormat?.contentLength
+          ?: dbFormat?.contentLength?.toLong()
           ?: -1L
       val isFullyDownloaded =
         (cachedLength > 0 && downloadCache.isCached(mediaId, 0, cachedLength)) ||
@@ -4818,7 +4820,7 @@ class MusicService : MediaLibraryService(), Player.Listener, PlaybackStatsListen
                       .takeIf { it.isNotEmpty() } ?: "unknown",
                 bitrate = format.bitrate,
                 sampleRate = format.audioSampleRate,
-                contentLength = format.contentLength ?: 0L,
+                contentLength = format.contentLength?.toInt() ?: 0,
                 loudnessDb = loudnessDb,
                 perceptualLoudnessDb = perceptualLoudnessDb,
                 playbackUrl = nonNullPlayback.playbackTracking?.videostatsPlaybackUrl?.baseUrl,

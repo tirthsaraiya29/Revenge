@@ -21,7 +21,7 @@ import androidx.media3.common.text.Cue
 import androidx.media3.common.text.CueGroup
 import androidx.media3.exoplayer.source.ForwardingTimeline
 import com.revenge.music.R
-import com.revenge.music.utils.AutomotiveArtwork.withAutomotiveArtworkUri
+import com.revenge.music.utils.withAutomotiveArtworkUri
 
 /**
  * The player exposed through the [androidx.media3.session.MediaSession].

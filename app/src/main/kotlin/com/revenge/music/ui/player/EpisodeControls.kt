@@ -10,9 +10,11 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.revenge.music.R
@@ -25,7 +27,9 @@ import com.revenge.music.utils.PodcastProgress
  */
 @Composable
 fun EpisodeControls(enabled: Boolean, color: Color, onSeek: (Long) -> Unit) {
-  val speed by PodcastProgress.speed.collectAsState()
+  val context = LocalContext.current
+  val progress = remember { PodcastProgress.getInstance(context) }
+  val speed by progress.speed.collectAsState()
   val colors = ButtonDefaults.textButtonColors(contentColor = color)
   Row(
     modifier = Modifier.fillMaxWidth(),
@@ -41,12 +45,12 @@ fun EpisodeControls(enabled: Boolean, color: Color, onSeek: (Long) -> Unit) {
       Text(stringResource(R.string.episode_skip_back))
     }
     TextButton(
-      onClick = PodcastProgress::cycleSpeed,
+      onClick = progress::cycleSpeed,
       enabled = enabled,
       colors = colors,
       modifier = Modifier.heightIn(min = 48.dp),
     ) {
-      Text(PodcastProgress.speedLabel(speed))
+      Text(progress.speedLabel(speed))
     }
     TextButton(
       onClick = { onSeek(PodcastProgress.SKIP_FORWARD_MS) },

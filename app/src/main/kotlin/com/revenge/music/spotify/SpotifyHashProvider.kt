@@ -64,7 +64,7 @@ object SpotifyHashProvider {
     var updated = 0
     var unchanged = 0
     for ((name, remote) in remoteHashes) {
-      if (name !in registry) continue
+      if (!registry.containsKey(name)) continue
       val existing = registry[name]
       if (existing != null && existing.hash == remote.hash) {
         unchanged++

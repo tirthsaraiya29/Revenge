@@ -57,7 +57,7 @@ import com.revenge.music.models.toMediaMetadata
 import com.revenge.music.playback.queues.Queue
 import com.revenge.music.playback.queues.YouTubeQueue
 import com.revenge.music.ui.component.toSongItem
-import com.revenge.music.utils.AutomotiveArtwork.withAutomotiveArtworkUri
+import com.revenge.music.utils.withAutomotiveArtworkUri
 import com.revenge.music.utils.EpisodeDates
 import com.revenge.music.utils.PodcastProgress
 import com.revenge.music.utils.PodcastShowStore
@@ -102,6 +102,7 @@ constructor(
   private val podcastShows: PodcastShowStore,
 ) : MediaLibrarySession.Callback {
   private val scope = CoroutineScope(Dispatchers.Main) + Job()
+  private val podcastProgress by lazy { PodcastProgress.getInstance(context) }
   lateinit var service: MusicService
   var toggleLike: () -> Unit = {}
   var toggleStartRadio: () -> Unit = {}
@@ -152,7 +153,7 @@ constructor(
     // Continue listening and the episodes' progress, in steps of 5%, so a playing episode
     // (saved every few seconds) does not make Auto reload the tab all the time.
     scope.launch {
-      PodcastProgress.entries
+      podcastProgress.entries
         .map { entries ->
           entries.values
             .sortedByDescending { it.updatedAt }
@@ -359,7 +360,7 @@ constructor(
             MediaSessionConstants.ACTION_ITEM_FOLLOW -> setShowFollowed(mediaId, true)
             MediaSessionConstants.ACTION_ITEM_UNFOLLOW -> setShowFollowed(mediaId, false)
             MediaSessionConstants.ACTION_ITEM_DISMISS -> {
-              PodcastProgress.dismiss(mediaId.substringAfterLast("/"))
+              podcastProgress.dismiss(mediaId.substringAfterLast("/"))
               true
             }
             else -> playItemNext(mediaId)
@@ -383,7 +384,7 @@ constructor(
         val duration = session.player.duration
         session.player.seekTo(if (duration > 0) target.coerceAtMost(duration) else target)
       }
-      MediaSessionConstants.ACTION_EPISODE_SPEED -> PodcastProgress.cycleSpeed()
+      MediaSessionConstants.ACTION_EPISODE_SPEED -> podcastProgress.cycleSpeed()
     }
     return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
   }
@@ -694,7 +695,7 @@ constructor(
                     evictHomePlaylist(playlistId)
                   }
                   val episodes = page?.takeIf { it.playlist.isPodcast }?.let { showEpisodes(it) }
-                  episodes?.forEach(PodcastProgress::mergeRemote)
+                  episodes?.forEach(podcastProgress::mergeRemote)
                   val songs =
                     (episodes?.withoutHiddenEpisodes() ?: page?.songs)
                       ?.take(100)
@@ -902,7 +903,7 @@ constructor(
     val songs = results.filterIsInstance<SongItem>()
     songs.forEach { searchSongs[it.id] = it }
     // Like and Play next act on database rows.
-    runCatching { database.query { songs.forEach { insert(it.toMediaMetadata()) } } }
+    runCatching { songs.forEach { database.insert(it.toMediaMetadata()) } }
   }
 
   /** The song id inside a search result's media id: search/<encoded query>/<song id>. */
@@ -1585,7 +1586,7 @@ constructor(
     val continueTitle = context.getString(R.string.continue_listening)
     val followedTitle = context.getString(R.string.your_podcasts)
     val continuing =
-      PodcastProgress.inProgress().take(PODCAST_GROUP_SIZE).map {
+      podcastProgress.inProgress().take(PODCAST_GROUP_SIZE).map {
         it
           .toSongItem()
           .toMediaItem("${MusicService.PODCAST}/$PODCAST_CONTINUE")
@@ -1702,11 +1703,11 @@ constructor(
             }
             .awaitAll()
             .flatten()
-            .sortedByDescending { EpisodeDates.parse(it.publishedText, wallNow) ?: 0L }
+            .sortedByDescending { EpisodeDates.parse(it.publishedText.orEmpty(), wallNow) ?: 0L }
         }
       }
     if (!episodes.isNullOrEmpty()) {
-      episodes.forEach(PodcastProgress::mergeRemote)
+      episodes.forEach(podcastProgress::mergeRemote)
       cachedNewEpisodes = episodes
       newEpisodesAtMs = now
       newEpisodesShows = showIds
@@ -1749,7 +1750,7 @@ constructor(
   /** The episodes of a [podcastTab] group, as a playable queue. */
   private suspend fun podcastGroupEpisodes(group: String): List<SongItem> =
     if (group == PODCAST_CONTINUE) {
-      PodcastProgress.inProgress().map { it.toSongItem() }
+      podcastProgress.inProgress().map { it.toSongItem() }
     } else if (group == PODCAST_NEW) {
       newEpisodes()
     } else {
@@ -1790,7 +1791,7 @@ constructor(
             .getOrNull()
             ?.sections
             ?.let {
-              PodcastProgress.withoutContinueShelf(
+              podcastProgress.withoutContinueShelf(
                 it,
                 context.getString(R.string.continue_listening),
               )
@@ -2256,7 +2257,7 @@ constructor(
               // Cache online metadata so playback resolves even if DB missed it
               // (same stale-trackedMediaItem class of bugs as the addon queue).
               try {
-                database.query { insert(item.toMediaMetadata()) }
+                database.insert(item.toMediaMetadata())
               } catch (_: Exception) {}
               listOf(item.toMediaItem(parentId))
             }
@@ -2283,7 +2284,7 @@ constructor(
       val songs = home.sections.flatMap { it.items }.filterIsInstance<SongItem>().take(50)
       songs.forEach { item ->
         try {
-          database.query { insert(item.toMediaMetadata()) }
+          database.insert(item.toMediaMetadata())
         } catch (_: Exception) {}
       }
       listOf(shuffleMediaItem(MusicService.HOME)) +
@@ -2460,7 +2461,7 @@ constructor(
           ?: return null
       // Stored so actions on the song (like, play next) find its row.
       try {
-        database.query { insert(item.toMediaMetadata()) }
+        database.insert(item.toMediaMetadata())
       } catch (_: Exception) {}
       item.toMediaItem("${MusicService.YOUTUBE_PLAYLIST}/$playlistId")
     } catch (e: Exception) {
@@ -2481,7 +2482,7 @@ constructor(
         homeSection(sectionId)?.items?.filterIsInstance<SongItem>()?.firstOrNull { it.id == songId }
           ?: return null
       try {
-        database.query { insert(item.toMediaMetadata()) }
+        database.insert(item.toMediaMetadata())
       } catch (_: Exception) {}
       item.toMediaItem(parentId)
     } catch (e: Exception) {
@@ -2523,7 +2524,7 @@ constructor(
   /** A show's episodes without the played ones, when the user chose to hide them. */
   private fun List<SongItem>.withoutHiddenEpisodes(): List<SongItem> =
     if (context.dataStore.get(PodcastHidePlayedKey, false)) {
-      filterNot { PodcastProgress.get(it.id)?.finished == true }
+      filterNot { podcastProgress.get(it.id)?.finished == true }
     } else {
       this
     }
@@ -2637,7 +2638,7 @@ constructor(
    * their own.
    */
   private fun episodeSubtitle(id: String, artists: String): String {
-    val progress = PodcastProgress.get(id) ?: return artists
+    val progress = podcastProgress.get(id) ?: return artists
     val mark =
       when {
         progress.finished -> "✓"
@@ -2656,7 +2657,7 @@ constructor(
    * set it on podcast episodes from this device's listening progress.
    */
   private fun Bundle.withEpisodeCompletion(id: String, isEpisode: Boolean): Bundle {
-    val progress = PodcastProgress.get(id)
+    val progress = podcastProgress.get(id)
     if (!isEpisode && progress == null) return this
     when {
       progress?.finished == true ->

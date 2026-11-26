@@ -115,7 +115,7 @@ class App : Application(), SingletonImageLoader.Factory, Configuration.Provider 
     }
 
     AppContextHolder.initialize(this)
-    NewEpisodesWorker.schedule(this)
+    NewEpisodesWorker.enqueue(this)
     com.revenge.music.utils.cipher.CipherDeobfuscator.initialize(this)
     com.revenge.music.utils.YTPlayerUtils.initialize()
 

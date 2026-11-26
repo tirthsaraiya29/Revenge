@@ -3,10 +3,11 @@ package com.revenge.music.musicflow
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import com.revenge.music.listentogether.ListenTogetherManager
+import com.revenge.music.extensions.currentMetadata
 import com.revenge.music.models.MediaMetadata
 import com.revenge.music.playback.MusicService
 import com.revenge.music.playback.PlayerConnection
-import com.revenge.playback.queues.Queue
+import com.revenge.music.playback.queues.Queue
 import kotlinx.coroutines.flow.StateFlow
 
 /** Adapts [PlayerConnection] to the coordinator port. */
@@ -16,7 +17,7 @@ class PlayerConnectionMusicFlowPlayer(
 ) : MusicFlowPlayer {
 
     override val currentMediaId: String?
-        get() = connection.currentMetadata?.id
+        get() = connection.player.currentMetadata?.id
 
     override val queueMediaIds: List<String>
         get() = connection.queueWindows.value.map { it.mediaItem.mediaId }
