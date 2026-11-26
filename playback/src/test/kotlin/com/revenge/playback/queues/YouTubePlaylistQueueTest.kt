@@ -147,6 +147,7 @@ class YouTubePlaylistQueueTest {
         assertThrows(CancellationException::class.java) {
             runBlocking { queue.nextPage() }
         }
+        Unit
     }
 
     @Test

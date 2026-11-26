@@ -55,7 +55,8 @@ class SilenceDetectorAudioProcessor(
 
         val start = inputBuffer.position()
         val copy = ByteBuffer.allocateDirect(byteCount).order(ByteOrder.nativeOrder())
-        val view = inputBuffer.duplicate()
+        // duplicate() resets byte order to BIG_ENDIAN; samples must be read in the caller's order.
+        val view = inputBuffer.duplicate().order(inputBuffer.order())
         copy.put(view)
         copy.flip()
         inputBuffer.position(inputBuffer.limit())

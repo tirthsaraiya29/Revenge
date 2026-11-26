@@ -26,6 +26,7 @@ class ListQueueTest {
         assertThrows(UnsupportedOperationException::class.java) {
             runBlocking { queue.nextPage() }
         }
+        Unit
     }
 
     @Test

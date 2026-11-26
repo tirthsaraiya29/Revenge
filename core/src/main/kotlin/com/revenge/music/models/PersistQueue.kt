@@ -13,10 +13,23 @@ data class PersistQueue(
 ) : Serializable
 
 sealed class QueueType : Serializable {
-    object LIST : QueueType()
-    object YOUTUBE : QueueType()
-    object YOUTUBE_ALBUM_RADIO : QueueType()
-    object LOCAL_ALBUM_RADIO : QueueType()
+    // Kotlin objects do not get a readResolve automatically, so deserialisation would otherwise
+    // yield a distinct instance and break the documented singleton identity.
+    object LIST : QueueType() {
+        private fun readResolve(): Any = LIST
+    }
+
+    object YOUTUBE : QueueType() {
+        private fun readResolve(): Any = YOUTUBE
+    }
+
+    object YOUTUBE_ALBUM_RADIO : QueueType() {
+        private fun readResolve(): Any = YOUTUBE_ALBUM_RADIO
+    }
+
+    object LOCAL_ALBUM_RADIO : QueueType() {
+        private fun readResolve(): Any = LOCAL_ALBUM_RADIO
+    }
 }
 
 sealed class QueueData : Serializable {
