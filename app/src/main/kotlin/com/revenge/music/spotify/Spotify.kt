@@ -135,7 +135,13 @@ object Spotify {
     limit: Int = 50,
     offset: Int = 0,
   ): Result<SpotifyPaging<SpotifyPlaylist>> =
-    library(limit = limit, offset = offset, flatten = true, folderUri = null) { wrapper ->
+    library(
+      limit = limit,
+      offset = offset,
+      flatten = true,
+      folderUri = null,
+      filters = listOf("Playlists"),
+    ) { wrapper ->
       val data = wrapper.obj("data") ?: return@library null
       val typename = data.str("__typename")
       data.str("__typename")?.let { if (it != "Playlist") return@library null }
@@ -167,7 +173,13 @@ object Spotify {
     limit: Int = 50,
     offset: Int = 0,
   ): Result<SpotifyPaging<SpotifyArtist>> =
-    library(limit = limit, offset = offset, flatten = true, folderUri = null) { wrapper ->
+    library(
+      limit = limit,
+      offset = offset,
+      flatten = true,
+      folderUri = null,
+      filters = listOf("Artists"),
+    ) { wrapper ->
       val data = wrapper.obj("data") ?: return@library null
       val typename = data.str("__typename").orEmpty()
       if (!typename.contains("Artist")) return@library null

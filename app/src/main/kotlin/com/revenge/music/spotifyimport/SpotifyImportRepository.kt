@@ -322,8 +322,8 @@ constructor(
     val tracks = mutableListOf<SpotifyTrack>()
     var offset = 0
     while (true) {
-      val items: List<SpotifyTrack>
-      val total: Int
+      var items: List<SpotifyTrack> = emptyList()
+      var total: Int = 0
       when (source) {
         is SpotifyImportSource.LikedSongs -> {
           val result = withAuthRetry { Spotify.likedSongs(limit = PAGE, offset = offset) }
