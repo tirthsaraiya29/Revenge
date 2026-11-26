@@ -1,255 +1,158 @@
 package com.revenge.innertube.pages
 
-import com.revenge.innertube.models.Album
-import com.revenge.innertube.models.AlbumItem
-import com.revenge.innertube.models.Artist
-import com.revenge.innertube.models.ArtistItem
 import com.revenge.innertube.models.BrowseEndpoint
 import com.revenge.innertube.models.MusicCarouselShelfRenderer
-import com.revenge.innertube.models.MusicTwoRowItemRenderer
-import com.revenge.innertube.models.PlaylistItem
 import com.revenge.innertube.models.SectionListRenderer
-import com.revenge.innertube.models.SongItem
 import com.revenge.innertube.models.YTItem
 import com.revenge.innertube.models.filterBlockedArtists
 import com.revenge.innertube.models.filterDislikedSongs
 import com.revenge.innertube.models.filterExplicit
 import com.revenge.innertube.models.filterVideoSongs
-import com.revenge.innertube.models.oddElements
 import com.revenge.metadata.cleaner.ApiText
 
 data class HomePage(
-  val chips: List<Chip>?,
-  val sections: List<Section>,
-  val continuation: String? = null,
+    val chips: List<Chip>?,
+    val sections: List<Section>,
+    val continuation: String? = null,
 ) {
-  data class Chip(
-    val title: String,
-    val endpoint: BrowseEndpoint?,
-    val deselectEndPoint: BrowseEndpoint?,
-  ) {
-    companion object {
-      fun fromChipCloudChipRenderer(
-        renderer: SectionListRenderer.Header.ChipCloudRenderer.Chip,
-      ): Chip? =
-        Chip(
-          title = renderer.chipCloudChipRenderer.text?.runs?.firstOrNull()?.text ?: return null,
-          endpoint = renderer.chipCloudChipRenderer.navigationEndpoint.browseEndpoint,
-          deselectEndPoint = renderer.chipCloudChipRenderer.onDeselectedCommand?.browseEndpoint,
-        )
-    }
-  }
-
-  data class Section(
-    val title: String,
-    val label: String?,
-    val thumbnail: String?,
-    val endpoint: BrowseEndpoint?,
-    val items: List<YTItem>,
-    /** The shuffle card leading a shelf, when YouTube ships one. */
-    val shuffle: Shuffle? = null,
-    /** Every item is a live stream, as with the "Listen together" stations. */
-    val liveOnly: Boolean = false,
-  ) {
-    val isStationListenTogether: Boolean
-      get() {
-        if (liveOnly) return true
-        val upperTitle = title.uppercase()
-        val upperLabel = label?.uppercase().orEmpty()
-        return upperTitle.contains("LISTEN TOGETHER") ||
-          (upperLabel.contains("STATION") && upperTitle.contains("LISTEN TOGETHER")) ||
-          (upperLabel.contains("LISTEN TOGETHER") && upperTitle.contains("STATION"))
-      }
-
-    data class Shuffle(val title: String, val thumbnail: String?)
-
-    companion object {
-      fun fromMusicCarouselShelfRenderer(renderer: MusicCarouselShelfRenderer): Section? {
-        val header = renderer.header?.musicCarouselShelfBasicHeaderRenderer ?: return null
-        return Section(
-          title = header.title.runs?.firstOrNull()?.text ?: return null,
-          label = header.strapline?.runs?.firstOrNull()?.text,
-          thumbnail =
-            header.thumbnail?.musicThumbnailRenderer?.getThumbnailUrl()
-              ?: renderer.contents.firstNotNullOfOrNull { it.musicShuffleRenderer?.getThumbnailUrl() }
-              ?: renderer.contents
-                .mapNotNull { it.musicTwoRowItemRenderer }
-                .mapNotNull { itemThumbnailUrl(it) }
-                .firstOrNull()
-              ?: renderer.contents.firstNotNullOfOrNull {
-                it.musicMultiRowListItemRenderer?.thumbnail?.musicThumbnailRenderer?.getThumbnailUrl()
-              },
-          endpoint = header.moreContentButton?.buttonRenderer?.navigationEndpoint?.browseEndpoint,
-          items =
-            renderer.contents
-              .mapNotNull { content ->
-                content.musicTwoRowItemRenderer?.let { fromMusicTwoRowItemRenderer(it) }
-                  ?: content.musicMultiRowListItemRenderer?.let { PodcastPage.episode(it) }
-                  ?: content.musicResponsiveListItemRenderer?.let {
-                    SearchSummaryPage.fromMusicResponsiveListItemRenderer(it)
-                  }
-              }
-              .ifEmpty { return null },
-          liveOnly =
-            renderer.contents
-              .filter { it.musicShuffleRenderer == null }
-              .let { cards ->
-                cards.isNotEmpty() &&
-                  cards.all { content ->
-                    val card = content.musicTwoRowItemRenderer ?: return@all false
-                    card.navigationEndpoint.watchEndpoint?.videoId != null &&
-                      card.musicVideoType != "MUSIC_VIDEO_TYPE_PODCAST_EPISODE" &&
-                      card.subtitleBadges?.any { it.musicInlineBadgeRenderer == null } == true
-                  }
-              },
-          shuffle =
-            renderer.contents.firstNotNullOfOrNull { content ->
-              content.musicShuffleRenderer?.let { shuffle ->
-                Shuffle(
-                  title = shuffle.title?.runs?.firstOrNull()?.text?.let(ApiText::clean) ?: "Shuffle",
-                  thumbnail = shuffle.getThumbnailUrl(),
+    data class Chip(
+        val title: String,
+        val endpoint: BrowseEndpoint?,
+        val deselectEndPoint: BrowseEndpoint?,
+    ) {
+        companion object {
+            fun fromChipCloudChipRenderer(
+                renderer: SectionListRenderer.Header.ChipCloudRenderer.Chip,
+            ): Chip? {
+                val title = renderer.chipCloudChipRenderer.text?.runs?.firstOrNull()?.text ?: return null
+                return Chip(
+                    title = title,
+                    endpoint = renderer.chipCloudChipRenderer.navigationEndpoint.browseEndpoint,
+                    deselectEndPoint = renderer.chipCloudChipRenderer.onDeselectedCommand?.browseEndpoint,
                 )
-              }
-            },
-        )
-      }
-
-      private fun itemThumbnailUrl(renderer: MusicTwoRowItemRenderer): String? =
-        renderer.thumbnailRenderer.musicThumbnailRenderer?.getThumbnailUrl()
-          ?: renderer.thumbnailRenderer.croppedSquareThumbnailRenderer?.getThumbnailUrl()
-
-      private fun fromMusicTwoRowItemRenderer(renderer: MusicTwoRowItemRenderer): YTItem? {
-        PodcastPage.show(renderer)?.let { return it }
-        PodcastPage.episode(renderer)?.let { return it }
-
-        return when {
-          renderer.isSong -> {
-            val subtitle = renderer.subtitle?.runs?.oddElements() ?: return null
-            SongItem(
-              id = renderer.navigationEndpoint.watchEndpoint?.videoId ?: return null,
-              title = renderer.title.runs?.firstOrNull()?.text?.let(ApiText::clean) ?: return null,
-              artists =
-                subtitle
-                  .filter { run ->
-                    val browseId = run.navigationEndpoint?.browseEndpoint?.browseId
-                    browseId?.startsWith("UC") == true ||
-                      (run.navigationEndpoint?.browseEndpoint != null &&
-                        browseId?.startsWith("MPREb_") != true)
-                  }
-                  .map { run ->
-                    Artist(ApiText.clean(run.text), run.navigationEndpoint?.browseEndpoint?.browseId)
-                  }
-                  .ifEmpty {
-                    subtitle.firstOrNull()?.let { run -> listOf(Artist(ApiText.clean(run.text), null)) }
-                      ?: emptyList()
-                  },
-              album =
-                subtitle
-                  .firstOrNull {
-                    it.navigationEndpoint?.browseEndpoint?.browseId?.startsWith("MPREb_") == true
-                  }
-                  ?.let {
-                    Album(
-                      ApiText.clean(it.text),
-                      it.navigationEndpoint?.browseEndpoint?.browseId ?: return@let null,
-                    )
-                  },
-              duration = null,
-              thumbnail = renderer.thumbnailRenderer.musicThumbnailRenderer?.getThumbnailUrl() ?: return null,
-              explicit =
-                renderer.subtitleBadges?.any {
-                  it.musicInlineBadgeRenderer?.icon?.iconType == "MUSIC_EXPLICIT_BADGE"
-                } == true,
-            )
-          }
-          renderer.isAlbum ->
-            AlbumItem(
-              browseId = renderer.navigationEndpoint.browseEndpoint?.browseId ?: return null,
-              playlistId =
-                renderer.thumbnailOverlay
-                  ?.musicItemThumbnailOverlayRenderer
-                  ?.content
-                  ?.musicPlayButtonRenderer
-                  ?.playNavigationEndpoint
-                  ?.watchPlaylistEndpoint
-                  ?.playlistId ?: return null,
-              title = renderer.title.runs?.firstOrNull()?.text?.let(ApiText::clean) ?: return null,
-              artists =
-                renderer.subtitle?.runs?.oddElements()?.drop(1)?.map {
-                  Artist(ApiText.clean(it.text), it.navigationEndpoint?.browseEndpoint?.browseId)
-                },
-              year = null,
-              thumbnail = renderer.thumbnailRenderer.musicThumbnailRenderer?.getThumbnailUrl() ?: return null,
-              explicit =
-                renderer.subtitleBadges?.any {
-                  it.musicInlineBadgeRenderer?.icon?.iconType == "MUSIC_EXPLICIT_BADGE"
-                } == true,
-            )
-          renderer.isPlaylist ->
-            PlaylistItem(
-              id =
-                renderer.navigationEndpoint.browseEndpoint?.browseId?.removePrefix("VL")
-                  ?: return null,
-              title = renderer.title.runs?.firstOrNull()?.text?.let(ApiText::clean) ?: return null,
-              author =
-                Artist(
-                  name =
-                    renderer.subtitle?.runs?.firstOrNull()?.text?.let(ApiText::clean)
-                      ?: return null,
-                  id = null,
-                ),
-              songCountText = null,
-              thumbnail = renderer.thumbnailRenderer.musicThumbnailRenderer?.getThumbnailUrl() ?: return null,
-              playEndpoint =
-                renderer.thumbnailOverlay
-                  ?.musicItemThumbnailOverlayRenderer
-                  ?.content
-                  ?.musicPlayButtonRenderer
-                  ?.playNavigationEndpoint
-                  ?.watchPlaylistEndpoint ?: return null,
-              shuffleEndpoint = renderer.watchPlaylistFor("MUSIC_SHUFFLE") ?: return null,
-              radioEndpoint = renderer.watchPlaylistFor("MIX"),
-            )
-          renderer.isArtist ->
-            ArtistItem(
-              id = renderer.navigationEndpoint.browseEndpoint?.browseId ?: return null,
-              title = renderer.title.runs?.lastOrNull()?.text?.let(ApiText::clean) ?: return null,
-              thumbnail = renderer.thumbnailRenderer.musicThumbnailRenderer?.getThumbnailUrl() ?: return null,
-              shuffleEndpoint = renderer.watchPlaylistFor("MUSIC_SHUFFLE") ?: return null,
-              radioEndpoint = renderer.watchPlaylistFor("MIX") ?: return null,
-            )
-          else -> null
+            }
         }
-      }
-
-      private fun MusicTwoRowItemRenderer.watchPlaylistFor(iconType: String) =
-        menu
-          ?.menuRenderer
-          ?.items
-          ?.find { it.menuNavigationItemRenderer?.icon?.iconType == iconType }
-          ?.menuNavigationItemRenderer
-          ?.navigationEndpoint
-          ?.watchPlaylistEndpoint
     }
-  }
 
-  fun filterBlockedArtists() =
-    copy(sections = sections.map { it.copy(items = it.items.filterBlockedArtists()) })
+    data class Section(
+        val title: String,
+        val label: String?,
+        val thumbnail: String?,
+        val endpoint: BrowseEndpoint?,
+        val items: List<YTItem>,
+        val shuffle: Shuffle? = null,
+        val liveOnly: Boolean = false,
+    ) {
+        val isStationListenTogether: Boolean
+            get() {
+                if (liveOnly) return true
+                val upperTitle = title.uppercase()
+                val upperLabel = label?.uppercase() ?: ""
+                return upperTitle.contains("LISTEN TOGETHER") ||
+                    (upperLabel.contains("STATION") && upperTitle.contains("LISTEN TOGETHER")) ||
+                    (upperLabel.contains("LISTEN TOGETHER") && upperTitle.contains("STATION"))
+            }
 
-  fun filterDislikedSongs() =
-    copy(sections = sections.map { it.copy(items = it.items.filterDislikedSongs()) })
+        data class Shuffle(
+            val title: String,
+            val thumbnail: String?,
+        )
 
-  fun filterExplicit(enabled: Boolean = true) =
-    if (enabled) copy(sections = sections.map { it.copy(items = it.items.filterExplicit()) }) else this
+        companion object {
+            private const val NON_MUSIC_AUDIO_TRACK_PAGE = "MUSIC_PAGE_TYPE_NON_MUSIC_AUDIO_TRACK_PAGE"
+            private const val PODCAST_EPISODE_TYPE = "MUSIC_VIDEO_TYPE_PODCAST_EPISODE"
 
-  fun filterVideoSongs(disableVideos: Boolean = false) =
-    if (disableVideos) {
-      copy(
-        sections = sections.map { section ->
-          section.copy(items = section.items.filterVideoSongs(true))
-        },
-      )
-    } else {
-      this
+            fun fromMusicCarouselShelfRenderer(renderer: MusicCarouselShelfRenderer): Section? {
+                val header = renderer.header?.musicCarouselShelfBasicHeaderRenderer ?: return null
+                val titleRun = header.title.runs?.firstOrNull() ?: return null
+                val title = ApiText.clean(titleRun.text).takeIf { it.isNotBlank() } ?: return null
+
+                val label = header.strapline?.runs?.firstOrNull()?.text?.let(ApiText::clean)
+
+                val thumbnail = header.thumbnail?.thumbnailUrl()
+                    ?: renderer.contents.firstNotNullOfOrNull { it.musicShuffleRenderer?.getThumbnailUrl() }
+                    ?: renderer.contents.firstNotNullOfOrNull {
+                        it.musicTwoRowItemRenderer?.thumbnailRenderer?.thumbnailUrl()
+                    }
+                    ?: renderer.contents.firstNotNullOfOrNull {
+                        it.musicMultiRowListItemRenderer?.thumbnail?.thumbnailUrl()
+                    }
+
+                val endpoint = header.moreContentButton
+                    ?.buttonRenderer
+                    ?.navigationEndpoint
+                    ?.browseEndpoint
+
+                val items = renderer.contents.mapNotNull { content ->
+                    val twoRow = content.musicTwoRowItemRenderer
+                    when {
+                        twoRow != null -> {
+                            val browse = twoRow.navigationEndpoint.browseEndpoint
+                            when {
+                                browse?.isPodcastEndpoint == true -> PodcastPage.show(twoRow)
+                                browse?.pageType == NON_MUSIC_AUDIO_TRACK_PAGE -> PodcastPage.episode(twoRow)
+                                else -> ArtistPage.fromMusicTwoRowItemRenderer(twoRow)
+                            }
+                        }
+                        content.musicResponsiveListItemRenderer != null ->
+                            content.musicResponsiveListItemRenderer?.let {
+                                SearchSummaryPage.fromMusicResponsiveListItemRenderer(it)
+                            }
+                        content.musicMultiRowListItemRenderer != null ->
+                            content.musicMultiRowListItemRenderer?.let { PodcastPage.episode(it) }
+                        else -> null
+                    }
+                }
+                if (items.isEmpty()) return null
+
+                val nonShuffle = renderer.contents.filter { it.musicShuffleRenderer == null }
+                val allLiveTwoRow = nonShuffle.isNotEmpty() && nonShuffle.all { content ->
+                    val twoRow = content.musicTwoRowItemRenderer ?: return@all false
+                    twoRow.navigationEndpoint.anyWatchEndpoint?.videoId != null &&
+                        twoRow.navigationEndpoint.browseEndpoint?.pageType != NON_MUSIC_AUDIO_TRACK_PAGE &&
+                        twoRow.musicVideoType != PODCAST_EPISODE_TYPE
+                }
+                val hasUnlabeledBadge = renderer.contents.any { content ->
+                    content.musicTwoRowItemRenderer
+                        ?.subtitleBadges
+                        ?.any { it.musicInlineBadgeRenderer == null } == true
+                }
+                val liveOnly = allLiveTwoRow && hasUnlabeledBadge
+
+                val shuffleRenderer = renderer.contents.firstNotNullOfOrNull { it.musicShuffleRenderer }
+                val shuffle = shuffleRenderer?.let { shuffleRenderer ->
+                    val shuffleTitle = shuffleRenderer.title
+                        ?.runs
+                        ?.firstOrNull()
+                        ?.text
+                        ?.let(ApiText::clean)
+                        ?.takeIf { it.isNotBlank() }
+                        ?: "Shuffle"
+                    Shuffle(shuffleTitle, shuffleRenderer.getThumbnailUrl())
+                }
+
+                return Section(
+                    title = title,
+                    label = label,
+                    thumbnail = thumbnail,
+                    endpoint = endpoint,
+                    items = items,
+                    shuffle = shuffle,
+                    liveOnly = liveOnly,
+                )
+            }
+        }
     }
+
+    fun filterBlockedArtists(): HomePage =
+        copy(sections = sections.map { it.copy(items = it.items.filterBlockedArtists()) })
+
+    fun filterDislikedSongs(): HomePage =
+        copy(sections = sections.map { it.copy(items = it.items.filterDislikedSongs()) })
+
+    fun filterExplicit(enabled: Boolean = true): HomePage =
+        if (!enabled) this else copy(sections = sections.map { it.copy(items = it.items.filterExplicit(true)) })
+
+    fun filterVideoSongs(disableVideos: Boolean = false): HomePage =
+        if (!disableVideos) this else copy(sections = sections.map { it.copy(items = it.items.filterVideoSongs(true)) })
 }

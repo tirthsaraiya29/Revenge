@@ -7,38 +7,42 @@ import com.revenge.innertube.models.filterExplicit
 import com.revenge.innertube.models.filterVideoSongs
 import com.revenge.innertube.models.filterYoutubeShorts
 
-/** A browse page split into titled sections, as returned by [com.revenge.innertube.YouTube.browse]. */
 data class BrowseResult(
-  val title: String?,
-  val items: List<Item>,
-) {
-  data class Item(
     val title: String?,
-    val items: List<YTItem>,
-  )
+    val items: List<Item>,
+) {
+    data class Item(
+        val title: String?,
+        val items: List<YTItem>,
+    )
 
-  fun filterBlockedArtists() = mapSections(filter = { it.filterBlockedArtists() })
+    fun filterBlockedArtists(): BrowseResult =
+        copy(items = items.map { it.copy(items = it.items.filterBlockedArtists()) })
 
-  fun filterDislikedSongs() = mapSections(filter = { it.filterDislikedSongs() })
+    fun filterDislikedSongs(): BrowseResult =
+        copy(items = items.map { it.copy(items = it.items.filterDislikedSongs()) })
 
-  fun filterExplicit(enabled: Boolean = true) =
-    mapSections(enabled = enabled, filter = { it.filterExplicit() })
+    fun filterExplicit(enabled: Boolean = true): BrowseResult {
+        if (!enabled) return this
+        return copy(items = items.mapNotNull { section ->
+            val filtered = section.items.filterExplicit(true)
+            if (filtered.isEmpty()) null else section.copy(items = filtered)
+        })
+    }
 
-  fun filterVideoSongs(disableVideos: Boolean = false) =
-    mapSections(enabled = disableVideos, filter = { it.filterVideoSongs(true) })
+    fun filterVideoSongs(disableVideos: Boolean = false): BrowseResult {
+        if (!disableVideos) return this
+        return copy(items = items.mapNotNull { section ->
+            val filtered = section.items.filterVideoSongs(true)
+            if (filtered.isEmpty()) null else section.copy(items = filtered)
+        })
+    }
 
-  fun filterYoutubeShorts(enabled: Boolean = false) =
-    mapSections(enabled = enabled, filter = { it.filterYoutubeShorts(true) })
-
-  private fun mapSections(filter: (List<YTItem>) -> List<YTItem>, enabled: Boolean = true) =
-    if (enabled) {
-      copy(
-        items =
-          items.mapNotNull { section ->
-            section.copy(items = filter(section.items)).takeIf { it.items.isNotEmpty() }
-          },
-      )
-    } else {
-      this
+    fun filterYoutubeShorts(enabled: Boolean = false): BrowseResult {
+        if (!enabled) return this
+        return copy(items = items.mapNotNull { section ->
+            val filtered = section.items.filterYoutubeShorts(true)
+            if (filtered.isEmpty()) null else section.copy(items = filtered)
+        })
     }
 }
