@@ -2,46 +2,61 @@ package com.revenge.innertube.utils
 
 import com.revenge.innertube.models.WatchEndpoint
 
-/** Recognises the YouTube and YouTube Music links the search box accepts. */
+/** Recognises the YouTube video and YouTube Music artist URLs the app can open. */
 object YouTubeUrlParser {
-  sealed class ParsedUrl {
-    abstract val id: String
+
+    sealed class ParsedUrl {
+        abstract val id: String
+    }
 
     data class Video(override val id: String) : ParsedUrl()
-
     data class Artist(override val id: String) : ParsedUrl()
-  }
 
-  private val VIDEO_PATTERNS =
-    listOf(
-      Regex("""(?:https?://)?(?:www\.)?(?:music\.)?youtube\.com/watch\?[^ ]*v=([a-zA-Z0-9_-]{11})"""),
-      Regex("""(?:https?://)?youtu\.be/([a-zA-Z0-9_-]{11})"""),
-      Regex("""(?:https?://)?(?:www\.)?youtube\.com/shorts/([a-zA-Z0-9_-]{11})"""),
+    private const val VIDEO_ID = "[A-Za-z0-9_-]{11}"
+
+    private val watchHost = Regex(
+        "^(?:https?://)?(?:www\\.)?(?:music\\.)?youtube\\.com/watch\\?.*$",
+        RegexOption.IGNORE_CASE,
+    )
+    private val watchParam = Regex("[?&]v=($VIDEO_ID)(?:[&#]|$)")
+    private val shortLink = Regex(
+        "^(?:https?://)?(?:www\\.)?youtu\\.be/($VIDEO_ID)(?:[?#/].*)?$",
+        RegexOption.IGNORE_CASE,
+    )
+    private val shorts = Regex(
+        "^(?:https?://)?(?:www\\.)?(?:music\\.)?youtube\\.com/shorts/($VIDEO_ID)(?:[?#/].*)?$",
+        RegexOption.IGNORE_CASE,
+    )
+    private val artistChannel = Regex(
+        "^(?:https?://)?music\\.youtube\\.com/channel/([A-Za-z0-9_-]+)(?:[?#/].*)?$",
+        RegexOption.IGNORE_CASE,
+    )
+    private val artistBrowse = Regex(
+        "^(?:https?://)?music\\.youtube\\.com/browse/(MPRE[A-Za-z0-9_-]+)(?:[?#/].*)?$",
+        RegexOption.IGNORE_CASE,
     )
 
-  private val ARTIST_PATTERNS =
-    listOf(
-      Regex("""(?:https?://)?(?:www\.)?music\.youtube\.com/channel/([a-zA-Z0-9_-]+)"""),
-      Regex("""(?:https?://)?(?:www\.)?music\.youtube\.com/browse/(MPRE[a-zA-Z0-9_-]+)"""),
-    )
+    fun isYouTubeUrl(text: String): Boolean = parse(text) != null
 
-  fun isYouTubeUrl(text: String): Boolean = parse(text) != null
-
-  fun parse(url: String): ParsedUrl? {
-    val trimmed = url.trim()
-    for (pattern in VIDEO_PATTERNS) {
-      pattern.find(trimmed)?.groupValues?.getOrNull(1)?.let { return ParsedUrl.Video(it) }
+    fun parse(url: String): ParsedUrl? {
+        val text = url.trim()
+        extractVideoId(text)?.let { return Video(it) }
+        if (!text.contains("music.youtube.com", ignoreCase = true)) return null
+        artistChannel.find(text)?.let { return Artist(it.groupValues[1]) }
+        artistBrowse.find(text)?.let { return Artist(it.groupValues[1]) }
+        return null
     }
-    if (trimmed.contains("music.youtube.com")) {
-      for (pattern in ARTIST_PATTERNS) {
-        pattern.find(trimmed)?.groupValues?.getOrNull(1)?.let { return ParsedUrl.Artist(it) }
-      }
+
+    fun extractVideoId(url: String): String? {
+        val text = url.trim()
+        shorts.find(text)?.let { return it.groupValues[1] }
+        shortLink.find(text)?.let { return it.groupValues[1] }
+        if (watchHost.matches(text)) return watchParam.find(text)?.groupValues?.get(1)
+        return null
     }
-    return null
-  }
 
-  fun extractVideoId(url: String): String? = (parse(url) as? ParsedUrl.Video)?.id
-
-  fun createWatchEndpoint(url: String): WatchEndpoint? =
-    extractVideoId(url)?.let { WatchEndpoint(videoId = it) }
+    fun createWatchEndpoint(url: String): WatchEndpoint? {
+        val id = extractVideoId(url) ?: return null
+        return WatchEndpoint(videoId = id)
+    }
 }
