@@ -439,7 +439,7 @@ fun AccountSettingsScreen(
               },
             ),
             Material3SettingsItem(
-              icon = painterResource(R.drawable.ic_jellyfin),
+              icon = painterResource(R.drawable.ic_service_generic),
               title = { Text("Jellyfin") },
               description = {
                 Text(
@@ -482,14 +482,14 @@ fun AccountSettingsScreen(
                 (highlightKey == "Spotify" ||
                   highlightKey == "Integrations" ||
                   highlightKey == stringResource(R.string.integrations)),
-              icon = painterResource(R.drawable.ic_spotify),
+              icon = painterResource(R.drawable.ic_service_generic),
               title = { Text("Spotify") },
               description = { Text("Connect Spotify for recommendations") },
               onClick = { navController.navigate("settings/spotify_import") },
             ),
             Material3SettingsItem(
               isHighlighted = (highlightKey == stringResource(R.string.lastfm_integration)),
-              icon = painterResource(R.drawable.ic_lastfm),
+              icon = painterResource(R.drawable.ic_service_generic),
               title = { Text(stringResource(R.string.lastfm_integration)) },
               description = { Text(stringResource(R.string.lastfm_integration_desc)) },
               onClick = { navController.navigate("settings/lastfm") },

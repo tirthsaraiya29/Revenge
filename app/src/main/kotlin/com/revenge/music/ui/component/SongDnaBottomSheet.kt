@@ -208,7 +208,7 @@ fun SongDnaBottomSheet(
           ) {
             Box(contentAlignment = Alignment.Center) {
               androidx.compose.foundation.Image(
-                painter = painterResource(R.drawable.songdna),
+                painter = painterResource(R.drawable.ic_chart),
                 contentDescription = null,
                 modifier = Modifier.size(20.dp).clip(CircleShape),
               )

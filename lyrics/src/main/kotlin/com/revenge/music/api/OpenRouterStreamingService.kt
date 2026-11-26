@@ -18,8 +18,23 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.isActive
-import org.json.JSONArray
-import org.json.JSONObject
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.add
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.put
+
+private val openRouterStreamJson = Json {
+  isLenient = true
+  ignoreUnknownKeys = true
+}
+
+private fun JsonObject.string(key: String): String? =
+  (this[key] as? JsonPrimitive)?.contentOrNull
 
 object OpenRouterStreamingService {
   private const val DEFAULT_URL = "https://openrouter.ai/api/v1/chat/completions"
@@ -50,20 +65,22 @@ object OpenRouterStreamingService {
 
     val expected = text.lines().size
     val payload =
-      JSONObject().apply {
+      buildJsonObject {
         if (model.isNotBlank()) put("model", model)
         put(
           "messages",
-          JSONArray().apply {
-            put(
-              JSONObject()
-                .put("role", "system")
-                .put("content", AiPrompts.system(expected)),
+          buildJsonArray {
+            add(
+              buildJsonObject {
+                put("role", "system")
+                put("content", AiPrompts.system(expected))
+              },
             )
-            put(
-              JSONObject()
-                .put("role", "user")
-                .put("content", AiPrompts.user(mode, text, expected, targetLanguage)),
+            add(
+              buildJsonObject {
+                put("role", "user")
+                put("content", AiPrompts.user(mode, text, expected, targetLanguage))
+              },
             )
           },
         )
@@ -86,8 +103,11 @@ object OpenRouterStreamingService {
           val body = response.bodyAsText()
           val message =
             runCatching {
-              JSONObject(body).optJSONObject("error")?.optString("message")
-            }.getOrNull() ?: "HTTP ${response.status.value}"
+                ((openRouterStreamJson.parseToJsonElement(body) as? JsonObject)?.get("error")
+                  as? JsonObject)
+                  ?.string("message")
+              }
+              .getOrNull() ?: "HTTP ${response.status.value}"
           emit(StreamChunk.Error("Translation failed: $message"))
           return@execute
         }
@@ -104,12 +124,14 @@ object OpenRouterStreamingService {
 
           val delta =
             runCatching {
-              JSONObject(data)
-                .optJSONArray("choices")
-                ?.optJSONObject(0)
-                ?.optJSONObject("delta")
-                ?.optString("content")
-            }.getOrNull()
+                (((openRouterStreamJson.parseToJsonElement(data) as? JsonObject)?.get("choices")
+                    as? JsonArray)
+                  ?.firstOrNull()
+                  as? JsonObject)
+                  ?.get("delta")
+                  ?.let { (it as? JsonObject)?.string("content") }
+              }
+              .getOrNull()
           if (!delta.isNullOrEmpty()) {
             content.append(delta)
             emit(StreamChunk.Content(delta))

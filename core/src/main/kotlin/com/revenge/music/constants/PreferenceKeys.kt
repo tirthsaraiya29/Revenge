@@ -847,7 +847,6 @@ val SuggestionRegionSlugToName =
 val ListenBrainzEnabledKey = boolKey("listenbrainz_enabled")
 val ListenBrainzTokenKey = textKey("listenbrainz_token")
 val UnisonLyricsEnabledKey = boolKey("unison_lyrics_enabled")
-val EnableCronetKey = boolKey("enable_cronet_http3")
 val ForceOpusKey = boolKey("force_opus_audio")
 val PreloadNextSongEnabledKey = boolKey("preload_next_song_enabled")
 val PreloadNextSongLimitKey = intKey("preload_next_song_limit")

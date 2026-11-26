@@ -27,14 +27,13 @@ if (hasGoogleServicesConfig) {
 android {
   namespace = "com.revenge.music"
   compileSdk = 37
-  ndkVersion = "28.2.13676358"
 
   defaultConfig {
     applicationId = "com.revenge.music"
     minSdk = 26
     targetSdk = 36
-    versionCode = 1
-    versionName = "1.0.0"
+    versionCode = project.findProperty("revengeVersionCode")?.toString()?.toIntOrNull() ?: 1
+    versionName = project.findProperty("revengeVersionName")?.toString() ?: "1.0.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     vectorDrawables.useSupportLibrary = true
@@ -99,25 +98,28 @@ android {
       dimension = "abi"
       buildConfigField("String", "ARCHITECTURE", "\"universal\"")
     }
-    create("arm64") {
-      dimension = "abi"
-      buildConfigField("String", "ARCHITECTURE", "\"arm64\"")
-      ndk { abiFilters.add("arm64-v8a") }
-    }
-    create("armeabi") {
-      dimension = "abi"
-      buildConfigField("String", "ARCHITECTURE", "\"armeabi\"")
-      ndk { abiFilters.add("armeabi-v7a") }
-    }
-    create("x86") {
-      dimension = "abi"
-      buildConfigField("String", "ARCHITECTURE", "\"x86\"")
-      ndk { abiFilters.add("x86") }
-    }
-    create("x86_64") {
-      dimension = "abi"
-      buildConfigField("String", "ARCHITECTURE", "\"x86_64\"")
-      ndk { abiFilters.add("x86_64") }
+    // Split-ABI flavors are opt-in (`-PallAbis`) so routine builds only configure universal.
+    if (project.hasProperty("allAbis")) {
+      create("arm64") {
+        dimension = "abi"
+        buildConfigField("String", "ARCHITECTURE", "\"arm64\"")
+        ndk { abiFilters.add("arm64-v8a") }
+      }
+      create("armeabi") {
+        dimension = "abi"
+        buildConfigField("String", "ARCHITECTURE", "\"armeabi\"")
+        ndk { abiFilters.add("armeabi-v7a") }
+      }
+      create("x86") {
+        dimension = "abi"
+        buildConfigField("String", "ARCHITECTURE", "\"x86\"")
+        ndk { abiFilters.add("x86") }
+      }
+      create("x86_64") {
+        dimension = "abi"
+        buildConfigField("String", "ARCHITECTURE", "\"x86_64\"")
+        ndk { abiFilters.add("x86_64") }
+      }
     }
   }
 
@@ -304,8 +306,6 @@ dependencies {
   implementation(libs.media3.hls)
   implementation(libs.media3.ui)
   implementation(libs.media3.okhttp)
-  implementation(libs.media3.cronet)
-  implementation("com.google.android.gms:play-services-cronet:18.0.1")
 
   // Google Cast - only included in GMS flavor (not available in F-Droid/FOSS builds)
   "gmsImplementation"(libs.mediarouter)

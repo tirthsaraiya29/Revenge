@@ -47,7 +47,6 @@ import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR
 import androidx.media3.datasource.cache.CacheWriter
 import androidx.media3.datasource.cache.SimpleCache
-import androidx.media3.datasource.cronet.CronetDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
@@ -221,7 +220,6 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.Dns
 import okhttp3.OkHttpClient
-import org.chromium.net.CronetEngine
 import timber.log.Timber
 
 private const val INSTANT_SILENCE_SKIP_STEP_MS = 15_000L
@@ -4269,25 +4267,8 @@ class MusicService : MediaLibraryService(), Player.Listener, PlaybackStatsListen
   }
 
   private fun createCacheDataSource(): CacheDataSource.Factory {
-    val useCronet = false
-
     val upstreamFactory =
-      if (useCronet) {
-        try {
-          Timber.tag(TAG).d("Initializing CronetEngine for HTTP/3 QUIC streaming")
-          val cronetEngine =
-            CronetEngine.Builder(this).enableQuic(true).enableHttp2(true).enableBrotli(true).build()
-          CronetDataSource.Factory(
-            cronetEngine,
-            java.util.concurrent.Executors.newSingleThreadExecutor(),
-          )
-        } catch (e: Exception) {
-          Timber.tag(TAG).e(e, "Failed to initialize Cronet, falling back to OkHttp")
-          com.revenge.playback.ChunkedDataSource.Factory(createOkHttpFactory(), 1024 * 1024L)
-        }
-      } else {
-        com.revenge.playback.ChunkedDataSource.Factory(createOkHttpFactory(), 1024 * 1024L)
-      }
+      com.revenge.playback.ChunkedDataSource.Factory(createOkHttpFactory(), 1024 * 1024L)
 
     return CacheDataSource.Factory()
       .setCache(downloadCache)

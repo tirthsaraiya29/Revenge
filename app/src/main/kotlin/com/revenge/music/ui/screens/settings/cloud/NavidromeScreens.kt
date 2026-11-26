@@ -83,7 +83,7 @@ fun NavidromeLoginScreen(
         )
         Spacer(modifier = Modifier.width(16.dp))
         Icon(
-          painter = painterResource(R.drawable.ic_navidrome),
+          painter = painterResource(R.drawable.ic_service_generic),
           contentDescription = null,
           tint = Color.Unspecified,
           modifier = Modifier.size(48.dp),

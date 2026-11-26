@@ -75,7 +75,7 @@ fun JellyfinLoginScreen(
         contentAlignment = Alignment.Center,
       ) {
         Icon(
-          painter = painterResource(R.drawable.ic_jellyfin),
+          painter = painterResource(R.drawable.ic_service_generic),
           contentDescription = null,
           tint = MaterialTheme.colorScheme.primary,
           modifier = Modifier.size(56.dp),
@@ -297,7 +297,7 @@ fun JellyfinDashboardScreen(
         Column(modifier = Modifier.padding(16.dp)) {
           Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
-              painter = painterResource(R.drawable.ic_jellyfin),
+              painter = painterResource(R.drawable.ic_service_generic),
               contentDescription = null,
               tint = MaterialTheme.colorScheme.primary,
               modifier = Modifier.size(40.dp),

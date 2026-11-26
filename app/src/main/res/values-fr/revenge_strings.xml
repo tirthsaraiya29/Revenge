@@ -794,7 +794,6 @@
     <string name="ai_provider_nvidia_help">Visitez build.nvidia.com pour obtenir des clÃ©s API</string>
     <string name="ai_provider_orcarouter_help">Visitez orcarouter.ai pour des modÃ¨les open source et payants</string>
     <string name="ai_provider_groq_help">Visitez console.groq.com/keys pour obtenir des clÃ©s API gratuites</string>
-    <string name="ai_provider_puter_help">Visitez puter.com/dashboard pour obtenir un jeton d\'authentification</string>
     <string name="ai_deepl_formality">Niveau de formalitÃ©</string>
     <string name="ai_deepl_formality_default">Par dÃ©faut</string>
     <string name="ai_deepl_formality_more">Plus formel</string>

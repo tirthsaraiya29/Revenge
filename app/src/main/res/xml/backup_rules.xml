@@ -18,4 +18,7 @@
     <exclude
         domain="sharedpref"
         path="automotive_artwork_secret.xml" />
+    <exclude
+        domain="file"
+        path="./datastore" />
 </full-backup-content>

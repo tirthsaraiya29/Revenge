@@ -224,7 +224,7 @@ fun FullPlayerPreview(
       if (backgroundStyle == PlayerBackgroundStyle.APPLE_MUSIC) {
         Box(modifier = Modifier.fillMaxWidth().fillMaxHeight(0.60f)) {
           Image(
-            painter = painterResource(R.drawable.preview_artwork),
+            painter = painterResource(R.drawable.ic_artwork_placeholder),
             contentDescription = null,
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize(),
@@ -290,7 +290,7 @@ fun FullPlayerPreview(
             contentAlignment = Alignment.Center,
           ) {
             Image(
-              painter = painterResource(R.drawable.preview_artwork),
+              painter = painterResource(R.drawable.ic_artwork_placeholder),
               contentDescription = null,
               contentScale = if (cropAlbumArt) ContentScale.Crop else ContentScale.Fit,
               modifier = Modifier.fillMaxSize(),
@@ -571,7 +571,7 @@ fun MiniPlayerPreview(
       modifier = Modifier.fillMaxWidth(),
     ) {
       Image(
-        painter = painterResource(R.drawable.preview_artwork),
+        painter = painterResource(R.drawable.ic_artwork_placeholder),
         contentDescription = null,
         contentScale = ContentScale.Crop,
         modifier = Modifier.size(36.dp).clip(RoundedCornerShape(6.dp)),

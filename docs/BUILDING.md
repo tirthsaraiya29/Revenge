@@ -4,8 +4,6 @@
 
 - JDK 21 (Android Studio's bundled JBR works)
 - Android SDK Platform 37 and Build Tools
-- Android NDK `28.2.13676358` (only needed for native recognition assets)
-- CMake and Ninja from the SDK manager
 
 ## Configure
 
@@ -69,4 +67,3 @@ suitable only for local testing.
 
 - **SDK 37 not found**: install platform 37 with `sdkmanager "platforms;android-37.0"`.
 - **Out of memory**: increase `org.gradle.jvmargs` in `gradle.properties`.
-- **NDK errors**: set `ndkVersion` in `app/build.gradle.kts` to an installed NDK.

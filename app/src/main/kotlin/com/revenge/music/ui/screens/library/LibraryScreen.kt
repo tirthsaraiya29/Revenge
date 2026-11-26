@@ -312,7 +312,7 @@ fun LibraryScreen(navController: NavController) {
               ),
               Material3SettingsItem(
                 title = { Text("Create from Taste") },
-                icon = painterResource(R.drawable.tast),
+                icon = painterResource(R.drawable.ic_chart),
                 tintIcon = false,
                 iconShape = androidx.compose.foundation.shape.CircleShape,
                 onClick = {
@@ -444,7 +444,7 @@ fun LibraryScreen(navController: NavController) {
           com.revenge.music.ui.component.PreferenceEntry(
             icon = {
               androidx.compose.foundation.Image(
-                painter = painterResource(R.drawable.ai_pfp),
+                painter = painterResource(R.drawable.ic_revenge_brain),
                 contentDescription = null,
                 modifier = Modifier.size(24.dp).clip(androidx.compose.foundation.shape.CircleShape),
               )
@@ -537,7 +537,7 @@ private fun LibrarySourceTabs(
           )
           LibrarySourceTabItem(
             label = stringResource(R.string.filter_spotify),
-            icon = painterResource(R.drawable.ic_spotify),
+            icon = painterResource(R.drawable.ic_service_generic),
             selectionFraction = clampedFraction,
             onClick = { onSelectTab(LibrarySourceTab.SPOTIFY) },
             modifier = Modifier.weight(1f).fillMaxHeight(),

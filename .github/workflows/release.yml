@@ -30,7 +30,7 @@ jobs:
       - name: Install SDK packages
         run: |
           yes | sdkmanager --licenses >/dev/null
-          sdkmanager "platforms;android-37.0" "ndk;28.2.13676358" "cmake;3.22.1"
+          sdkmanager "platforms;android-37.0"
       - name: Configure SDK path
         run: echo "sdk.dir=$ANDROID_HOME" > local.properties
       - name: Assemble FOSS release APK
@@ -46,7 +46,8 @@ jobs:
       - name: Name and checksum artifacts
         run: |
           mkdir -p dist
-          version="${GITHUB_REF_NAME#v}"
+          version="${{ github.event.inputs.tag || github.ref_name }}"
+          version="${version#v}"
           for apk in app/build/outputs/apk/universalFoss/release/*.apk; do
             cp "$apk" "dist/Revenge-${version}-universal-foss.apk"
           done

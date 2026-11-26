@@ -1264,7 +1264,7 @@ fun AppearanceSettings(
         listOfNotNull(
           Material3SettingsItem(
             isHighlighted = (highlightKey == "Apple Music Inspired"),
-            icon = painterResource(R.drawable.apple_music_me),
+            icon = painterResource(R.drawable.person),
             title = { Text("Apple Music Inspired") },
             trailingContent = {
               Switch(

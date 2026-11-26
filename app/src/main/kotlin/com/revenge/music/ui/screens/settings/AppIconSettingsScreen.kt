@@ -105,88 +105,16 @@ fun AppIconSettingsScreen(
     val icons =
       listOf(
           AppIconOption(
-            AppIconType.CRAFT,
-            "Craft",
-            "Craft icon by CR3TO_",
-            R.mipmap.ic_launcher_craft,
-          ),
-          AppIconOption(
-            AppIconType.SADIE,
-            "Sadie Sink",
-            "Sadie Sink on community demand",
-            R.mipmap.ic_launcher_sadie,
-          ),
-          AppIconOption(
-            AppIconType.BILLIE_EILISH,
-            "Billie Eilish",
-            "billie eilish suggested by Lalo salamanca",
-            R.mipmap.billie_eilish_icon,
-          ),
-          AppIconOption(
-            AppIconType.CAT,
-            "Cat Icon",
-            "A Pinkish cat-themed icon",
-            R.mipmap.cat_icon,
-          ),
-          AppIconOption(
-            AppIconType.CRAZY_BLUE,
-            "Crazy Blue Icon",
-            "A vibrant crazy blue icon",
-            R.mipmap.crazy_blue_icon,
-          ),
-          AppIconOption(
-            AppIconType.REVENGE_CAT,
-            "Revenge Cat",
-            "A playful cat by Alarp_Svc",
-            R.mipmap.revenge_cat_icon,
-          ),
-          AppIconOption(
-            AppIconType.LEGACY,
-            "Legacy Icon",
-            "The OG Monochrome Icon",
-            R.mipmap.legacy_icon,
-          ),
-          AppIconOption(
             AppIconType.DEFAULT,
             "New Icon",
             "The standard vibrant icon",
             R.mipmap.ic_launcher,
           ),
           AppIconOption(
-            AppIconType.POOKIE,
-            "Pookie Icon",
-            "A Cute Pink icon",
-            R.mipmap.pookie_icon,
-          ),
-          AppIconOption(
-            AppIconType.SABRINA_CARPENTER,
-            "Sabrina Carpenter",
-            "Suggested by notdieinganymore",
-            R.mipmap.ic_launcher_sabrina,
-          ),
-          AppIconOption(
-            AppIconType.SABRINA_CARPENTER_2,
-            "Sabrina Carpenter 2",
-            "Suggested by Falvik",
-            R.mipmap.ic_launcher_sabrina2,
-          ),
-          AppIconOption(
-            AppIconType.SKY,
-            "Sky Icon",
-            "A beautiful sky-themed icon",
-            R.mipmap.sky_icon,
-          ),
-          AppIconOption(
-            AppIconType.NEON_GLASS,
-            "Neon Glass",
-            "A futuristic glowing neon glass icon",
-            R.mipmap.ic_launcher_neon_glass,
-          ),
-          AppIconOption(
-            AppIconType.MILLIE_BOBBY_BROWN,
-            "Millie Bobby Brown",
-            "Millie Bobby Brown on community demand",
-            R.mipmap.ic_launcher_millie,
+            AppIconType.STATIC,
+            "Static Icon",
+            "A static launcher icon",
+            R.mipmap.ic_launcher_static,
           ),
         )
         .sortedBy { it.title.lowercase() }

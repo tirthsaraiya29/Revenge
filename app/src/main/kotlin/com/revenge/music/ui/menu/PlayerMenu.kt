@@ -576,7 +576,7 @@ fun PlayerMenu(
                 },
                 icon = {
                   androidx.compose.foundation.Image(
-                    painter = painterResource(R.drawable.songdna),
+                    painter = painterResource(R.drawable.ic_chart),
                     contentDescription = null,
                     modifier =
                       Modifier.size(24.dp).clip(androidx.compose.foundation.shape.CircleShape),

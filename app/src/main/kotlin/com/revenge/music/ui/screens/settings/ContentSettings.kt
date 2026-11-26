@@ -68,7 +68,6 @@ import com.revenge.music.constants.ContentCountryKey
 import com.revenge.music.constants.ContentLanguageKey
 import com.revenge.music.constants.CountryCodeToName
 import com.revenge.music.constants.EnableBetterLyricsKey
-import com.revenge.music.constants.EnableCronetKey
 import com.revenge.music.constants.EnableKugouKey
 import com.revenge.music.constants.EnableLrcLibKey
 import com.revenge.music.constants.EnablePaxsenixKey
@@ -199,8 +198,6 @@ fun ContentSettings(
   val (suggestionRegion, onSuggestionRegionChange) =
     rememberPreference(key = SuggestionRegionKey, defaultValue = "system")
   val (forceOpus, onForceOpusChange) = rememberPreference(key = ForceOpusKey, defaultValue = true)
-  val (enableCronet, onEnableCronetChange) =
-    rememberPreference(key = EnableCronetKey, defaultValue = true)
   val (hideExplicit, onHideExplicitChange) =
     rememberPreference(key = HideExplicitKey, defaultValue = false)
   val (hideVideoSongs, onHideVideoSongsChange) =
@@ -735,31 +732,6 @@ fun ContentSettings(
               )
             },
             onClick = { onForceOpusChange(!forceOpus) },
-          ),
-          Material3SettingsItem(
-            isHighlighted = (highlightKey == "Enable HTTP/3 (Cronet)"),
-            icon = painterResource(R.drawable.speed),
-            title = { Text("Enable HTTP/3 (Cronet)") },
-            description = {
-              Text("Use QUIC over UDP for zero-latency streaming (Restart required)")
-            },
-            trailingContent = {
-              Switch(
-                checked = enableCronet,
-                onCheckedChange = onEnableCronetChange,
-                thumbContent = {
-                  Icon(
-                    painter =
-                      painterResource(
-                        id = if (enableCronet) R.drawable.check else R.drawable.close,
-                      ),
-                    contentDescription = null,
-                    modifier = Modifier.size(SwitchDefaults.IconSize),
-                  )
-                },
-              )
-            },
-            onClick = { onEnableCronetChange(!enableCronet) },
           ),
           Material3SettingsItem(
             isHighlighted = (highlightKey == stringResource(R.string.content_language)),

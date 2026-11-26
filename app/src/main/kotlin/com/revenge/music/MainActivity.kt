@@ -562,7 +562,6 @@ class MainActivity : ComponentActivity() {
         // Run migrations for fresh installs and updates
         context.dataStore.edit { preferences ->
           preferences[com.revenge.music.constants.ForceOpusKey] = true
-          preferences[com.revenge.music.constants.EnableCronetKey] = true
         }
       }
 
@@ -1562,7 +1561,7 @@ class MainActivity : ComponentActivity() {
                   onAiHubClick = {
                     navController.navigate("settings/ai") { launchSingleTop = true }
                   },
-                  aiHubIconRes = R.drawable.ai_pfp,
+                  aiHubIconRes = R.drawable.ic_revenge_brain,
                   aiHubContentDescription = stringResource(R.string.ai_lyrics_translation),
                 )
               }

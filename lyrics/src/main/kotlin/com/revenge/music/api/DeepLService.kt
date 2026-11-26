@@ -9,8 +9,23 @@ import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
-import org.json.JSONArray
-import org.json.JSONObject
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.add
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.put
+
+private val lyricJson = Json {
+  isLenient = true
+  ignoreUnknownKeys = true
+}
+
+private fun JsonObject.string(key: String): String? =
+  (this[key] as? JsonPrimitive)?.contentOrNull
 
 object DeepLService {
   private const val FREE_ENDPOINT = "https://api-free.deepl.com/v2/translate"
@@ -50,8 +65,8 @@ object DeepLService {
     val expected = lines.size
     val endpoint = if (apiKey.endsWith(":fx")) FREE_ENDPOINT else PRO_ENDPOINT
     val payload =
-      JSONObject().apply {
-        put("text", JSONArray().apply { lines.forEach { put(it) } })
+      buildJsonObject {
+        put("text", buildJsonArray { lines.forEach { add(it) } })
         put("target_lang", deeplLanguageCode(targetLanguage))
         if (formality != "default") put("formality", formality)
         put("preserve_formatting", true)
@@ -79,16 +94,17 @@ object DeepLService {
           return Result.failure(Exception("Translation failed: ${deeplError(body, response.status.value)}"))
         }
 
-        val translations = JSONObject(body).optJSONArray("translations")
-        if (translations == null || translations.length() == 0) {
+        val translations =
+          runCatching {
+            (lyricJson.parseToJsonElement(body) as? JsonObject)?.get("translations") as? JsonArray
+          }.getOrNull()
+        if (translations == null || translations.isEmpty()) {
           delay(1000L * attempt)
           continue
         }
 
         val translated =
-          (0 until translations.length()).map { index ->
-            translations.optJSONObject(index)?.optString("text", "").orEmpty()
-          }
+          translations.map { (it as? JsonObject)?.string("text").orEmpty() }
         onLog?.invoke("Successfully parsed ${translated.size} lines")
         return Result.success(normalize(translated, expected))
       } catch (e: CancellationException) {
@@ -109,8 +125,11 @@ object DeepLService {
   }
 
   private fun deeplError(body: String, code: Int): String =
-    runCatching { JSONObject(body).optString("message").takeIf { it.isNotBlank() } }.getOrNull()
-      ?: "HTTP $code"
+    runCatching {
+        ((lyricJson.parseToJsonElement(body) as? JsonObject)?.string("message"))
+          ?.takeIf { it.isNotBlank() }
+      }
+      .getOrNull() ?: "HTTP $code"
 
   private fun normalize(lines: List<String>, expected: Int): List<String> =
     when {

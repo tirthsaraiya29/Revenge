@@ -1,9 +1,18 @@
 package com.revenge.music.api
 
-import org.json.JSONArray
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 
 /** Shared response handling for the chat-completion based translation services. */
 internal object AiTranslationParsing {
+  private val json = Json {
+    isLenient = true
+    ignoreUnknownKeys = true
+  }
+
   fun normalize(lines: List<String>, expected: Int): List<String> =
     when {
       lines.size == expected -> lines
@@ -11,26 +20,29 @@ internal object AiTranslationParsing {
       else -> lines + List(expected - lines.size) { "" }
     }
 
+  private fun JsonObject.string(key: String): String? =
+    (this[key] as? JsonPrimitive)?.contentOrNull
+
   /**
    * Extracts the assistant text from either an Anthropic Messages response (`content` blocks) or an
    * OpenAI compatible response (`choices[0].message.content`).
    */
   fun extractContent(body: String): String? {
-    val json = runCatching { org.json.JSONObject(body) }.getOrNull() ?: return null
-    val blocks = json.optJSONArray("content")
+    val root = runCatching { json.parseToJsonElement(body) as? JsonObject }.getOrNull() ?: return null
+    val blocks = root["content"] as? JsonArray
     if (blocks != null) {
       val text =
-        (0 until blocks.length())
-          .mapNotNull { blocks.optJSONObject(it)?.optString("text") }
+        blocks
+          .mapNotNull { (it as? JsonObject)?.string("text") }
           .joinToString("")
           .trim()
       if (text.isNotBlank()) return text
     }
-    return json
-      .optJSONArray("choices")
-      ?.optJSONObject(0)
-      ?.optJSONObject("message")
-      ?.optString("content")
+    return (root["choices"] as? JsonArray)
+      ?.firstOrNull()
+      ?.let { it as? JsonObject }
+      ?.get("message")
+      ?.let { (it as? JsonObject)?.string("content") }
       ?.trim()
       ?.takeIf { it.isNotBlank() }
   }
@@ -44,8 +56,8 @@ internal object AiTranslationParsing {
 
     fun asArray(candidate: String): List<String>? =
       runCatching {
-        val array = JSONArray(candidate)
-        (0 until array.length()).map { array.optString(it) }
+        val array = json.parseToJsonElement(candidate) as JsonArray
+        array.map { (it as? JsonPrimitive)?.contentOrNull ?: "" }
       }.getOrNull()
 
     val withoutFences = trimmed.replace("```json", "").replace("```", "").trim()

@@ -5,94 +5,85 @@ Updated after each milestone. Read this first when resuming.
 ## Mission
 
 Independent, GPL-3 reconstruction of the Revenge Android music player in this
-directory. `../Revenge-source` is a read-only behavioural reference. No source
-file is transplanted; modules are re-implemented from their public API contract
-and observable behaviour.
+directory. No Echo/Metrolist/vivimusic implementation is carried forward,
+regardless of licence. `../Revenge-source` is a read-only behavioural reference
+for M2 specification writers only; implementation workers never read it or the
+baseline `src/` of a REIMPLEMENT file.
 
-## Starting state (discovered)
+## Binding documents
 
-- Destination contained an existing ~122k-line `app/` module (package
-  `com.revenge.music`) plus README/CONTRIBUTING/.gitignore. No root Gradle build,
-  no version catalog, no supporting modules.
-- Reference contains all supporting modules (`core`, `domain`, `playback`,
-  `innertube`, lyrics providers, DSP, USB audio, canvas, and others) but no
-  `app/` directory. Reference is not a git repository.
-- App imports 1060 distinct `com.revenge.*` symbols; 84 come from supporting
-  modules. The app also uses same-package classes that live in `:playback` and
-  `:core` (for example `com.revenge.music.playback.audio.BeatAnalyzer`,
-  `com.revenge.music.db.MusicDatabase`).
-- Toolchain: Android Studio JBR 21, Android SDK 37, Gradle wrapper 9.9.1
-  (copied tooling), reference catalog versions adopted.
+- `docs/provenance/MASTER_PROVENANCE_REPORT.md` — audit verdict and census.
+- `docs/provenance/FILE_BY_FILE_INVENTORY.md` — per-file disposition (1,949 rows).
+- `docs/provenance/REIMPLEMENTATION_ROADMAP.md` — waves 0–5.
+- `docs/provenance/ARCHITECTURE_CONTRACTS.md` — module/persistence contracts.
+- `docs/provenance/VALIDATION_AND_RELEASE_GATES.md` — M2–M6 gates.
+- `docs/provenance/M2_GATE_DECISIONS.md` — all 119 BLOCKED dispositions (RESOLVED).
+- `docs/specs/` — clean-room specifications for implementation workers.
 
-## Done
+## Current milestone
 
-- [x] Root build: `settings.gradle.kts`, `build.gradle.kts`, `gradle.properties`,
-  `gradle/libs.versions.toml`, wrapper, `local.properties`, minimal manifests.
-- [x] `./gradlew projects` succeeds (21 projects configured).
-- [x] Module build files authored for all 20 supporting modules.
-- [x] Leaf modules implemented independently: metadata, domain, dsp-core,
-  canvas, applecanvas, unison, lrclib, kugou, betterlyrics, simpmusic,
-  youlyplus, paxsenixlyrics, shazamkit, artistvideo, usbaudio.
-- [x] Leaf modules compile; JVM tests for domain, metadata, dsp-core pass.
-- [x] GPL-3 LICENSE (SPDX text), issue templates, PR template, CodeQL and
-  Semgrep workflows with code-path filters, security/privacy/conduct docs,
-  building/testing/architecture docs, design direction and landing page.
-- [x] Semgrep ruleset runs clean on the current app and leaf modules.
-- [x] `:innertube:compileDebugKotlin` and `:core:compileDebugKotlin` pass after
-  fixing Ktor 3.6 compression/userAgent APIs, a nested Thumbnail type, a
-  missing return, and trailing-lambda binding in page filters.
+- Phase 0 baseline freeze: DONE (`audit/baseline-11ae6207` = `11ae6207`).
+- Phase 1 provenance audit: DONE (8 deliverables).
+- **M2 BLOCKED gate: RESOLVED** (119/119 recorded in `M2_GATE_DECISIONS.md`).
+- **Wave 0 foundation remediation: DONE** (see below).
+- **Wave 1 clean-room (`:domain`, `:metadata`, `:dsp-core`): IN PROGRESS.**
 
-## In progress
+## Wave 0 — completed and verified
 
-- [ ] `core` implementation (Room database, entities, DAOs, preference keys,
-  repositories, models, utils).
-- [ ] `innertube` implementation (models and YouTube client).
-- [ ] `lyrics` implementation (orchestration, provider adapters, translation).
-- [ ] `playback` implementation (queues, audio processors, cutoff guard).
-- [ ] `audio-dsp` implementation (processors, controller, EQ repository).
-- [x] All 20 supporting modules compile; `:app:compileUniversalFossDebugKotlin`
-  passes. The USB DAC path was changed to a real AudioTrack output (platform
-  routed), and the settings label no longer claims bit-perfect output.
-- [ ] App tests and APK build (full `test` running).
-- [ ] Remove the unimplemented `Puter` AI provider path from app settings and
-  the three AI helper branches.
-- [ ] Replace the USB audio transport fallback with real output (see risks).
-- [ ] Final verification, scan run, release notes, commit and push.
+Build/config:
+- `app/build.gradle.kts`: removed `play-services-cronet` and cronet branch;
+  added `-PrevengeVersionCode` / `-PrevengeVersionName`; split-ABI flavors gated
+  behind `-PallAbis`; removed dead `ndkVersion`.
+- `app/src/foss/AndroidManifest.xml`: strips `ReconnectionService`.
+- `:lyrics`: replaced `org.json`/JSON-License dependency with
+  `kotlinx.serialization.json` across translation services.
+- `release.yml`: tag input used for artifact naming; NDK/CMake install dropped.
+- `autoeq_index.json`: 24 corrupted `Revenge` substitutions restored to upstream
+  Echo names; valid JSON.
+- Dead `Puter` provider removed from settings and strings.
+- Dead HTTP/3 (Cronet) toggle and preference key removed.
+
+Assets:
+- Deleted 418 paths: all `REMOVE` (228 launcher PNGs, `vibrafp/`,
+  `google_sans_flex.ttf`) and all `BLOCKED` (ONNX models, celebrity/personal/
+  brand rasters, Lottie).
+- Added clean-room generic vectors (`ic_headphones_generic`,
+  `ic_speaker_generic`, `ic_service_generic`, `ic_artwork_placeholder`) and
+  repointed every reference.
+- Icon picker trimmed to Default + Static; obsolete activity aliases removed.
+- `Type.kt` rebound to verified OFL-1.1 `sans_flex.ttf` v3.007; false OFL
+  comment removed from `speed_*.xml`.
+- Added `THIRD_PARTY_NOTICES.md` and `licenses/OFL-1.1.txt`.
+- `README.md`/`docs/BUILDING.md`/`docs/LICENSING.md` corrected (no bit-perfect
+  USB claim, no NDK/CMake requirement, no `org.json`, no Cronet).
+
+Verified:
+- `./gradlew projects` PASS (21 modules).
+- `:app:compileUniversalFossDebugKotlin` + `:lyrics:compileDebugKotlin` PASS.
+- Zero BLOCKED paths remain; zero stale resource references.
+
+## Next steps
+
+1. Finish Wave 1 specs/implementations; run `:domain:test :metadata:test
+   :dsp-core:test` and full `./gradlew test`.
+2. Wave 2 — persistence, USB, DSP, playback (largest wave).
+3. Wave 3 — InnerTube + seven lyric providers + `:lyrics`.
+4. Wave 4 — app shell, Compose design system, core screens.
+5. Wave 5 — advanced capabilities, integrations, widgets, updater.
+6. E2E tracks Tiers 1–4 in parallel; M6 release gates.
 
 ## Known constraints / risks
 
-- Subagents must be launched with `model: 'sonnet'`; the default subagent model
-  is blocked by the provider guardrail.
-- USB bit-perfect DAC: the pure-Kotlin driver buffers PCM but cannot submit
-  isochronous USB URBs from Java. `UsbDacAudioSink` must fall back to a real
-  AudioTrack routed to the USB device until a native engine exists, or the
-  feature must be hidden. Do not claim bit-perfect output until measured.
-- Existing app contains unimplemented `Puter` AI provider branches. Remove the
-  provider instead of shipping a dead control.
-- Duplicate FQCN check required: app defines classes in packages shared with
-  modules such as `com.revenge.music.playback.*` and `com.revenge.canvas.*`.
-- The app was present before this session; its internal consistency has not yet
-  been proven by a successful compile. The integration compile is the source of
-  truth.
+- Subagents must be launched with `model: 'sonnet'` (provider guardrail).
+- `ffmpeg-kit-audio:6.0-2` is retired upstream; replacement (Media3 Transformer
+  or maintained fork) is scheduled for Wave 2. Removing it now would break
+  export without a replacement.
+- Beat tracking has no bundled model until an MIT re-export is verified.
+- The GMS flavor still bundles proprietary Firebase/Location/Cast; GMS APKs
+  are not distributable as GPL-3 binaries. FOSS is the release artifact.
+- Similarity gate: automated scan vs Echo-Music/Revenge-source must be below
+  threshold at M6; per-module reviewer step is part of the clean-room workflow.
 
 ## Verification log
 
-- `./gradlew projects` PASS (2026-11-26).
-- `:metadata:compileKotlin :domain:compileKotlin :dsp-core:compileKotlin` PASS.
-- `:lrclib :kugou :betterlyrics :simpmusic :youlyplus :shazamkit :artistvideo
-  :canvas :applecanvas :unison :paxsenixlyrics` compile PASS.
-- `:domain:test :metadata:test :dsp-core:test` PASS.
-- `semgrep scan --config .semgrep/rules.yml ... --error` PASS (0 findings).
-- Landing page: HTML structure valid, all in-page anchors resolve, no duplicate
-  ids, JS syntax checked with Node.
-
-## Independence audit finding (must resolve)
-
-An automated line-overlap audit against the reference found 115 module files
-with more than 60% identical non-comment lines (12.8k lines total). Many small
-DTO, Room entity, and provider files are necessarily isomorphic because field
-names must match the YouTube JSON and the existing Room schema, but several
-behaviour-bearing files (YouTube.kt, DatabaseDao.kt, MusicDatabase.kt,
-InnerTube.kt, page parsers, provider clients) overlap enough to require an
-independent rewrite before claiming independent implementation. This is tracked
-as a release blocker and documented in docs/INDEPENDENCE.md.
+- 2026-11-26 — Wave 0: projects PASS; app+lyrics compile PASS.

@@ -3067,7 +3067,7 @@ fun BottomSheetPlayer(
             ) {
               Box(modifier = Modifier.weight(1f)) {
                 ResizableIconButton(
-                  icon = R.drawable.apple_skip_previous,
+                  icon = R.drawable.skip_previous,
                   enabled = canSkipPrevious && !isListenTogetherGuest,
                   color = TextBackgroundColor,
                   modifier =
@@ -3112,9 +3112,9 @@ fun BottomSheetPlayer(
                       } else if (playbackState == STATE_ENDED) {
                         R.drawable.replay
                       } else if (effectiveIsPlaying) {
-                        R.drawable.pause_applemusic
+                        R.drawable.pause
                       } else {
-                        R.drawable.play_applemusic
+                        R.drawable.play
                       },
                     ),
                   contentDescription = null,
@@ -3127,7 +3127,7 @@ fun BottomSheetPlayer(
 
               Box(modifier = Modifier.weight(1f)) {
                 ResizableIconButton(
-                  icon = R.drawable.apple_skip_next,
+                  icon = R.drawable.skip_next,
                   enabled = canSkipNext && !isListenTogetherGuest,
                   color = TextBackgroundColor,
                   modifier =
@@ -3280,9 +3280,9 @@ fun BottomSheetPlayer(
                     painter =
                       painterResource(
                         when {
-                          isSpeaker(nameToShow) -> R.drawable.speaker_applemusic
-                          isBuds(nameToShow) -> R.drawable.apple_airpods
-                          else -> R.drawable.apple_headset
+                          isSpeaker(nameToShow) -> R.drawable.ic_speaker_generic
+                          isBuds(nameToShow) -> R.drawable.ic_headphones_generic
+                          else -> R.drawable.ic_headphones_generic
                         },
                       ),
                     contentDescription = null,

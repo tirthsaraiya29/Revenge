@@ -176,7 +176,7 @@ fun BackupAndRestore(
                 Material3SettingsItem(
                   title = { Text("Import from Spotify") },
                   description = { Text(stringResource(R.string.spotify_import_desc)) },
-                  icon = painterResource(R.drawable.ic_spotify),
+                  icon = painterResource(R.drawable.ic_service_generic),
                   onClick = { navController.navigate("settings/spotify_import") },
                 ),
               ),

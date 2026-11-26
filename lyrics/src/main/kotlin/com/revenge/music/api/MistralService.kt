@@ -9,16 +9,33 @@ import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
-import org.json.JSONArray
-import org.json.JSONObject
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.add
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.put
+
+private val mistralJson = Json {
+  isLenient = true
+  ignoreUnknownKeys = true
+}
+
+private fun JsonObject.string(key: String): String? =
+  (this[key] as? JsonPrimitive)?.contentOrNull
 
 object MistralService {
   private const val ENDPOINT = "https://api.mistral.ai/v1/chat/completions"
 
   private fun errorMessage(body: String, code: Int): String =
     runCatching {
-      JSONObject(body).optJSONObject("error")?.optString("message")?.takeIf { it.isNotBlank() }
-    }.getOrNull() ?: "HTTP $code"
+        ((mistralJson.parseToJsonElement(body) as? JsonObject)?.get("error") as? JsonObject)
+          ?.string("message")
+          ?.takeIf { it.isNotBlank() }
+      }
+      .getOrNull() ?: "HTTP $code"
 
   suspend fun translate(
     text: String,
@@ -34,15 +51,18 @@ object MistralService {
 
     val expected = text.lines().size
     val payload =
-      JSONObject().apply {
+      buildJsonObject {
         put("model", model.ifBlank { "mistral-small-latest" })
         put(
           "messages",
-          JSONArray().put(
-            JSONObject()
-              .put("role", "user")
-              .put("content", AiPrompts.user(mode, text, expected, targetLanguage)),
-          ),
+          buildJsonArray {
+            add(
+              buildJsonObject {
+                put("role", "user")
+                put("content", AiPrompts.user(mode, text, expected, targetLanguage))
+              },
+            )
+          },
         )
         put("temperature", 0.3)
         put("max_tokens", expected * 100)

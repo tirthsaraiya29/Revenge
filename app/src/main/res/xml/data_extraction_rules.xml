@@ -19,6 +19,9 @@
         <exclude
             domain="sharedpref"
             path="automotive_artwork_secret.xml" />
+    <exclude
+        domain="file"
+        path="./datastore" />
     </cloud-backup>
     <device-transfer>
         <exclude
@@ -39,5 +42,8 @@
         <exclude
             domain="sharedpref"
             path="automotive_artwork_secret.xml" />
+    <exclude
+        domain="file"
+        path="./datastore" />
     </device-transfer>
 </data-extraction-rules>

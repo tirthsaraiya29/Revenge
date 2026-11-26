@@ -9,8 +9,23 @@ import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
-import org.json.JSONArray
-import org.json.JSONObject
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.add
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.put
+
+private val openRouterJson = Json {
+  isLenient = true
+  ignoreUnknownKeys = true
+}
+
+private fun JsonObject.string(key: String): String? =
+  (this[key] as? JsonPrimitive)?.contentOrNull
 
 object OpenRouterService {
   private const val DEFAULT_URL = "https://openrouter.ai/api/v1/chat/completions"
@@ -45,18 +60,41 @@ object OpenRouterService {
   ): ChatHttpResponse {
     val anthropic = isAnthropic(url)
     val payload =
-      JSONObject().apply {
+      buildJsonObject {
         if (model.isNotBlank()) put("model", model)
         if (anthropic) {
           if (!system.isNullOrBlank()) put("system", system)
-          put("messages", JSONArray().put(JSONObject().put("role", "user").put("content", user)))
+          put(
+            "messages",
+            buildJsonArray {
+              add(
+                buildJsonObject {
+                  put("role", "user")
+                  put("content", user)
+                },
+              )
+            },
+          )
         } else {
-          val messages = JSONArray()
-          if (!system.isNullOrBlank()) {
-            messages.put(JSONObject().put("role", "system").put("content", system))
-          }
-          messages.put(JSONObject().put("role", "user").put("content", user))
-          put("messages", messages)
+          put(
+            "messages",
+            buildJsonArray {
+              if (!system.isNullOrBlank()) {
+                add(
+                  buildJsonObject {
+                    put("role", "system")
+                    put("content", system)
+                  },
+                )
+              }
+              add(
+                buildJsonObject {
+                  put("role", "user")
+                  put("content", user)
+                },
+              )
+            },
+          )
         }
         if (temperature != null) put("temperature", temperature)
         put("max_tokens", maxTokens)
@@ -77,10 +115,11 @@ object OpenRouterService {
 
   private fun errorMessage(body: String, code: Int): String =
     runCatching {
-      val json = JSONObject(body)
-      json.optJSONObject("error")?.optString("message")?.takeIf { it.isNotBlank() }
-        ?: json.optString("message").takeIf { it.isNotBlank() }
-    }.getOrNull() ?: "HTTP $code"
+        val json = openRouterJson.parseToJsonElement(body) as? JsonObject
+        (json?.get("error") as? JsonObject)?.string("message")?.takeIf { it.isNotBlank() }
+          ?: json?.string("message")?.takeIf { it.isNotBlank() }
+      }
+      .getOrNull() ?: "HTTP $code"
 
   suspend fun translate(
     text: String,

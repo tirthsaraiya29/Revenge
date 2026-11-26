@@ -140,7 +140,7 @@ private fun spotifyImportItems(
       Material3SettingsItem(
         title = { Text(stringResource(R.string.spotify_connect)) },
         description = { Text(stringResource(R.string.spotify_not_connected)) },
-        icon = painterResource(R.drawable.ic_spotify),
+        icon = painterResource(R.drawable.ic_service_generic),
         enabled = state.progress == null && !state.isLoading,
         onClick = onConnect,
       ),
@@ -168,7 +168,7 @@ private fun spotifyImportItems(
         if (state.isLoading) {
           { Text(stringResource(R.string.spotify_loading_library)) }
         } else null,
-      icon = painterResource(R.drawable.ic_spotify),
+      icon = painterResource(R.drawable.ic_service_generic),
       enabled = true,
       onClick = null,
     ),

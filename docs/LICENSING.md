@@ -38,9 +38,8 @@ compatible with distributing the FOSS build under GPL-3.
 | UCrop | 2.2.11 | Apache-2.0 | Yes |
 | lyrics-core | 0.5.0 | Apache-2.0 | Yes |
 | QuickJS-kt | 1.0.14 | Apache-2.0 | Yes |
-| ONNX Runtime Android | 1.28.0 | MIT | Yes |
+| ONNX Runtime Android | 1.28.0 | MIT | Yes (bundled model removed in Wave 0 pending provenance) |
 | FFmpegKit audio | 6.0-2 | LGPL-3.0 | Yes, LGPL code may be combined with GPL-3 |
-| org.json | 20260814 | JSON license | Yes |
 | JUnit 4, Robolectric (test only) | current catalog | EPL-1.0 / Apache-2.0 | Test scope only |
 
 ## GMS flavor finding
@@ -48,7 +47,7 @@ compatible with distributing the FOSS build under GPL-3.
 The `gms` flavor adds proprietary Google libraries:
 
 - Google Play services Cast framework and MediaRouter
-- Google Play services Cronet and Location
+- Google Play services Location
 - Firebase Analytics and Crashlytics
 
 These are distributed under Google's Android Software Development Kit License
@@ -62,6 +61,19 @@ Action taken: the FOSS flavor remains the default, and the release page labels
 builds. If GMS binaries are published, the release notes must state the extra
 terms. If strict GPL compliance is required, publish FOSS binaries only and let
 users build the GMS flavor themselves.
+
+## Bundled assets
+
+- `sans_flex.ttf` (Sans Flex v3.007), `outfit.ttf`, `plus_jakarta_sans.ttf`,
+  `bbh_bartle_regular.ttf`: SIL Open Font License 1.1. The proprietary
+  Google Sans Flex v2.003 font and the fonts' name-table restrictions no longer
+  apply; the removed font is not shipped.
+- `autoeq_index.json`: AutoEq index (MIT), corrected to upstream names.
+- The previously bundled `beat_this_final0_q8.onnx` and
+  `vocals_umxhq_int8.onnx` model binaries were removed as unverifiable; ONNX
+  Runtime remains a dependency but no model asset ships until an upstream
+  MIT-licensed re-export is recorded with a checksum.
+- Google Material Symbols used as icons are Apache-2.0.
 
 ## Build-only dependencies
 

@@ -19,7 +19,7 @@ Revenge is an independent Android music player for YouTube Music and local audio
 - On-device music recognition (“Find”).
 - Listening statistics, a yearly listening recap, and shareable cards.
 - Personalized queue recommendations generated on-device.
-- USB audio output with bit-perfect PCM support for compatible DACs.
+- USB audio output routed through the platform audio stack (no bit-perfect/URB path).
 - Podcast playback and subscription management.
 - Selectable app icons, dynamic color, custom fonts, and light/dark/black themes.
 
@@ -38,8 +38,6 @@ Revenge is an independent Android music player for YouTube Music and local audio
 
 - JDK 21
 - Android SDK Platform 37
-- Android NDK `28.2.13676358`
-- CMake and Ninja (installed by the Android SDK manager)
 
 ## Development setup
 
@@ -102,7 +100,7 @@ applecanvas/          Apple Music canvas provider
 artistvideo/          Artist video provider
 audio-dsp/            Audio effects and DSP controller
 dsp-core/             DSP primitives and parsers
-usbaudio/             USB audio driver and JNI bridge
+usbaudio/             USB audio driver (platform AudioTrack routing)
 ```
 
 ## Contributing

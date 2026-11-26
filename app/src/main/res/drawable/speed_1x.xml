@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Podcast speed "1x" for the player button. Generated from the outlines of
-     res/font/google_sans_flex.ttf (SIL Open Font License). -->
+     res/font/sans_flex.ttf (SIL Open Font License 1.1). -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"

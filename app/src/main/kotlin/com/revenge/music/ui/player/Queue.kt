@@ -503,7 +503,7 @@ fun Queue(
               horizontalArrangement = Arrangement.Center,
             ) {
               Icon(
-                painter = painterResource(id = R.drawable.apple_queue),
+                painter = painterResource(id = R.drawable.queue_music),
                 contentDescription = null,
                 modifier = Modifier.size(40.dp),
                 tint = TextBackgroundColor,
@@ -531,8 +531,8 @@ fun Queue(
               Icon(
                 painter =
                   painterResource(
-                    if (isBluetoothConnected) R.drawable.headset_applemusic
-                    else R.drawable.speaker_apple,
+                    if (isBluetoothConnected) R.drawable.ic_headphones_generic
+                    else R.drawable.ic_speaker_generic,
                   ),
                 contentDescription = null,
                 modifier = Modifier.size(30.dp),
@@ -589,7 +589,7 @@ fun Queue(
                 horizontalArrangement = Arrangement.Center,
               ) {
                 Icon(
-                  painter = painterResource(id = R.drawable.apple_music_me),
+                  painter = painterResource(id = R.drawable.person),
                   contentDescription = null,
                   modifier = Modifier.size(40.dp),
                   tint = TextBackgroundColor,

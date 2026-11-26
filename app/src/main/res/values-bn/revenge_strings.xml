@@ -720,7 +720,6 @@
     <string name="ai_provider_nvidia_help">API à¦•à§€-à¦à¦° à¦œà¦¨à§à¦¯ build.nvidia.com à¦­à¦¿à¦œà¦¿à¦Ÿ à¦•à¦°à§à¦¨</string>
     <string name="ai_provider_orcarouter_help">à¦“à¦ªà§‡à¦¨-à¦¸à§‹à¦°à§à¦¸ à¦à¦¬à¦‚ à¦ªà§‡à¦‡à¦¡ à¦®à¦¡à§‡à¦²à§‡à¦° à¦œà¦¨à§à¦¯ orcarouter.ai à¦­à¦¿à¦œà¦¿à¦Ÿ à¦•à¦°à§à¦¨</string>
     <string name="ai_provider_groq_help">à¦«à§à¦°à¦¿ API à¦•à§€-à¦à¦° à¦œà¦¨à§à¦¯ console.groq.com/keys à¦­à¦¿à¦œà¦¿à¦Ÿ à¦•à¦°à§à¦¨</string>
-    <string name="ai_provider_puter_help">à¦…à¦¥ à¦Ÿà§‹à¦•à§‡à¦¨ à¦ªà§‡à¦¤à§‡ puter.com/dashboard à¦­à¦¿à¦œà¦¿à¦Ÿ à¦•à¦°à§à¦¨</string>
     <string name="ai_deepl_formality">à¦†à¦¨à§à¦·à§à¦ à¦¾à¦¨à¦¿à¦•à¦¤à¦¾</string>
     <string name="ai_deepl_formality_default">à¦¡à¦¿à¦«à¦²à§à¦Ÿ</string>
     <string name="ai_deepl_formality_more">à¦…à¦§à¦¿à¦• à¦†à¦¨à§à¦·à§à¦ à¦¾à¦¨à¦¿à¦•</string>

@@ -142,12 +142,6 @@
 ## JSoup re2j optional dependency
 -dontwarn com.google.re2j.**
 
-# Vibra fingerprint library
--keep class com.revenge.music.recognition.VibraSignature { *; }
--keepclassmembers class com.revenge.music.recognition.VibraSignature {
-    native <methods>;
-}
-
 ## Kotlin Reflection Fix
 -keep class kotlin.Metadata { *; }
 -keep class kotlin.reflect.** { *; }

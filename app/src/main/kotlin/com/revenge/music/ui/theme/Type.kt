@@ -14,7 +14,7 @@ import com.revenge.music.R
 val GoogleSansFontFamily =
   FontFamily(
     Font(
-      resId = R.font.google_sans_flex,
+      resId = R.font.sans_flex,
       weight = FontWeight.Normal,
       variationSettings =
         FontVariation.Settings(
@@ -24,7 +24,7 @@ val GoogleSansFontFamily =
         ),
     ),
     Font(
-      resId = R.font.google_sans_flex,
+      resId = R.font.sans_flex,
       weight = FontWeight.Medium,
       variationSettings =
         FontVariation.Settings(
@@ -34,7 +34,7 @@ val GoogleSansFontFamily =
         ),
     ),
     Font(
-      resId = R.font.google_sans_flex,
+      resId = R.font.sans_flex,
       weight = FontWeight.Bold,
       variationSettings =
         FontVariation.Settings(

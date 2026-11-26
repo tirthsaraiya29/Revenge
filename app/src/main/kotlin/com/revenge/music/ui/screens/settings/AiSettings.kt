@@ -99,7 +99,6 @@ fun AiSettings(
       "OrcaRouter" to "https://api.orcarouter.ai/v1/chat/completions",
       "Groq" to "https://api.groq.com/openai/v1/chat/completions",
       "Opper" to "https://api.opper.ai/v3/compat/chat/completions",
-      "Puter" to "https://api.puter.com/puterai/openai/v1/chat/completions",
       "DeepL" to "https://api.deepl.com/v2/translate",
       "Custom" to "",
     )
@@ -118,7 +117,6 @@ fun AiSettings(
       "OrcaRouter" to stringResource(R.string.ai_provider_orcarouter_help),
       "Groq" to stringResource(R.string.ai_provider_groq_help),
       "Opper" to stringResource(R.string.ai_provider_opper_help),
-      "Puter" to stringResource(R.string.ai_provider_puter_help),
       "DeepL" to stringResource(R.string.ai_provider_deepl_help),
       "Custom" to "",
     )
@@ -191,12 +189,6 @@ fun AiSettings(
           "gemini-3.8-flash",
           "deepseek-v4-pro",
           "mistral-large-2512",
-        ),
-      "Puter" to
-        listOf(
-          "gpt-4o-mini",
-          "claude-3-5-sonnet-latest",
-          "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo",
         ),
       "DeepL" to listOf(),
       "Custom" to listOf(),
@@ -777,7 +769,7 @@ fun AiSettings(
           add(
             Material3SettingsItem(
               isHighlighted = (highlightKey == stringResource(R.string.ai_recommendations)),
-              icon = painterResource(R.drawable.ai_pfp),
+              icon = painterResource(R.drawable.ic_revenge_brain),
               tintIcon = false,
               iconShape = androidx.compose.foundation.shape.CircleShape,
               title = { Text(stringResource(R.string.ai_recommendations)) },
@@ -790,7 +782,7 @@ fun AiSettings(
           )
           add(
             Material3SettingsItem(
-              icon = painterResource(R.drawable.tast),
+              icon = painterResource(R.drawable.ic_chart),
               tintIcon = false,
               iconShape = androidx.compose.foundation.shape.CircleShape,
               title = { Text("Create from Taste") },

@@ -188,7 +188,7 @@ fun LibrarySpotifyScreen(
             verticalAlignment = Alignment.CenterVertically,
           ) {
             Icon(
-              painter = painterResource(R.drawable.ic_spotify),
+              painter = painterResource(R.drawable.ic_service_generic),
               contentDescription = null,
               tint = Color(0xFF1DB954),
               modifier = Modifier.size(24.dp),
@@ -460,7 +460,7 @@ private fun SpotifyEmptyState(modifier: Modifier = Modifier) {
       contentAlignment = Alignment.Center,
     ) {
       Icon(
-        painter = painterResource(R.drawable.ic_spotify),
+        painter = painterResource(R.drawable.ic_service_generic),
         contentDescription = null,
         tint = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.size(44.dp),
@@ -524,7 +524,7 @@ internal fun SpotifyConnectBanner(
         contentAlignment = Alignment.Center,
       ) {
         Icon(
-          painter = painterResource(R.drawable.ic_spotify),
+          painter = painterResource(R.drawable.ic_service_generic),
           contentDescription = null,
           tint = Color(0xFF1DB954),
           modifier = Modifier.size(38.dp),

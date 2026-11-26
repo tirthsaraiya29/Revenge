@@ -793,7 +793,6 @@
     <string name="ai_provider_nvidia_help">Visit build.nvidia.com for API keys</string>
     <string name="ai_provider_orcarouter_help">Visit orcarouter.ai for open-source and paid models</string>
     <string name="ai_provider_groq_help">Visit console.groq.com/keys for free API keys</string>
-    <string name="ai_provider_puter_help">Visit puter.com/dashboard to get an auth token</string>
     <string name="ai_deepl_formality">Formality</string>
     <string name="ai_deepl_formality_default">Default</string>
     <string name="ai_deepl_formality_more">More Formal</string>

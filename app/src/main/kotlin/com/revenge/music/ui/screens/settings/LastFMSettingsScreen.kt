@@ -334,7 +334,7 @@ fun LastFMSettingsScreen(navController: NavController) {
                   }
                 }
               },
-              icon = painterResource(R.drawable.ic_lastfm),
+              icon = painterResource(R.drawable.ic_service_generic),
             ),
           ),
       )

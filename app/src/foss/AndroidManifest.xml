@@ -8,5 +8,10 @@
         <meta-data
             android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"
             tools:node="remove" />
+        <!-- Cast's reconnection service is merged from the GMS remote-display library;
+             strip it so FOSS builds ship no GMS components. -->
+        <service
+            android:name="com.google.android.gms.cast.framework.ReconnectionService"
+            tools:node="remove" />
     </application>
 </manifest>
