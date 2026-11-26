@@ -44,8 +44,8 @@ Out of scope (owned by other modules, reproduced only as cross-module contracts 
   settings UI.
 - AI playlist generation; it reuses only `OpenRouterService.isUrlSafe`.
 
-The module is Android-dependent (uses `Context`, `android.util.LruCache`, resources) but all
-parsing/romanisation logic must be pure Kotlin and unit-testable on the JVM.
+The module is Android-dependent (context, resources, in-memory caching) but all parsing and
+romanisation logic must be pure Kotlin and unit-testable on the JVM.
 
 ---
 
@@ -140,14 +140,14 @@ Wave 0 replaced Gson/`org.json` with **kotlinx.serialization** in this module. T
 | `com.revenge.music.api.OpenRouterService` | object | `isUrlSafe`, `translate`, `testConnection` |
 | `com.revenge.music.api.OpenRouterStreamingService` | object | `streamTranslation`, `StreamChunk` |
 
-Internal (not consumed outside the module):
+Not part of the public API:
 
 - `com.revenge.music.api.aiHttpClient`, `aiStreamingHttpClient`
 - `com.revenge.music.api.AiPrompts`
 - `com.revenge.music.api.AiTranslationParsing`
-- the nine concrete provider singletons and the private helpers inside the AI service objects
+- any further helpers the implementation adds
 
-Concrete provider singletons, all `object : LyricsProvider`:
+The registry resolves to concrete provider singletons, all `object : LyricsProvider`:
 
 `YouLyPlusLyricsProvider`, `PaxSenixLyricsProvider`, `BetterLyricsProvider`,
 `UnisonLyricsProvider`, `SimpMusicLyricsProvider`, `LrcLibLyricsProvider`,
@@ -299,8 +299,8 @@ Field contract:
 `compareTo` contract: `(time - other.time).toInt()`. For normal lyric times the sign orders by
 time; comparison is not a strict distance. Sorting must therefore be stable enough for equal
 timestamps to preserve parse order (`sorted()` is stable in Kotlin). Do not "fix" this to
-`Long.compare` if equality with the baseline sort is required; either produces the same order for
-all realistic inputs, but the specified expression is the baseline.
+`Long.compare`. The specified expression is contractual; `Long.compare` produces the same order
+for all realistic inputs but is not the specified rule.
 
 ### 4.3 `LyricsResult`
 
@@ -474,8 +474,8 @@ Contract:
   treats such a value as failure defensively.
 - `getAllLyrics` invokes `callback` zero or more times, on the calling coroutine's context, once
   per distinct usable lyrics document. It never invokes the callback for failures. The default
-  implementation is exactly "one success -> one callback". Implementations that enumerate must
-  call `ensureActive()` between emissions so cancellation stops further callbacks.
+  implementation is exactly "one success -> one callback". Enumerating implementations must be
+  cancellation-aware between emissions, so a cancelled enumeration stops calling back.
 - Results are raw LRC-dialect text. Providers that receive TTML must convert it to LRC before
   returning (only `UnisonLyricsProvider` currently does).
 - `duration` is whole seconds; `-1` (or any non-positive value for some clients) means unknown and
@@ -531,9 +531,8 @@ constructor(
 ```
 
 `LyricsWithProvider` is `com.revenge.music.playback.LyricsWithProvider(val lyrics: String?,
-val providerName: String)` from `:core`. `LyricsHelper` is structurally compatible with
-`com.revenge.music.playback.ILyricsHelper` but does not currently declare that interface; the
-app-injected type is `LyricsHelper`.
+val providerName: String)` from `:core`. `LyricsHelper` satisfies the
+`com.revenge.music.playback.ILyricsHelper` contract (12.1); the app-injected type is `LyricsHelper`.
 
 Hilt scope: the class is unscoped, so each injection site receives its own instance and caching and
 de-duplication are per instance. Making the class process-wide (for example with `@Singleton`) is
@@ -583,9 +582,9 @@ Consequences:
 
 - Every provider call carries a 5 s budget. A provider that has not produced a usable result within
   its budget is treated as `FAILED`; no exception reaches the caller.
-- Provider arguments are derived from `MediaMetadata`: `id = mediaMetadata.id`, `title`,
-  `artist = artists.joinToString { it.name }` (separator exactly `", "`),
-  `duration = mediaMetadata.duration`, `album = mediaMetadata.album?.title`.
+- Provider arguments are derived from `MediaMetadata`: `id`, `title`, `duration`, `album`
+  (`album?.title`) and `artist` = `artists.joinToString { it.name }` with the separator exactly
+  `", "`.
 - A `Result.failure`, a thrown exception or a timeout all mean `FAILED`. Non-cancellation failures
   are reported through `com.revenge.music.utils.reportException(Throwable)` (logs and forwards to
   the global reporter) and are not surfaced.
@@ -696,8 +695,8 @@ These seams are internal; implementers choose their form.
   pattern `<m:ss.xx(x)>text`.
 - If `looksStructured || hasEnhancedTags || autoParser.canParse(decoded)`, try
   `parseWithAccompanist(decoded, looksStructured)`. If it returns a non-null list, that is the
-  result. `autoParser` is `com.mocharealm.accompanist.lyrics.core.parser.AutoParser()` (lazy
-  singleton).
+  result. `autoParser` is an instance of
+  `com.mocharealm.accompanist.lyrics.core.parser.AutoParser`.
 - Otherwise, split `decoded` into lines, keep non-blank lines whose trimmed form does **not** start
   with `[offset:`, and classify the document as rich-sync if any line fully matches the rich line
   pattern and contains at least one inline word tag. Rich -> rich parser; otherwise standard LRC
@@ -794,7 +793,7 @@ app applies the user's `Song.lyricsOffset` (milliseconds, default 0) externally:
 - display: `findCurrentLineIndex(lines, playerPosition + lyricsOffset)`;
 - tap-to-seek: `seekTo((entry.time - lyricsOffset).coerceAtLeast(0))`.
 
-A rebuild must not additionally apply `[offset:]`, or offsets would double.
+The implementation must not additionally apply `[offset:]`, or offsets would double.
 
 ### 8.8 Hardening requirements (normative)
 
@@ -805,8 +804,7 @@ uses `DocumentBuilderFactory` with namespace awareness and, best-effort, disable
 `disallow-doctype-decl`, external general entities and external parameter entities. Both paths
 must remain free of external entity resolution.
 
-In addition, the rebuild must add explicit bounds at the `parseLyrics` entry point (the baseline
-has none):
+In addition, the implementation must enforce explicit bounds at the `parseLyrics` entry point:
 
 - **Size cap**: if `lyrics.length > 4_194_304` UTF-16 code units (4 MiB), return `emptyList()`
   without parsing. `hasSyncedLyrics` therefore returns false.
@@ -816,9 +814,9 @@ has none):
   `emptyList()`.
 - **Entry cap**: LRC parsing stops after `20_000` produced entries (the first 20 000 sorted by
   time are kept).
-- Regex use must remain linear: `LINE_REGEX`, `TIME_REGEX`, `RICH_SYNC_*`, `AGENT_REGEX`,
-  `BACKGROUND_REGEX` and the romanisation token split must not use nested quantifiers over
-  user-controlled text.
+- Regular-expression work over user-controlled text must be linear: the public `LINE_REGEX` and
+  `TIME_REGEX` and any internal line/time/agent/background/token patterns must avoid nested
+  quantifiers.
 
 These caps are fail-closed and deterministic. They do not change any realistic lyric document.
 
@@ -981,97 +979,99 @@ Status linger is 3 s; a translation attempt has a 45 s budget.
 
 `nonEmptyEntries` = entries whose `text.isNotBlank()`, paired with their original index.
 
-### 10.3 `translateLyrics` pipeline (exact order)
+### 10.3 `translateLyrics` pipeline (observable order)
 
-1. Cancel pending status-reset and translation jobs. Set `status = Translating()`.
-2. Clear every `translatedTextFlow` to `null`.
-3. Launch on `scope` + `Dispatchers.IO`; inside:
-   1. `effectiveApiKey = if (provider == "DeepL") deeplApiKey else apiKey`.
-      Blank -> `Error(ai_error_api_key_required)` and return.
-   2. `lyrics.isEmpty()` -> `Error(ai_error_no_lyrics)` and return.
-   3. `entries = nonEmptyEntries(lyrics)`; empty -> `Error(ai_error_lyrics_empty)` and return.
-   4. `fullText = entries.joinToString("\n") { text }`.
-   5. Cache lookup by `(fullText, mode, targetLanguage)`:
-      - if present and `size >= entries.size`: assign lines to entries, log
-        `AiLogger.log(context, "Lyrics Translation", "Translated lyrics for $songId")`, persist
-        with `onlyIfEmpty = true`, `setSuccess()`, return. This happens **before** the blank
-        target-language check, so a cached translation is served even with a blank language.
-   6. Blank `targetLanguage` -> `Error(ai_error_language_required)` and return.
-   7. Resolve `languageName` from `LanguageCodeToName[code]`, else
-      `Locale.forLanguageTag(code).displayLanguage` if non-blank and different from the code,
+Effects occur in this order:
+
+1. Any pending status reset and any previous translation are cancelled; `status` becomes
+   `Translating()`.
+2. Every `translatedTextFlow` is cleared to `null`.
+3. On the caller's scope, off the main thread, the following checks run in order:
+   1. `effectiveApiKey` = `deeplApiKey` when `provider == "DeepL"`, else `apiKey`. Blank ->
+      `Error(ai_error_api_key_required)` and stop.
+   2. `lyrics.isEmpty()` -> `Error(ai_error_no_lyrics)` and stop.
+   3. Non-blank entries (`nonEmptyEntries`) empty -> `Error(ai_error_lyrics_empty)` and stop.
+   4. `fullText` = non-blank entry texts joined with `"\n"`.
+   5. Cache lookup for `(fullText, mode, targetLanguage)`. If present with at least as many lines
+      as entries: assign lines to entries, log via `AiLogger` (`"Lyrics Translation"`,
+      `"Translated lyrics for $songId"`), persist with only-if-empty semantics (10.5), set success
+      (10.6), and stop. This precedes the blank-language check, so a cached translation is served
+      even with a blank target language.
+   6. Blank `targetLanguage` -> `Error(ai_error_language_required)` and stop.
+   7. `languageName` = `LanguageCodeToName[code]`, else
+      `Locale.forLanguageTag(code).displayLanguage` when non-blank and different from the code,
       else the code itself.
-   8. Run `runTranslation(...)` inside `withTimeoutOrNull(45_000)`; `null` -> failure with
+   8. Run the provider translation (selection below) with a 45 s budget. Timeout -> failure with
       `ai_error_translation_failed`.
    9. On success:
-      - if `!isCompositionActive`, return without applying (but note: this check precedes all
-        cache/persist/apply work in this branch);
-      - cache the translated list under `(fullText, mode, targetLanguage)`;
-      - persist to DB (all lines, `joinToString("\n")`);
-      - if `translated.isEmpty()` while entries are non-empty -> `Error(ai_error_unexpected)`
-        (the empty list has already been cached/persisted in this path);
-      - assign `translated[i]` to entry i for `i < entries.size`; surplus lines ignored; missing
-        lines stay `null`;
-      - `AiLogger.log(...)`; `setSuccess()`.
-   10. On failure -> `reportError(error.message ?: ai_error_unknown)`.
-4. Outer `catch CancellationException -> throw`; any other exception -> report its message or
-   `ai_error_translation_failed`.
-5. `runTranslation` provider selection (first match):
-   - `provider == "DeepL"` -> `DeepLService.translate(fullText, languageCode=targetLanguage,
-     apiKey=deeplApiKey, formality=deeplFormality, onLog=::appendLog)`;
-   - `provider == "Mistral"` -> `MistralService.translate(fullText, languageName, apiKey, model,
-     mode, onLog)`;
-   - `useStreaming && provider != "Custom"` -> `streamTranslation(...)`;
-   - else -> `OpenRouterService.translate(fullText, languageName, apiKey, baseUrl, model, mode,
-     onLog)`.
+      - if composition is inactive, stop without applying (before any cache/persist work);
+      - write the translated list to the cache;
+      - persist all lines joined with `"\n"`;
+      - if the translated list is empty while entries are non-empty -> `Error(ai_error_unexpected)`
+        (the empty list has already been cached and persisted in this path);
+      - assign `translated[i]` to entry i for `i < entries.size`; surplus lines are ignored and
+        missing lines stay `null`;
+      - log via `AiLogger`; set success.
+   10. On provider failure -> report the error message, or `ai_error_unknown` when absent.
+4. `CancellationException` propagates. Any other unexpected exception reports its message, or
+   `ai_error_translation_failed` when absent.
+5. Provider selection (first match):
+   - `provider == "DeepL"` -> `DeepLService.translate` with the full text, the mapped target
+     language code, the DeepL key, the configured formality and a log sink;
+   - `provider == "Mistral"` -> `MistralService.translate` with the full text, language name, key,
+     model, mode and a log sink;
+   - `useStreaming && provider != "Custom"` -> streaming merge (10.4);
+   - else -> `OpenRouterService.translate` with the full text, language name, key, baseUrl, model,
+     mode and a log sink.
 
-`appendLog` appends only while the current status is `Translating` (`copy(logs = logs + message)`).
-Non-`Translating` statuses silently drop log lines.
+Log lines are appended only while the status is `Translating`; in any other status they are
+silently dropped.
 
-### 10.4 Streaming merge - `streamTranslation`
+### 10.4 Streaming merge
 
-- Collects `OpenRouterStreamingService.streamTranslation(...)`.
-- `Content(delta)`: append to a local buffer, run the partial-array scanner with
-  `expected = entryCount`, and assign each complete non-blank parsed line at its index (only
-  `index < entries.size`). Re-emit `Translating()` while status is `Translating` (this refreshes
-  the state flow; no log change).
-- `Complete(lines)`: remember as the authoritative result.
-- `Error(message)`: remember the first/error message.
-- After collection: error present -> `Result.failure(Exception(message))`; else complete present ->
-  success; else `Result.failure(Exception("No translation received"))`.
+While a streaming translation is consumed:
 
-Partial scanner `tryParsePartial(content, expectedCount)`:
+- Each `Content(delta)` is appended to a buffer and scanned for complete JSON-array string
+  elements, bounded by the expected entry count. Every complete, non-blank line is assigned to its
+  index while `index < entries.size`. While the status is `Translating`, the `Translating` state is
+  re-emitted (no log change).
+- `Complete(lines)` is the authoritative result.
+- `Error(message)` records the failure message.
+- At end of stream: a recorded error wins -> failure with that message; else a `Complete` ->
+  success; else failure with `"No translation received"`.
 
-- Find the first `[`; absent -> empty list.
-- Walk characters after it. Outside a string, `]` terminates. `"` toggles string mode. Inside a
-  string, `\` enters an escape state that copies the next character raw (no unescaping). When a
-  string closes, its raw contents are appended as one line. Stop when `expectedCount` lines were
-  collected.
-- An unterminated trailing string is discarded. Non-string array elements and commas are ignored.
-- Output lines are not trimmed and may contain literal backslash escapes.
+Partial-array scanning tolerates incremental output:
+
+- Only material after the first `[` is considered; without `[` nothing is parsed.
+- Outside a JSON string, `]` ends the array; `"` toggles string mode; inside a string, `\` copies
+  the next character raw (no unescaping). Each closed string is one line. Scanning stops once the
+  expected count is reached.
+- An unterminated trailing string is discarded; non-string elements and commas are ignored; lines
+  are not trimmed and may contain literal backslash escapes.
 
 ### 10.5 Database load and persist
 
-`loadTranslationsFromDatabase(lyrics, lyricsEntity, targetLanguage, mode)`:
+Loading:
 
-1. Set every `translatedTextFlow` to `null`.
+1. Every `translatedTextFlow` is set to `null`.
 2. If the entity is null, `translatedLyrics` is null/blank, or its `translationLanguage`/
-   `translationMode` differ from the arguments -> `hasActiveTranslations = false`, return.
-3. Split `translatedLyrics` on `"\n"` (Kotlin `lines()` semantics: a trailing newline yields a
-   trailing empty element).
-4. Assign line i to the i-th non-blank entry while `i < translatedLines.size`.
-5. Cache the full `translatedLines` list under the current key and set
-   `hasActiveTranslations = true`. Surplus DB lines remain cached and count as "complete".
+   `translationMode` differ from the arguments -> `hasActiveTranslations = false` and stop.
+3. `translatedLyrics` is split on `"\n"` (a trailing newline yields a trailing empty element).
+4. Line i is assigned to the i-th non-blank entry while `i < translatedLines.size`.
+5. The full split list is cached under the current key and `hasActiveTranslations = true`. Surplus
+   database lines remain cached and count as complete.
 
-`persistTranslations(scope, database, songId, targetLanguage, mode, lines, onlyIfEmpty)`:
+Persistence:
 
-- No-op if `songId` is blank or `database` is null.
-- Launch on the supplied scope + `Dispatchers.IO`; read `database.lyrics(songId).first()`;
-  return if absent; if `onlyIfEmpty` and the existing entity already has non-blank
-  `translatedLyrics`, return.
-- `database.query { upsert(existing.copy(translatedLyrics = lines.joinToString("\n"),
-  translationLanguage = targetLanguage, translationMode = mode)) }`.
-- Emit `translationSaved` on success; log `Timber.e` on non-cancellation failure and swallow it;
-  rethrow `CancellationException`.
+- No-op when `songId` is blank or the database is null.
+- Runs in the background; it reads the existing entity for the song and returns when absent. With
+  only-if-empty semantics it also returns when the existing entity already has non-blank
+  `translatedLyrics`.
+- On write it upserts the existing entity with `translatedLyrics = lines.joinToString("\n")`,
+  `translationLanguage = targetLanguage` and `translationMode = mode`.
+- `translationSaved` is emitted on success. Non-cancellation failures are logged and swallowed;
+  `CancellationException` is rethrown.
+- Persistence never blocks translation completion.
 
 `hasTranslations(entity)` = `!entity?.translatedLyrics.isNullOrBlank()`.
 `clearTranslations(entity)` = copy with `translatedLyrics = ""`, `translationLanguage = ""`,
@@ -1079,27 +1079,26 @@ Partial scanner `tryParsePartial(content, expectedCount)`:
 
 ### 10.6 Status timing and errors
 
-- `reportError(scope, message)`: if `!isCompositionActive`, return without changing status.
-  Otherwise cancel the previous reset job, set `Error(message)`, and after 3 s set `Idle` only if
-  the status is still the same `Error` instance and composition is active.
-- `setSuccess()`: set `hasActiveTranslations = true`, `status = Success`, delay 3 s, then set
-  `Idle` only if still `Success` and composition is active.
+- Error reporting: while composition is inactive, status is not changed. Otherwise any pending
+  status reset is cancelled, `Error(message)` is set, and after 3 s the status returns to `Idle`
+  only if it is still that same error and composition is active.
+- Success reporting: `hasActiveTranslations = true`, `status = Success`, after 3 s back to `Idle`
+  only if still `Success` and composition is active.
 - `triggerClearTranslations()` sets `hasActiveTranslations = false` and emits the clear flow.
 - Error string resources are module-local (`lyrics/src/main/res`): `ai_error_api_key_required`,
   `ai_error_no_lyrics`, `ai_error_lyrics_empty`, `ai_error_language_required`,
   `ai_error_translation_failed`, `ai_error_unexpected`, `ai_error_unknown`. Both `values/` and
   `values-es/` must exist with the same keys.
 
-### 10.7 Threading
+### 10.7 Threading and cancellation
 
-- `translateLyrics` runs on `Dispatchers.IO` inside the caller's scope; status flows are
-  thread-safe, but the cache is not (see 10.2).
-- Persistence runs on a separate IO coroutine and never blocks translation completion.
-- Cancellation: `cancelTranslation()` cancels the translation job; the `CancellationException` is
-  rethrown from the internal catch and the coroutine ends silently (no error status).
-- Tests require an internal dispatcher parameter (default `Dispatchers.IO`) and an internal
-  translation-delegate seam (default: the real `runTranslation`) so virtual time and fake results
-  can be used; public API unchanged.
+- Translation work runs off the main thread on the caller's scope; status flows are thread-safe and
+  cache access is concurrency-safe (10.2).
+- Persistence runs separately and never blocks translation completion.
+- `cancelTranslation()` cancels the in-flight translation. Cancellation ends it silently: no error
+  status and no reported error.
+- Tests require injectable dispatcher/time control and an injectable translation delegate so
+  virtual time and fake results can be used; public API unchanged.
 
 ---
 
@@ -1117,9 +1116,9 @@ internal val aiStreamingHttpClient: HttpClient
 | `aiHttpClient` | 30 s | 90 s | 90 s |
 | `aiStreamingHttpClient` | 30 s | 45 s | 45 s |
 
-Both are lazy process singletons. No retry plugin, no auth plugin, no content negotiation (bodies
-are strings). Services must expose an internal overload/factory accepting an `HttpClient` for
-MockEngine tests.
+Both are process-wide instances. There is no automatic retry, authentication or content
+negotiation (bodies are strings; retries are specified per service). For tests, services must be
+constructible against a supplied `HttpClient` (for example MockEngine); this seam is internal.
 
 ### 11.2 Prompts (`AiPrompts`, internal)
 
@@ -1295,7 +1294,8 @@ sealed class StreamChunk {
 }
 ```
 
-Flow behaviour (`flow { ... }.flowOn(Dispatchers.IO)`):
+Flow behaviour (emissions happen off the main thread; collector cancellation cancels the
+underlying HTTP call):
 
 1. Blank text -> emit `Error("Input text is empty")`, complete.
 2. `url = baseUrl.ifBlank { DEFAULT }`; `!isUrlSafe` -> emit
@@ -1315,13 +1315,14 @@ Flow behaviour (`flow { ... }.flowOn(Dispatchers.IO)`):
    - Parse the frame as JSON: `choices[0].delta.content`. Any parse/type failure is ignored and
      the stream continues. `null`/empty deltas are ignored.
    - Non-empty delta -> append to a buffer and emit `Content(delta)`.
-5. After the stream: `ensureActive()`. If the buffer is non-empty, `parseLines(buffer, expected)`:
-   non-null -> emit `Complete(lines)`; null -> emit `Error("Failed to parse translation")`.
-   If the buffer is empty, emit nothing terminal (the flow completes after zero or more Content
-   chunks; the helper then reports `"No translation received"`).
-6. Catch `CancellationException` -> rethrow. Catch `IOException`/other `Exception` ->
-   `ensureActive()` (rethrow if cancelled), then emit `Error(message ?: "Network error" |
-   "Unknown error")`.
+5. After the stream, cancellation is rechecked. If any delta was received, the accumulated text is
+   parsed with the expected line count: success -> `Complete(lines)`; failure ->
+   `Error("Failed to parse translation")`. If no delta was received, no terminal chunk is emitted
+   (the flow completes after zero or more Content chunks; the helper then reports
+   `"No translation received"`).
+6. `CancellationException` is rethrown. For any `IOException`/other exception, cancellation is
+   rechecked (rethrown if cancelled), then `Error(message ?: "Network error" | "Unknown error")`
+   is emitted.
 7. Collector cancellation cancels the HTTP call and the flow.
 
 ### 11.8 Wire DTO schemas (normative; built/parsed as JSON trees)
@@ -1563,70 +1564,30 @@ iterative tokenizer and performs no external entity resolution.
 
 ---
 
-## 13. Target Files
+## 13. Deliverables and Test Surface
 
-The implementer must create exactly these files (paths relative to `lyrics/`):
+A conforming implementation delivers the `:lyrics` module with the public API of section 3, the
+data model of section 4, the wire schemas of 11.8 and the behaviour of sections 5-11. Source file
+names, package-internal classes and helper decomposition are the implementer's choice; the module
+must remain a single Android library at `lyrics/` whose parsing and romanisation logic is JVM
+testable.
 
-Source:
+Required test classes (names are referenced by section 14; assertions are normative):
 
-1. `build.gradle.kts`
-2. `src/main/kotlin/com/revenge/music/api/AiHttpClients.kt`
-3. `src/main/kotlin/com/revenge/music/api/AiPrompts.kt`
-4. `src/main/kotlin/com/revenge/music/api/AiTranslationParsing.kt`
-5. `src/main/kotlin/com/revenge/music/api/DeepLService.kt`
-6. `src/main/kotlin/com/revenge/music/api/MistralService.kt`
-7. `src/main/kotlin/com/revenge/music/api/OpenRouterService.kt`
-8. `src/main/kotlin/com/revenge/music/api/OpenRouterStreamingService.kt`
-9. `src/main/kotlin/com/revenge/music/lyrics/BetterLyricsProvider.kt`
-10. `src/main/kotlin/com/revenge/music/lyrics/KuGouLyricsProvider.kt`
-11. `src/main/kotlin/com/revenge/music/lyrics/LrcLibLyricsProvider.kt`
-12. `src/main/kotlin/com/revenge/music/lyrics/LyricsEntry.kt`
-13. `src/main/kotlin/com/revenge/music/lyrics/LyricsHelper.kt`
-14. `src/main/kotlin/com/revenge/music/lyrics/LyricsProvider.kt`
-15. `src/main/kotlin/com/revenge/music/lyrics/LyricsProviderRegistry.kt`
-16. `src/main/kotlin/com/revenge/music/lyrics/LyricsTranslationHelper.kt`
-17. `src/main/kotlin/com/revenge/music/lyrics/LyricsUtils.kt`
-18. `src/main/kotlin/com/revenge/music/lyrics/PaxSenixLyricsProvider.kt`
-19. `src/main/kotlin/com/revenge/music/lyrics/SimpMusicLyricsProvider.kt`
-20. `src/main/kotlin/com/revenge/music/lyrics/UnisonLyricsProvider.kt`
-21. `src/main/kotlin/com/revenge/music/lyrics/YouLyPlusLyricsProvider.kt`
-22. `src/main/kotlin/com/revenge/music/lyrics/YouTubeLyricsProvider.kt`
-23. `src/main/kotlin/com/revenge/music/lyrics/YouTubeSubtitleLyricsProvider.kt`
-24. `src/main/res/values/strings.xml`
-25. `src/main/res/values-es/strings.xml`
+`LyricsUtilsTest`, `LyricsParsingFixturesTest`, `RomanizationTest`, `LyricsProviderRegistryTest`,
+`LyricsHelperOrchestrationTest`, `LyricsTranslationHelperTest`, `AiTranslationParsingTest`,
+`AiServiceHttpTest`, `OpenRouterStreamingServiceTest`.
 
-Tests:
+Required fixture resources (embedding as test constants is also acceptable):
 
-26. `src/test/kotlin/com/revenge/music/lyrics/LyricsUtilsTest.kt`
-27. `src/test/kotlin/com/revenge/music/lyrics/LyricsParsingFixturesTest.kt`
-28. `src/test/kotlin/com/revenge/music/lyrics/RomanizationTest.kt`
-29. `src/test/kotlin/com/revenge/music/lyrics/LyricsProviderRegistryTest.kt`
-30. `src/test/kotlin/com/revenge/music/lyrics/LyricsHelperOrchestrationTest.kt`
-31. `src/test/kotlin/com/revenge/music/lyrics/LyricsTranslationHelperTest.kt`
-32. `src/test/kotlin/com/revenge/music/api/AiTranslationParsingTest.kt`
-33. `src/test/kotlin/com/revenge/music/api/AiServiceHttpTest.kt`
-34. `src/test/kotlin/com/revenge/music/api/OpenRouterStreamingServiceTest.kt`
+- `fixtures/lrc/standard.lrc`, `rich.lrc`, `metadata_only.lrc`, `malformed.lrc`, `offset.lrc`
+- `fixtures/ttml/apple.ttml`, `malformed.ttml`, `xxe.ttml`
+- `fixtures/ai/deepl_success.json`, `deepl_403.json`, `chat_success.json`, `chat_anthropic.json`,
+  `chat_fenced.json`, `chat_malformed.json`
+- `fixtures/sse/stream.txt`, `error.txt`
 
-Fixture data (test resources, embedded as test constants is also acceptable):
-
-- `src/test/resources/fixtures/lrc/standard.lrc`
-- `src/test/resources/fixtures/lrc/rich.lrc`
-- `src/test/resources/fixtures/lrc/metadata_only.lrc`
-- `src/test/resources/fixtures/lrc/malformed.lrc`
-- `src/test/resources/fixtures/lrc/offset.lrc`
-- `src/test/resources/fixtures/ttml/apple.ttml`
-- `src/test/resources/fixtures/ttml/malformed.ttml`
-- `src/test/resources/fixtures/ttml/xxe.ttml`
-- `src/test/resources/fixtures/ai/deepl_success.json`
-- `src/test/resources/fixtures/ai/deepl_403.json`
-- `src/test/resources/fixtures/ai/chat_success.json`
-- `src/test/resources/fixtures/ai/chat_anthropic.json`
-- `src/test/resources/fixtures/ai/chat_fenced.json`
-- `src/test/resources/fixtures/ai/chat_malformed.json`
-- `src/test/resources/fixtures/sse/stream.txt`
-- `src/test/resources/fixtures/sse/error.txt`
-
-No implementations may be copied from `../Revenge-source` or `../Echo-Music`.
+Implementations must be original. Copying from `../Revenge-source`, `../Echo-Music` or any other
+reference implementation is prohibited; designs are similarity-audited.
 
 ---
 
@@ -1838,7 +1799,7 @@ Reset state before each test: `cancelTranslation()`, `clearCache()`, `resetStatu
 
 ---
 
-## 15. Non-Goals and Explicit Baseline Behaviour to Preserve
+## 15. Non-Goals and Behaviour to Preserve
 
 - No sequential provider fallback for `getLyrics`; all providers start in parallel and priority
   (not sync quality) decides.
@@ -1851,7 +1812,7 @@ Reset state before each test: `cancelTranslation()`, `clearCache()`, `resetStatu
   `OpenRouterService` has Anthropic detection.
 - `MistralService.testConnection` does not exist; `DeepLService.testConnection` maps any success
   to a fixed message.
-- The translation cache key uses `String.hashCode`; collisions are accepted.
+- Translation cache keys may be hash-derived; collisions are accepted.
 - The alternate-results cache key removes only literal space characters from
   `"$artists-$title"`, not all whitespace.
 - `LyricsEntry.compareTo` uses the `Int`-truncated time difference.
@@ -1863,10 +1824,10 @@ Reset state before each test: `cancelTranslation()`, `clearCache()`, `resetStatu
 1. **Provider timeouts vs selection**: a slow top-priority provider delays every result for up to
    5 s even when a lower-priority provider already answered. This is intended; do not add early
    selection of lower-priority results, or priority semantics break.
-2. **Shared vs caller scopes**: both fetch scopes are module-owned; cancellation semantics differ
-   from structured concurrency. Tests pin both.
-3. **Android/unit-test boundary**: `LyricsHelper` uses `LruCache` and `Context`; use the internal
-   seams and Robolectric rather than mocking android.jar stubs.
+2. **Shared fetch vs caller cancellation**: a caller's cancellation stops only its wait; the shared
+   fetch continues. Tests pin both sides of this asymmetry.
+3. **Android/unit-test boundary**: the helper depends on Android facilities; tests must use the
+   injected seams of 7.7 and Robolectric rather than android.jar stubs.
 4. **TTML has two parsers**: `lyrics-core` for `parseLyrics`, `:betterlyrics` for Unison. Both
    must be treated as untrusted-input parsers, and the new size/depth caps live in `parseLyrics`.
 5. **Translation helper is global mutable state**: tests and production share it; always reset it
