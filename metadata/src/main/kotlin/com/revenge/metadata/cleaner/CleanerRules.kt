@@ -2,95 +2,150 @@ package com.revenge.metadata.cleaner
 
 import com.revenge.metadata.models.VersionType
 
+/**
+ * Public rule tables used by [MetadataCleaner] and available to callers that parse
+ * titles themselves. The keyword sets and their order are API; the concrete regex
+ * source is not.
+ *
+ * Every table is assembled from plain token lists below so the vocabulary lives in
+ * one place and the matchers are derived from it.
+ */
 object CleanerRules {
 
-    private const val JUNK_WORD =
-        "(?:official\\s+music\\s+video|official\\s+video|official\\s+audio|music\\s+video|" +
-            "lyrics?\\s+video|official\\s+visualizer|visualizer|video|audio|mv|pv|hd|hq|4k|" +
-            "1080p|720p|60fps|uhd)"
+    private val CASE = RegexOption.IGNORE_CASE
 
-    private const val MEDIA_MARKER = "(?:official|video|audio|lyrics?|mv|pv)"
+    // ---------------------------------------------------------------------
+    // Derivation helpers
+    // ---------------------------------------------------------------------
 
+    /** Negative/positive lookarounds that approximate a Unicode-aware word edge. */
+    private const val EDGE_BEFORE = """(?<![\p{L}\p{N}])"""
+    private const val EDGE_AFTER = """(?![\p{L}\p{N}])"""
+
+    /** Longest-first alternation so compound phrases win over their prefixes. */
+    private fun alternatives(words: List<String>): String =
+        words.sortedByDescending { it.length }
+            .joinToString("|") { Regex.escape(it) }
+
+    private fun wordMatcher(words: List<String>): Regex =
+        Regex(EDGE_BEFORE + "(?:" + alternatives(words) + ")" + EDGE_AFTER, CASE)
+
+    // ---------------------------------------------------------------------
+    // Vocabulary
+    // ---------------------------------------------------------------------
+
+    /** Upload/quality words that describe the video, never the song. */
+    internal val UPLOAD_WORDS: List<String> = listOf(
+        "official music video", "official video", "official audio",
+        "music video", "lyric video", "lyrics video", "official visualizer",
+        "visualizer", "video", "audio", "mv", "pv", "hd", "hq", "4k",
+        "1080p", "720p", "60fps", "uhd",
+    )
+
+    private val uploadMatchers: List<Regex> =
+        UPLOAD_WORDS.sortedByDescending { it.length }
+            .map { Regex(EDGE_BEFORE + Regex.escape(it) + EDGE_AFTER, CASE) }
+
+    /** Hint words that make a trailing `|` / `//` tail disposable. */
+    private val SUFFIX_HINTS: List<String> = listOf(
+        "official", "video", "visualizer", "audio", "mv", "pv",
+        "lyric", "lyrics", "remaster", "hd", "4k",
+    )
+
+    /** Markers accepted inside CJK/Japanese corner brackets. */
+    private val CORNER_MARKERS: List<String> = listOf(
+        "official", "video", "audio", "lyric", "lyrics",
+    )
+
+    /** Words that can open a trailing `- <marker> ...` upload segment. */
+    private val TRAILING_MARKERS: List<String> = listOf(
+        "official", "video", "audio", "lyric", "visualizer",
+    )
+
+    private val uploadEdge: String =
+        EDGE_BEFORE + "(?:" + alternatives(UPLOAD_WORDS) + ")" + EDGE_AFTER
+    private val cornerEdge: String =
+        EDGE_BEFORE + "(?:" + alternatives(CORNER_MARKERS) + ")" + EDGE_AFTER
+    private val trailingEdge: String =
+        EDGE_BEFORE + "(?:" + alternatives(TRAILING_MARKERS) + ")" + EDGE_AFTER
+
+    // ---------------------------------------------------------------------
+    // Public tables
+    // ---------------------------------------------------------------------
+
+    /**
+     * Upload/description fragments, in the documented semantic order:
+     * parentheses, square brackets, `【】`, `「」`, trailing `|`, trailing `//`,
+     * hashtags, trailing `- <marker>`.
+     */
     val JUNK_PATTERNS: List<Regex> = listOf(
-        Regex("""\(\s*[^()]*\b$JUNK_WORD\b[^()]*\)""", RegexOption.IGNORE_CASE),
-        Regex("""\[\s*[^\[\]]*\b$JUNK_WORD\b[^\[\]]*\]""", RegexOption.IGNORE_CASE),
-        Regex("""【[^【】]*\b$MEDIA_MARKER\b[^【】]*】""", RegexOption.IGNORE_CASE),
-        Regex("""「[^「」]*\b$MEDIA_MARKER\b[^「」]*」""", RegexOption.IGNORE_CASE),
-        Regex("""\s*\|\s*[^|]*$"""),
-        Regex("""\s*//\s*.*$"""),
+        Regex("""\([^()]*${uploadEdge}[^()]*\)""", CASE),
+        Regex("""\[[^\[\]]*${uploadEdge}[^\[\]]*\]""", CASE),
+        Regex("""【[^】]*${cornerEdge}[^】]*】""", CASE),
+        Regex("""「[^」]*${cornerEdge}[^」]*」""", CASE),
+        Regex("""\s*\|.*$"""),
+        Regex("""\s*//.*$"""),
         Regex("""#\w+"""),
-        Regex("""\s*-\s*(?:official|video|audio|lyrics?|visualizer)\b.*$""", RegexOption.IGNORE_CASE),
+        Regex("""\s*-\s*${trailingEdge}.*$""", CASE),
     )
 
+    /**
+     * Featuring-credit locators. Capture group 1 always holds the raw artist text.
+     */
     val FEATURING_PATTERNS: List<Regex> = listOf(
-        Regex("""\(\s*(?:feat\.?|ft\.?)\s+([^)]+)\)""", RegexOption.IGNORE_CASE),
-        Regex("""\[\s*(?:feat\.?|ft\.?)\s+([^\[\]]+)\]""", RegexOption.IGNORE_CASE),
-        Regex(
-            """(?:^|\s)(?:feat\.?|ft\.?|featuring)\s+([^()\[\]【】「」\-|]+)""",
-            RegexOption.IGNORE_CASE,
-        ),
+        Regex("""\(\s*(?:feat\.?|ft\.?)\s+([^)]*)\)""", CASE),
+        Regex("""\[\s*(?:feat\.?|ft\.?)\s+([^\]\[]*)\]""", CASE),
+        Regex("""(?:^|\s)(?:feat\.?|ft\.?|featuring)\s+([^()\[\]{|\-]+)""", CASE),
     )
 
+    /**
+     * Version-marker precedence table. The list order is the precedence order:
+     * the first matching pair wins.
+     */
     val VERSION_PATTERNS: List<Pair<Regex, VersionType>> = listOf(
-        Regex(
-            """\b(?:remix|flip|bootleg|vip|re-edit|club\s+mix|dub)\b""",
-            RegexOption.IGNORE_CASE,
-        ) to VersionType.REMIX,
-        Regex(
-            """\b(?:live\s+at\s+[a-z0-9][a-z0-9\s]*|live|session|unplugged|in\s+concert)\b""",
-            RegexOption.IGNORE_CASE,
-        ) to VersionType.LIVE,
-        Regex(
-            """\b(?:acoustic|orchestral|symphonic)\b""",
-            RegexOption.IGNORE_CASE,
-        ) to VersionType.ACOUSTIC,
-        Regex(
-            """\b(?:remaster(?:ed)?|deluxe|anniversary)\b""",
-            RegexOption.IGNORE_CASE,
-        ) to VersionType.REMASTER,
-        Regex(
-            """\b(?:instrumental|karaoke)\b""",
-            RegexOption.IGNORE_CASE,
-        ) to VersionType.INSTRUMENTAL,
-        Regex(
-            """\bcover\b""",
-            RegexOption.IGNORE_CASE,
-        ) to VersionType.COVER,
-        Regex(
-            """\b(?:radio\s+edit|edit)\b""",
-            RegexOption.IGNORE_CASE,
-        ) to VersionType.RADIO_EDIT,
-        Regex(
-            """\b(?:extended(?:\s+mix)?)\b""",
-            RegexOption.IGNORE_CASE,
-        ) to VersionType.EXTENDED,
-        Regex(
-            """\b(?:slowed(?:\s*\+\s*reverb)?|reverb)\b""",
-            RegexOption.IGNORE_CASE,
-        ) to VersionType.SLOWED,
-        Regex(
-            """\b(?:sped\s+up|nightcore)\b""",
-            RegexOption.IGNORE_CASE,
-        ) to VersionType.SPED_UP,
-    )
+        listOf("remix", "flip", "bootleg", "vip", "re-edit", "club mix", "dub")
+            to VersionType.REMIX,
+        listOf("live", "live at", "session", "unplugged", "in concert")
+            to VersionType.LIVE,
+        listOf("acoustic", "orchestral", "symphonic") to VersionType.ACOUSTIC,
+        listOf("remaster", "remastered", "deluxe", "anniversary")
+            to VersionType.REMASTER,
+        listOf("instrumental", "karaoke") to VersionType.INSTRUMENTAL,
+        listOf("cover") to VersionType.COVER,
+        listOf("radio edit", "edit") to VersionType.RADIO_EDIT,
+        listOf("extended", "extended mix") to VersionType.EXTENDED,
+        listOf("slowed", "reverb") to VersionType.SLOWED,
+        listOf("sped up", "nightcore") to VersionType.SPED_UP,
+    ).map { (words, type) -> wordMatcher(words) to type }
 
+    /** Exact-substring multi-artist delimiters; order and content are API. */
     val ARTIST_SEPARATORS: List<String> = listOf(
-        " & ",
-        ", ",
-        " feat. ",
-        " feat ",
-        " ft. ",
-        " ft ",
-        " featuring ",
-        " and ",
-        " x ",
-        " X ",
+        " & ", ", ", " feat. ", " feat ", " ft. ", " ft ",
+        " featuring ", " and ", " x ", " X ",
     )
 
+    /** Uploader suffixes stripped from the trailing edge of a channel name. */
     val CHANNEL_JUNK_SUFFIXES: List<Regex> = listOf(
-        Regex("""\s*-\s*Topic$""", RegexOption.IGNORE_CASE),
-        Regex("""\s*VEVO$""", RegexOption.IGNORE_CASE),
-        Regex("""\s*Records$""", RegexOption.IGNORE_CASE),
-        Regex("""\s*Official$""", RegexOption.IGNORE_CASE),
+        Regex("""\s*-\s*Topic\s*$""", CASE),
+        Regex("""\s*VEVO\s*$""", CASE),
+        Regex("""\s*Records\s*$""", CASE),
+        Regex("""\s*Official\s*$""", CASE),
     )
+
+    // ---------------------------------------------------------------------
+    // Internal helpers shared with MetadataCleaner (not part of the ABI)
+    // ---------------------------------------------------------------------
+
+    internal val SUFFIX_HINT_MATCHER: Regex = wordMatcher(SUFFIX_HINTS)
+
+    internal val BRACKET_FEATURE_PREFIX: Regex =
+        Regex("""^\s*(?:feat\.?|ft\.?|featuring)\s+(.+)$""", CASE)
+
+    /** True when [text] is made up exclusively of upload/quality vocabulary. */
+    internal fun isOnlyUploadWords(text: String): Boolean {
+        if (text.isBlank()) return false
+        var rest = text
+        for (matcher in uploadMatchers) rest = matcher.replace(rest, " ")
+        return rest.isBlank()
+    }
 }

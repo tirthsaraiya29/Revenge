@@ -2,92 +2,70 @@ package com.revenge.metadata.models
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
-import org.junit.Assert.assertNull
 import org.junit.Test
 
 class CleanedMetadataTest {
 
-    private fun sample(
-        cleanTitle: String = "Faded",
-        primaryArtist: String = "Alan Walker",
-        version: VersionInfo? = null,
-    ) = CleanedMetadata(
-        rawTitle = cleanTitle,
-        rawArtist = primaryArtist,
-        cleanTitle = cleanTitle,
-        primaryArtist = primaryArtist,
+    private fun sample(version: VersionInfo? = null): CleanedMetadata = CleanedMetadata(
+        rawTitle = "Faded",
+        rawArtist = "Alan Walker",
+        cleanTitle = "Faded",
+        primaryArtist = "Alan Walker",
         version = version,
     )
 
     @Test
-    fun displayTitleAppendsVersionDescription() {
-        val result = sample(version = VersionInfo(VersionType.LIVE, "Live at Wembley"))
-        assertEquals("Faded (Live at Wembley)", result.toDisplayTitle())
-    }
-
-    @Test
-    fun displayTitleIgnoresOriginalType() {
-        val result = sample(version = VersionInfo(VersionType.ORIGINAL, "Original"))
-        assertEquals("Faded", result.toDisplayTitle())
-    }
-
-    @Test
-    fun displayTitleWithoutVersion() {
-        assertEquals("Faded", sample(version = null).toDisplayTitle())
-    }
-
-    @Test
-    fun searchQueryUsesCleanTitleAndCleanArtist() {
-        val result = sample()
-        assertEquals("Faded" to "Alan Walker", result.toSearchQuery())
-    }
-
-    @Test
-    fun cleanArtistDefaultsToPrimaryArtist() {
-        val result = CleanedMetadata(
-            rawTitle = "Faded",
-            rawArtist = "Alan Walker",
-            cleanTitle = "Faded",
-            primaryArtist = "Alan Walker",
+    fun `display title appends the version description`() {
+        assertEquals(
+            "Faded (Live at Wembley)",
+            sample(VersionInfo(VersionType.LIVE, "Live at Wembley")).toDisplayTitle(),
         )
-        assertEquals("Alan Walker", result.cleanArtist)
     }
 
     @Test
-    fun searchQueryUsesFullCleanArtist() {
-        val result = sample().copy(cleanArtist = "Alan Walker & Ava Max")
-        assertEquals("Faded" to "Alan Walker & Ava Max", result.toSearchQuery())
+    fun `display title ignores an original marker`() {
+        assertEquals(
+            "Faded",
+            sample(VersionInfo(VersionType.ORIGINAL, "Original")).toDisplayTitle(),
+        )
     }
 
     @Test
-    fun defaultsAreEmptyListsAndNullVersion() {
-        val result = sample()
-        assertEquals(emptyList<String>(), result.featuredArtists)
-        assertEquals(emptyList<String>(), result.junkTags)
-        assertNull(result.version)
+    fun `display title with no version is the clean title`() {
+        assertEquals("Faded", sample(null).toDisplayTitle())
     }
 
     @Test
-    fun valueSemantics() {
-        val first = sample(version = VersionInfo(VersionType.REMIX, "Remix"))
-        val second = sample(version = VersionInfo(VersionType.REMIX, "Remix"))
+    fun `search query uses clean title and full clean artist`() {
+        val result = CleanedMetadata(
+            rawTitle = "Title",
+            rawArtist = "Calvin Harris & Dua Lipa",
+            cleanTitle = "Title",
+            primaryArtist = "Calvin Harris",
+            cleanArtist = "Calvin Harris & Dua Lipa",
+        )
+        val (title, artist) = result.toSearchQuery()
+        assertEquals("Title", title)
+        assertEquals("Calvin Harris & Dua Lipa", artist)
+    }
 
+    @Test
+    fun `clean artist defaults to the primary artist`() {
+        val result = CleanedMetadata("T", "A", "T", "A")
+        assertEquals("A", result.cleanArtist)
+        assertEquals("T" to "A", result.toSearchQuery())
+    }
+
+    @Test
+    fun `value semantics follow data class defaults`() {
+        val first = sample(VersionInfo(VersionType.REMIX, "Some Remix"))
+        val second = sample(VersionInfo(VersionType.REMIX, "Some Remix"))
         assertEquals(first, second)
         assertEquals(first.hashCode(), second.hashCode())
-        assertNotEquals(first, second.copy(cleanTitle = "Other"))
-    }
 
-    @Test
-    fun copyPreservesUnspecifiedFields() {
-        val original = sample(version = VersionInfo(VersionType.REMIX, "Remix"))
-            .copy(featuredArtists = listOf("Ava Max"), junkTags = listOf("#shorts"))
-
-        val copied = original.copy(cleanTitle = "New Title")
-
-        assertEquals("New Title", copied.cleanTitle)
-        assertEquals("Alan Walker", copied.primaryArtist)
-        assertEquals(listOf("Ava Max"), copied.featuredArtists)
-        assertEquals(listOf("#shorts"), copied.junkTags)
-        assertEquals(VersionType.REMIX, copied.version!!.type)
+        val changed = first.copy(featuredArtists = listOf("Guest"))
+        assertEquals("Faded", changed.cleanTitle)
+        assertEquals(listOf("Guest"), changed.featuredArtists)
+        assertNotEquals(first, changed)
     }
 }

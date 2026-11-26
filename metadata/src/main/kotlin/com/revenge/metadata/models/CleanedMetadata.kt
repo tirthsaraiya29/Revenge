@@ -1,5 +1,8 @@
 package com.revenge.metadata.models
 
+/**
+ * Immutable result of [com.revenge.metadata.cleaner.MetadataCleaner.clean].
+ */
 data class CleanedMetadata(
     val rawTitle: String,
     val rawArtist: String,
@@ -10,10 +13,11 @@ data class CleanedMetadata(
     val version: VersionInfo? = null,
     val junkTags: List<String> = emptyList(),
 ) {
+
     fun toDisplayTitle(): String {
-        val variant = version
-        return if (variant != null && variant.type != VersionType.ORIGINAL) {
-            "$cleanTitle (${variant.description})"
+        val marker = version
+        return if (marker != null && marker.type != VersionType.ORIGINAL) {
+            "$cleanTitle (${marker.description})"
         } else {
             cleanTitle
         }

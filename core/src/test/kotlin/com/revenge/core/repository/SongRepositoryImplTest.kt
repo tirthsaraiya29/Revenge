@@ -26,7 +26,7 @@ import org.robolectric.RuntimeEnvironment
 @RunWith(RobolectricTestRunner::class)
 class SongRepositoryImplTest {
 
-    private lateinit var internal: InternalDatabase
+    private lateinit var internalDb: InternalDatabase
     private lateinit var database: MusicDatabase
     private lateinit var repository: SongRepositoryImpl
     private val queryExecutor = Executors.newSingleThreadExecutor()
@@ -34,7 +34,7 @@ class SongRepositoryImplTest {
 
     @Before
     fun setUp() {
-        internal = Room.inMemoryDatabaseBuilder(
+        internalDb = Room.inMemoryDatabaseBuilder(
             RuntimeEnvironment.getApplication(),
             InternalDatabase::class.java,
         )
@@ -42,7 +42,7 @@ class SongRepositoryImplTest {
             .setQueryExecutor(queryExecutor)
             .setTransactionExecutor(transactionExecutor)
             .build()
-        database = MusicDatabase(internal)
+        database = MusicDatabase(internalDb)
         repository = SongRepositoryImpl(database)
     }
 

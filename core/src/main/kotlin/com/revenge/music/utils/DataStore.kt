@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStore
+import com.revenge.music.extensions.toEnum
 import kotlin.properties.ReadOnlyProperty
 import kotlin.reflect.KProperty
 import kotlinx.coroutines.flow.first
@@ -32,13 +33,7 @@ inline fun <reified T : Enum<T>> enumPreference(
     context: Context,
     key: Preferences.Key<String>,
     defaultValue: T,
-): ReadOnlyProperty<Any?, T> {
-    val candidates = enumValues<T>()
-    return delegate {
-        val stored = context.dataStore[key]
-        candidates.firstOrNull { it.name.equals(stored, ignoreCase = true) } ?: defaultValue
-    }
-}
+): ReadOnlyProperty<Any?, T> = delegate { context.dataStore[key].toEnum(defaultValue) }
 
 @PublishedApi
 internal fun <T> delegate(read: () -> T): ReadOnlyProperty<Any?, T> =

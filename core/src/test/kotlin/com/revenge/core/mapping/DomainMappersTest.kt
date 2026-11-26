@@ -4,9 +4,9 @@ import com.revenge.domain.models.AlbumRef
 import com.revenge.domain.models.ArtistRef
 import com.revenge.music.db.entities.AlbumEntity
 import com.revenge.music.db.entities.ArtistEntity
-import com.revenge.music.db.entities.Playlist as PlaylistRow
+import com.revenge.music.db.entities.Playlist
 import com.revenge.music.db.entities.PlaylistEntity
-import com.revenge.music.db.entities.Song as SongRow
+import com.revenge.music.db.entities.Song
 import com.revenge.music.db.entities.SongEntity
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -16,111 +16,121 @@ import org.junit.Test
 class DomainMappersTest {
 
     @Test
-    fun relationSongPreservesArtistOrderAndAlbum() {
-        val row = SongRow(
-            song = SongEntity(id = "s", title = "Title", duration = -1),
-            artists = listOf(
-                ArtistEntity(id = "a1", name = "First"),
-                ArtistEntity(id = "a2", name = "Second"),
+    fun `Song relation maps ordered artists and album`() {
+        val song = Song(
+            song = SongEntity(
+                id = "s1",
+                title = "Title",
+                duration = 200,
+                thumbnailUrl = "https://img/s1.jpg",
+                albumId = "alb",
+                albumName = "Album",
+                explicit = true,
+                liked = true,
+                isLocal = true,
+                totalPlayTime = 5_000L,
             ),
-            album = AlbumEntity(id = "al", title = "Album", songCount = 1, duration = 30),
+            artists = listOf(
+                ArtistEntity(id = "a1", name = "One"),
+                ArtistEntity(id = "a2", name = "Two"),
+            ),
+            album = AlbumEntity(id = "alb", title = "Album", songCount = 1, duration = 200),
         )
 
-        val domain = row.toDomain()
-
-        assertEquals("s", domain.id)
+        val domain = song.toDomain()
+        assertEquals("s1", domain.id)
         assertEquals("Title", domain.title)
-        assertEquals(listOf(ArtistRef("a1", "First"), ArtistRef("a2", "Second")), domain.artists)
-        assertEquals(AlbumRef("al", "Album"), domain.album)
-        assertEquals(-1, domain.durationSeconds)
+        assertEquals(listOf(ArtistRef("a1", "One"), ArtistRef("a2", "Two")), domain.artists)
+        assertEquals(AlbumRef("alb", "Album"), domain.album)
+        assertEquals(200, domain.durationSeconds)
+        assertEquals("https://img/s1.jpg", domain.thumbnailUrl)
+        assertTrue(domain.isExplicit)
+        assertTrue(domain.isLocal)
+        assertTrue(domain.liked)
+        assertEquals(5_000L, domain.totalPlayTimeMs)
     }
 
     @Test
-    fun flatSongHasNoArtists() {
-        val domain = SongEntity(id = "s", title = "T").toDomain()
-        assertTrue(domain.artists.isEmpty())
-    }
-
-    @Test
-    fun localThumbnailDerivedFromAlbumId() {
-        val positive = SongEntity(
-            id = "content://song",
-            title = "T",
-            albumId = "LOCAL_ALBUM_42",
-            isLocal = true,
-        ).toDomain()
-        assertEquals("content://media/external/audio/albumart/42", positive.thumbnailUrl)
-
-        val zero = SongEntity(
-            id = "content://song",
-            title = "T",
-            albumId = "LOCAL_ALBUM_0",
-            isLocal = true,
-        ).toDomain()
-        assertEquals("content://song", zero.thumbnailUrl)
-
-        val nonNumeric = SongEntity(
-            id = "content://song",
-            title = "T",
-            albumId = "LOCAL_ALBUM_nope",
-            isLocal = true,
-        ).toDomain()
-        assertEquals("content://song", nonNumeric.thumbnailUrl)
-
-        val noAlbum = SongEntity(id = "content://song", title = "T", isLocal = true).toDomain()
-        assertEquals("content://song", noAlbum.thumbnailUrl)
-    }
-
-    @Test
-    fun explicitThumbnailWinsEvenForLocalSongs() {
-        val domain = SongEntity(
-            id = "content://song",
-            title = "T",
-            thumbnailUrl = "https://img/remote.jpg",
-            albumId = "LOCAL_ALBUM_42",
-            isLocal = true,
-        ).toDomain()
-        assertEquals("https://img/remote.jpg", domain.thumbnailUrl)
-    }
-
-    @Test
-    fun nonLocalSongWithoutThumbnailMapsToNull() {
-        val domain = SongEntity(id = "s", title = "T", isLocal = false).toDomain()
-        assertNull(domain.thumbnailUrl)
-    }
-
-    @Test
-    fun albumFallsBackToAlbumIdWhenRelationMissing() {
-        val row = SongRow(
-            song = SongEntity(id = "s", title = "T", albumId = "al", albumName = null),
+    fun `Song relation falls back to album id and name`() {
+        val song = Song(
+            song = SongEntity(id = "s2", title = "T", albumId = "fallback", albumName = "Fallback"),
             artists = emptyList(),
-            album = null,
         )
-        assertEquals(AlbumRef("al", ""), row.toDomain().album)
+        assertEquals(AlbumRef("fallback", "Fallback"), song.toDomain().album)
+        assertTrue(song.toDomain().artists.isEmpty())
     }
 
     @Test
-    fun playlistEntityCountDefaultsToZero() {
-        val entity = PlaylistEntity(id = "p", name = "P", thumbnailUrl = "t")
-        assertEquals(0, entity.toDomain().songCount)
-        assertEquals(4, entity.toDomain(songCount = 4).songCount)
+    fun `local entity resolves the media store album art`() {
+        val entity = SongEntity(
+            id = "local-1",
+            title = "Local",
+            isLocal = true,
+            albumId = "LOCAL_ALBUM_42",
+        )
+        val domain = entity.toDomain()
+        assertEquals("content://media/external/audio/albumart/42", domain.thumbnailUrl)
+        assertTrue(domain.artists.isEmpty())
+        assertEquals(AlbumRef("LOCAL_ALBUM_42", ""), domain.album)
     }
 
     @Test
-    fun relationPlaylistPrefersExplicitThumbnail() {
-        val explicit = PlaylistRow(
-            playlist = PlaylistEntity(id = "p", name = "P", thumbnailUrl = "explicit"),
-            songCount = 2,
-            songThumbnails = listOf(null, "song"),
-        ).toDomain()
-        assertEquals("explicit", explicit.thumbnailUrl)
-        assertEquals(2, explicit.songCount)
+    fun `local entity falls back to its id for unusable album ids`() {
+        assertEquals(
+            "local-2",
+            SongEntity(id = "local-2", title = "T", isLocal = true, albumId = "LOCAL_ALBUM_abc").toDomain().thumbnailUrl,
+        )
+        assertEquals(
+            "local-3",
+            SongEntity(id = "local-3", title = "T", isLocal = true, albumId = "LOCAL_ALBUM_0").toDomain().thumbnailUrl,
+        )
+        assertEquals(
+            "local-4",
+            SongEntity(id = "local-4", title = "T", isLocal = true, albumId = null).toDomain().thumbnailUrl,
+        )
+    }
 
-        val fromSongs = PlaylistRow(
-            playlist = PlaylistEntity(id = "p", name = "P", thumbnailUrl = null),
+    @Test
+    fun `remote entity keeps a supplied thumbnail or null`() {
+        assertEquals(
+            "https://img/x.jpg",
+            SongEntity(id = "r1", title = "T", thumbnailUrl = "https://img/x.jpg").toDomain().thumbnailUrl,
+        )
+        assertNull(SongEntity(id = "r2", title = "T").toDomain().thumbnailUrl)
+    }
+
+    @Test
+    fun `Playlist relation prefers the explicit cover then song thumbnails`() {
+        val explicit = Playlist(
+            playlist = PlaylistEntity(id = "p1", name = "P1", thumbnailUrl = "https://cover"),
+            songCount = 3,
+            songThumbnails = listOf("https://song", null),
+        )
+        assertEquals("https://cover", explicit.toDomain().thumbnailUrl)
+        assertEquals(3, explicit.toDomain().songCount)
+
+        val derived = Playlist(
+            playlist = PlaylistEntity(id = "p2", name = "P2"),
             songCount = 1,
-            songThumbnails = listOf(null, "song"),
-        ).toDomain()
-        assertEquals("song", fromSongs.thumbnailUrl)
+            songThumbnails = listOf(null, "https://first"),
+        )
+        assertEquals("https://first", derived.toDomain().thumbnailUrl)
+
+        val empty = Playlist(
+            playlist = PlaylistEntity(id = "p3", name = "P3"),
+            songCount = 0,
+            songThumbnails = emptyList(),
+        )
+        assertNull(empty.toDomain().thumbnailUrl)
+    }
+
+    @Test
+    fun `Playlist entity uses the caller supplied count`() {
+        val domain = PlaylistEntity(id = "p4", name = "Name", thumbnailUrl = "https://t").toDomain(7)
+        assertEquals("p4", domain.id)
+        assertEquals("Name", domain.name)
+        assertEquals(7, domain.songCount)
+        assertEquals("https://t", domain.thumbnailUrl)
+        assertEquals(0, PlaylistEntity(id = "p5", name = "N").toDomain().songCount)
     }
 }

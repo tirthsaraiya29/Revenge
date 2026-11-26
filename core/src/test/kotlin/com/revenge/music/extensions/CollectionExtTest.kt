@@ -13,6 +13,8 @@ import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+private enum class SampleEnum { ALPHA, BETA }
+
 class CollectionExtTest {
 
     private fun song(id: String, explicit: Boolean = false, video: Boolean = false) = Song(
@@ -29,8 +31,6 @@ class CollectionExtTest {
         songCount = 0,
         songThumbnails = emptyList(),
     )
-
-    private class EnumProbe { enum class Sample { ALPHA, BETA } }
 
     @Test
     fun `reversed true is a live view and false returns the receiver`() {
@@ -92,16 +92,16 @@ class CollectionExtTest {
 
     @Test
     fun `toEnum matches exact names and falls back`() {
-        assertEquals(EnumProbe.Sample.BETA, "BETA".toEnum(EnumProbe.Sample.ALPHA))
-        assertEquals(EnumProbe.Sample.ALPHA, "nope".toEnum(EnumProbe.Sample.ALPHA))
-        assertEquals(EnumProbe.Sample.ALPHA, (null as String?).toEnum(EnumProbe.Sample.ALPHA))
-        assertEquals(EnumProbe.Sample.ALPHA, "beta".toEnum(EnumProbe.Sample.ALPHA))
+        assertEquals(SampleEnum.BETA, "BETA".toEnum(SampleEnum.ALPHA))
+        assertEquals(SampleEnum.ALPHA, "nope".toEnum(SampleEnum.ALPHA))
+        assertEquals(SampleEnum.ALPHA, (null as String?).toEnum(SampleEnum.ALPHA))
+        assertEquals(SampleEnum.ALPHA, "beta".toEnum(SampleEnum.ALPHA))
     }
 
     @Test
     fun `tryOrNull returns value or null for exceptions`() {
         assertNull(tryOrNull<Int> { error("boom") })
-        assertEquals(2, tryOrNull { 2 })
+        assertEquals(2, tryOrNull { 2 } ?: 0)
     }
 
     @Test

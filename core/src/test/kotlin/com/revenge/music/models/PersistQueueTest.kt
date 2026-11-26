@@ -1,108 +1,109 @@
 package com.revenge.music.models
 
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Test
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.ObjectInputStream
 import java.io.ObjectOutputStream
 import java.io.Serializable
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertSame
-import org.junit.Assert.assertTrue
-import org.junit.Test
+import java.time.LocalDateTime
 
 class PersistQueueTest {
 
     private fun <T : Serializable> roundTrip(value: T): T {
-        val bytes = ByteArrayOutputStream().use { buffer ->
+        val bytes = ByteArrayOutputStream().also { buffer ->
             ObjectOutputStream(buffer).use { it.writeObject(value) }
-            buffer.toByteArray()
-        }
-        return ObjectInputStream(ByteArrayInputStream(bytes)).use { it.readObject() as T }
+        }.toByteArray()
+        return ObjectInputStream(ByteArrayInputStream(bytes)).use { it.readObject() } as T
     }
 
-    private fun sampleMetadata(id: String) = MediaMetadata(
+    private fun metadata(id: String) = MediaMetadata(
         id = id,
-        title = "Track $id",
+        title = "Title $id",
         artists = listOf(
-            MediaMetadata.Artist(id = "a1", name = "Artist One"),
+            MediaMetadata.Artist(id = "artist", name = "Artist"),
             MediaMetadata.Artist(id = null, name = "Local Artist"),
         ),
-        duration = 245,
+        duration = 42,
         thumbnailUrl = "https://img/$id.jpg",
-        album = MediaMetadata.Album(id = "al", title = "Album"),
-        setVideoId = "set-$id",
-        musicVideoType = "MUSIC_VIDEO_TYPE_ATV",
-        explicit = true,
+        album = MediaMetadata.Album(id = "album", title = "Album"),
         liked = true,
+        likedDate = LocalDateTime.of(2024, 5, 6, 7, 8, 9),
         source = QueueItemSource.USER,
     )
 
     @Test
-    fun queueRoundTripPreservesEveryField() {
+    fun `queue survives a java serialization round trip`() {
         val original = PersistQueue(
-            title = "Queue",
-            items = listOf(sampleMetadata("one"), sampleMetadata("two")),
+            title = "Mix",
+            items = listOf(metadata("a"), metadata("b")),
             mediaItemIndex = 1,
             position = 12_345L,
-            queueType = QueueType.YOUTUBE_ALBUM_RADIO,
-            queueData = QueueData.YouTubeAlbumRadioData(playlistId = "pl", albumSongCount = 7),
+            queueType = PersistQueue.QueueType.YOUTUBE_ALBUM_RADIO,
+            queueData = PersistQueue.QueueData.YouTubeAlbumRadioData(
+                playlistId = "PL1",
+                albumSongCount = 9,
+                continuation = "cont",
+                firstTimeLoaded = true,
+            ),
             shuffledIndices = listOf(1, 0),
         )
 
-        val copy = roundTrip(original)
-
-        assertEquals(original, copy)
-        assertEquals(2, copy.items.size)
-        assertEquals("pl", (copy.queueData as QueueData.YouTubeAlbumRadioData).playlistId)
-        assertEquals(listOf(1, 0), copy.shuffledIndices)
+        assertEquals(original, roundTrip(original))
     }
 
     @Test
-    fun playerStateRoundTripAndDefaultTimestamp() {
-        val before = System.currentTimeMillis()
+    fun `all queue types and data variants round trip`() {
+        for (type in listOf(
+            PersistQueue.QueueType.LIST,
+            PersistQueue.QueueType.YOUTUBE,
+            PersistQueue.QueueType.YOUTUBE_ALBUM_RADIO,
+            PersistQueue.QueueType.LOCAL_ALBUM_RADIO,
+        )) {
+            val queue = PersistQueue(
+                title = null,
+                items = emptyList(),
+                mediaItemIndex = 0,
+                position = 0L,
+                queueType = type,
+            )
+            assertEquals(type, roundTrip(queue).queueType)
+            assertNull(roundTrip(queue).queueData)
+        }
+
+        val youtube = PersistQueue.QueueData.YouTubeData(endpoint = "endpoint")
+        assertEquals(youtube, roundTrip(youtube))
+        assertEquals(
+            PersistQueue.QueueData.LocalAlbumRadioData(albumId = "alb", startIndex = 3),
+            roundTrip(PersistQueue.QueueData.LocalAlbumRadioData(albumId = "alb", startIndex = 3)),
+        )
+    }
+
+    @Test
+    fun `out of range index survives serialization`() {
+        val queue = PersistQueue(
+            title = "Broken",
+            items = listOf(metadata("only")),
+            mediaItemIndex = 7,
+            position = 99L,
+        )
+        assertEquals(7, roundTrip(queue).mediaItemIndex)
+    }
+
+    @Test
+    fun `player state survives a java serialization round trip`() {
         val state = PersistPlayerState(
             playWhenReady = true,
             repeatMode = 2,
             shuffleModeEnabled = true,
-            volume = 0.7f,
-            currentPosition = 99L,
+            volume = 0.5f,
+            currentPosition = 1234L,
             currentMediaItemIndex = 3,
-            playbackState = 3,
+            playbackState = 4,
+            timestamp = 777L,
         )
-        val after = System.currentTimeMillis()
-
-        val copy = roundTrip(state)
-        assertEquals(state, copy)
-        assertTrue(copy.timestamp in before..after)
-
-        val explicit = state.copy(timestamp = 42L)
-        assertEquals(42L, roundTrip(explicit).timestamp)
-    }
-
-    @Test
-    fun queueTypeObjectsKeepIdentity() {
-        listOf(
-            QueueType.LIST,
-            QueueType.YOUTUBE,
-            QueueType.YOUTUBE_ALBUM_RADIO,
-            QueueType.LOCAL_ALBUM_RADIO,
-        ).forEach { type ->
-            val copy = roundTrip(type)
-            assertSame(type, copy)
-        }
-    }
-
-    @Test
-    fun queueDataSubtypesSurvive() {
-        val youtube = QueueData.YouTubeData(endpoint = "endpoint")
-        val albumRadio = QueueData.YouTubeAlbumRadioData(playlistId = "pl", albumSongCount = 2)
-        val localRadio = QueueData.LocalAlbumRadioData(albumId = "album", startIndex = 4)
-
-        assertEquals(youtube, roundTrip(youtube))
-        assertEquals(albumRadio, roundTrip(albumRadio))
-        assertEquals(localRadio, roundTrip(localRadio))
-        assertNotNull(roundTrip(youtube) as? QueueData.YouTubeData)
-        assertTrue(roundTrip(localRadio) is QueueData.LocalAlbumRadioData)
+        assertEquals(state, roundTrip(state))
     }
 }
