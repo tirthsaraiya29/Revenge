@@ -9,39 +9,31 @@ import com.revenge.core.constants.PlayerBackgroundStyle
 
 object PlayerSliderColors {
 
+  /**
+   * Slider colours that stay legible over both themed surfaces and artwork-driven backgrounds.
+   * Every non-default player background sits on artwork, so its inactive track is a translucent
+   * white instead of a theme role.
+   */
   @Composable
   fun getSliderColors(
     activeColor: Color,
     playerBackground: PlayerBackgroundStyle,
     useDarkTheme: Boolean,
   ): SliderColors {
-    val inactiveTrackColor =
-      when (playerBackground) {
-        PlayerBackgroundStyle.DEFAULT -> {
-          if (useDarkTheme) {
-            MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
-          } else {
-            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
-          }
-        }
-        PlayerBackgroundStyle.BLUR,
-        PlayerBackgroundStyle.GRADIENT,
-        PlayerBackgroundStyle.GLOW_ANIMATED,
-        PlayerBackgroundStyle.APPLE_MUSIC,
-        PlayerBackgroundStyle.LIVE_MESH,
-        PlayerBackgroundStyle.LIQUID_GLASS -> {
-          Color.White.copy(alpha = 0.4f)
-        }
-      }
+    val inactiveColor = when {
+      playerBackground != PlayerBackgroundStyle.DEFAULT -> Color.White.copy(alpha = 0.4f)
+      useDarkTheme -> MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
+      else -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
+    }
 
     return SliderDefaults.colors(
+      thumbColor = activeColor,
       activeTrackColor = activeColor,
       activeTickColor = activeColor,
-      thumbColor = activeColor,
-      inactiveTrackColor = inactiveTrackColor,
-      disabledActiveTrackColor = activeColor,
-      disabledInactiveTrackColor = inactiveTrackColor,
+      inactiveTrackColor = inactiveColor,
       disabledThumbColor = activeColor,
+      disabledActiveTrackColor = activeColor,
+      disabledInactiveTrackColor = inactiveColor,
     )
   }
 }

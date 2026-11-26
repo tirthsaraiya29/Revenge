@@ -1,93 +1,18 @@
 package com.revenge.music.ui.theme
 
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
+import androidx.core.graphics.ColorUtils
 import androidx.palette.graphics.Palette
+import kotlin.math.min
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+/**
+ * Derives the three-stop artwork gradient used behind the player, mini-player and album headers.
+ * Extraction is CPU-bound, so it always hops to [Dispatchers.Default] instead of running on the
+ * caller's thread.
+ */
 object PlayerColorExtractor {
-
-  suspend fun extractGradientColors(palette: Palette, fallbackColor: Int): List<Color> =
-    withContext(Dispatchers.Default) {
-      val colorCandidates =
-        listOfNotNull(
-          palette.dominantSwatch,
-          palette.vibrantSwatch,
-          palette.darkVibrantSwatch,
-          palette.lightVibrantSwatch,
-          palette.mutedSwatch,
-          palette.darkMutedSwatch,
-          palette.lightMutedSwatch,
-        )
-
-      val bestSwatch = colorCandidates.maxByOrNull { calculateColorWeight(it) }
-      val fallbackDominant =
-        palette.dominantSwatch?.rgb?.let { Color(it) }
-          ?: Color(palette.getDominantColor(fallbackColor))
-
-      val primaryColor =
-        if (bestSwatch != null) {
-          val bestColor = Color(bestSwatch.rgb)
-
-          if (isColorVibrant(bestColor)) {
-            enhanceColorVividness(bestColor, 1.3f)
-          } else {
-
-            enhanceColorVividness(fallbackDominant, 1.1f)
-          }
-        } else {
-          enhanceColorVividness(fallbackDominant, 1.1f)
-        }
-
-      listOf(
-        primaryColor,
-        primaryColor.copy(
-          red = (primaryColor.red * 0.6f).coerceAtLeast(0f),
-          green = (primaryColor.green * 0.6f).coerceAtLeast(0f),
-          blue = (primaryColor.blue * 0.6f).coerceAtLeast(0f),
-        ),
-        Color.Black,
-      )
-    }
-
-  private fun isColorVibrant(color: Color): Boolean {
-    val argb = color.toArgb()
-    val hsv = FloatArray(3)
-    android.graphics.Color.colorToHSV(argb, hsv)
-    val saturation = hsv[1]
-    val brightness = hsv[2]
-
-    return saturation > 0.25f && brightness > 0.2f && brightness < 0.9f
-  }
-
-  private fun enhanceColorVividness(color: Color, saturationFactor: Float = 1.4f): Color {
-    val argb = color.toArgb()
-    val hsv = FloatArray(3)
-    android.graphics.Color.colorToHSV(argb, hsv)
-
-    hsv[1] = (hsv[1] * saturationFactor).coerceAtMost(1.0f)
-
-    hsv[2] = (hsv[2] * 0.9f).coerceIn(0.4f, 0.85f)
-
-    return Color(android.graphics.Color.HSVToColor(hsv))
-  }
-
-  private fun calculateColorWeight(swatch: Palette.Swatch?): Float {
-    if (swatch == null) return 0f
-    val population = swatch.population.toFloat()
-    val color = Color(swatch.rgb)
-    val argb = color.toArgb()
-    val hsv = FloatArray(3)
-    android.graphics.Color.colorToHSV(argb, hsv)
-    val saturation = hsv[1]
-    val brightness = hsv[2]
-
-    val populationWeight = population * 2f
-    val vibrancyBonus = if (saturation > 0.3f && brightness > 0.3f) 1.5f else 1f
-
-    return populationWeight * vibrancyBonus * (saturation + brightness) / 2f
-  }
 
   object Config {
     const val MAX_COLOR_COUNT = 32
@@ -112,5 +37,77 @@ object PlayerColorExtractor {
     const val BRIGHTNESS_MAX = 0.85f
 
     const val DARKER_VARIANT_FACTOR = 0.6f
+  }
+
+  /**
+   * Returns exactly three colours: the enhanced primary, a 60%-darker variant, and black. The
+   * result is never empty and never throws, even for a palette with no usable swatch.
+   */
+  suspend fun extractGradientColors(
+    palette: Palette,
+    fallbackColor: Int,
+  ): List<Color> = withContext(Dispatchers.Default) {
+    val candidates = listOfNotNull(
+      palette.dominantSwatch,
+      palette.vibrantSwatch,
+      palette.darkVibrantSwatch,
+      palette.lightVibrantSwatch,
+      palette.mutedSwatch,
+      palette.darkMutedSwatch,
+      palette.lightMutedSwatch,
+    )
+
+    val best = candidates.maxByOrNull { weight(it) }
+    val fallbackDominant = palette.dominantSwatch?.rgb ?: palette.getDominantColor(fallbackColor)
+
+    val vibrantBest = best?.takeIf {
+      val hsl = it.hsl
+      hsl[1] > Config.VIBRANT_SATURATION_THRESHOLD &&
+        hsl[2] > Config.VIBRANT_BRIGHTNESS_MIN &&
+        hsl[2] < Config.VIBRANT_BRIGHTNESS_MAX
+    }
+
+    val baseColor = vibrantBest?.rgb ?: fallbackDominant
+    val saturationFactor = if (vibrantBest != null) {
+      Config.VIBRANT_SATURATION_FACTOR
+    } else {
+      Config.FALLBACK_SATURATION_FACTOR
+    }
+
+    val primary = enhance(baseColor, saturationFactor)
+    val darker = Color(
+      red = primary.red * Config.DARKER_VARIANT_FACTOR,
+      green = primary.green * Config.DARKER_VARIANT_FACTOR,
+      blue = primary.blue * Config.DARKER_VARIANT_FACTOR,
+      alpha = 1f,
+    )
+
+    listOf(primary, darker, Color.Black)
+  }
+
+  private fun weight(swatch: Palette.Swatch): Float {
+    val hsl = swatch.hsl
+    val saturation = hsl[1]
+    val brightness = hsl[2]
+    val vibrancyBonus = if (
+      saturation > Config.VIBRANCY_THRESHOLD_SATURATION &&
+      brightness > Config.VIBRANCY_THRESHOLD_BRIGHTNESS
+    ) {
+      Config.VIBRANCY_BONUS
+    } else {
+      1f
+    }
+
+    return swatch.population * Config.POPULATION_WEIGHT_MULTIPLIER *
+      vibrancyBonus * (saturation + brightness) / 2f
+  }
+
+  private fun enhance(baseColor: Int, saturationFactor: Float): Color {
+    val hsl = FloatArray(3)
+    ColorUtils.colorToHSL(baseColor, hsl)
+    hsl[1] = min(1f, hsl[1] * saturationFactor)
+    hsl[2] = (hsl[2] * Config.BRIGHTNESS_MULTIPLIER)
+      .coerceIn(Config.BRIGHTNESS_MIN, Config.BRIGHTNESS_MAX)
+    return Color(ColorUtils.HSLToColor(hsl))
   }
 }

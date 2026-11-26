@@ -18,9 +18,9 @@ internal class DensityConfiguration(private val densityScale: Float) : ActivityL
     fun applyDensityScaling(context: Context) {
         if (densityScale == 1.0f) return
         try {
-            onCreate()
             val resources = context.resources
             originalDensityDpi = resources.configuration.densityDpi
+            onCreate()
             applyTo(resources)
         } catch (t: Throwable) {
             Log.w(TAG, "Unable to apply density scaling", t)
