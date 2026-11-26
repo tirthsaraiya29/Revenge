@@ -11,7 +11,7 @@ import java.util.concurrent.TimeUnit
 
 internal data class ArtistVideoHttpResponse(val status: Int, val body: String)
 
-internal fun interface ArtistVideoTransport {
+internal interface ArtistVideoTransport {
     suspend fun get(
         target: String,
         params: List<Pair<String, String>>,

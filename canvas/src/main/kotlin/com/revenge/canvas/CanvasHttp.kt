@@ -11,7 +11,7 @@ import java.util.concurrent.TimeUnit
 
 internal data class CanvasHttpResponse(val status: Int, val body: String)
 
-internal fun interface CanvasTransport {
+internal interface CanvasTransport {
     suspend fun get(
         target: String,
         params: List<Pair<String, String>>,

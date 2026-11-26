@@ -11,7 +11,7 @@ import java.util.concurrent.TimeUnit
 
 internal data class AmpHttpResponse(val status: Int, val body: String)
 
-internal fun interface AmpTransport {
+internal interface AmpTransport {
     suspend fun get(
         target: String,
         params: List<Pair<String, String>>,

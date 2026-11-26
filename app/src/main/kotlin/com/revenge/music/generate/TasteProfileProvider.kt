@@ -100,7 +100,7 @@ open class TasteProfileProvider @Inject constructor(
         if (artists.isEmpty() && tracks.isEmpty()) return@coroutineScope null
 
         TasteProfile(
-            topArtistNames = artists.map { it.name.trim().lowercase() }
+            topArtistNames = artists.map { it.trim().lowercase() }
                 .filter { it.isNotBlank() }.distinct(),
             topTrackKeys = tracks.map { trackKeyOf(it.name, it.artist) }.distinct(),
             topGenres = tags.map { it.name.trim().lowercase() }
