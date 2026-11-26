@@ -1,114 +1,109 @@
+@file:OptIn(androidx.media3.common.util.UnstableApi::class)
+
 package com.revenge.dsp.audio
 
-import androidx.annotation.OptIn
 import androidx.media3.common.C
 import androidx.media3.common.audio.AudioProcessor
-import androidx.media3.common.util.UnstableApi
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
-import org.junit.Before
 import org.junit.Test
 
-@OptIn(UnstableApi::class)
 class StereoWidenerAudioProcessorTest {
 
-  private lateinit var processor: StereoWidenerAudioProcessor
+    private fun format(rate: Int = 48000, channels: Int = 2, encoding: Int = C.ENCODING_PCM_16BIT) =
+        AudioProcessor.AudioFormat(rate, channels, encoding)
 
-  @Before
-  fun setUp() {
-    processor = StereoWidenerAudioProcessor()
-  }
+    private fun pcmBuffer(vararg samples: Short): ByteBuffer {
+        val buffer = ByteBuffer.allocateDirect(samples.size * 2).order(ByteOrder.nativeOrder())
+        samples.forEach(buffer::putShort)
+        buffer.flip()
+        return buffer
+    }
 
-  @Test
-  fun `width is clamped to the supported range`() {
-    processor.width = 0.25f
-    assertEquals(1f, processor.width, 0.0001f)
+    private fun readPcm(buffer: ByteBuffer): ShortArray {
+        val view = buffer.duplicate().order(ByteOrder.nativeOrder())
+        val values = ShortArray(view.remaining() / 2)
+        for (index in values.indices) values[index] = view.getShort()
+        return values
+    }
 
-    processor.width = 1.5f
-    assertEquals(1.5f, processor.width, 0.0001f)
+    @Test
+    fun widthSetterClampsToDocumentedRange() {
+        val processor = StereoWidenerAudioProcessor()
+        assertEquals(1f, processor.width, 0f)
 
-    processor.width = 9f
-    assertEquals(2f, processor.width, 0.0001f)
-  }
+        processor.width = 0.25f
+        assertEquals(1f, processor.width, 0f)
 
-  @Test
-  fun `width one recombines losslessly`() {
-    processor.configure(format(2))
-    processor.width = 1f
+        processor.width = 1.5f
+        assertEquals(1.5f, processor.width, 0f)
 
-    val out = run(shortArrayOf(1000, -500, -3000, 2500))
+        processor.width = 9f
+        assertEquals(2f, processor.width, 0f)
+    }
 
-    assertEquals(1000, out[0].toInt())
-    assertEquals(-500, out[1].toInt())
-    assertEquals(-3000, out[2].toInt())
-    assertEquals(2500, out[3].toInt())
-  }
+    @Test
+    fun widthOneRecombinesStereoImageLosslessly() {
+        val processor = StereoWidenerAudioProcessor()
+        processor.width = 1f
+        processor.configure(format())
 
-  @Test
-  fun `widening pushes channels apart`() {
-    processor.configure(format(2))
-    processor.width = 1.5f
+        processor.queueInput(pcmBuffer(1000, -500, -3000, 2500))
+        assertArrayEquals(shortArrayOf(1000, -500, -3000, 2500), readPcm(processor.getOutput()))
+    }
 
-    val out = run(shortArrayOf(1000, 500))
+    @Test
+    fun widthOnePointFiveMapsMidSideExample() {
+        val processor = StereoWidenerAudioProcessor()
+        processor.width = 1.5f
+        processor.configure(format())
 
-    assertEquals(1125, out[0].toInt())
-    assertEquals(375, out[1].toInt())
-  }
+        processor.queueInput(pcmBuffer(1000, 500))
+        assertArrayEquals(shortArrayOf(1125, 375), readPcm(processor.getOutput()))
+    }
 
-  @Test
-  fun `peaks beyond full scale are scaled down together`() {
-    processor.configure(format(2))
-    processor.width = 2f
+    @Test
+    fun widthTwoKeepsExtremesInsideRangeAndPreservesSigns() {
+        val processor = StereoWidenerAudioProcessor()
+        processor.width = 2f
+        processor.configure(format())
 
-    val out = run(shortArrayOf(32767, -32768))
+        processor.queueInput(pcmBuffer(32767, -32768))
+        val output = readPcm(processor.getOutput())
+        assertTrue(output[0] > 0)
+        assertTrue(output[1] < 0)
+        assertTrue(output[0] in 1..32767)
+        assertTrue(output[1] in -32768..-1)
+    }
 
-    val left = out[0].toInt()
-    val right = out[1].toInt()
-    assertTrue(left <= 32767 && left >= -32768)
-    assertTrue(right <= 32767 && right >= -32768)
-    // Mid/side recombine around the original centre; nothing should flip sign.
-    assertTrue(left > 0 && right < 0)
-  }
+    @Test
+    fun monoPassesThroughUntouched() {
+        val processor = StereoWidenerAudioProcessor()
+        processor.width = 2f
+        processor.configure(format(channels = 1))
 
-  @Test
-  fun `mono is passed through`() {
-    processor.configure(format(1))
-    processor.width = 2f
+        processor.queueInput(pcmBuffer(1000, -2000))
+        assertArrayEquals(shortArrayOf(1000, -2000), readPcm(processor.getOutput()))
+    }
 
-    val out = run(shortArrayOf(1234, -4321))
+    @Test
+    fun configurationLifecycleAndRejection() {
+        val processor = StereoWidenerAudioProcessor()
+        assertFalse(processor.isActive())
 
-    assertEquals(1234, out[0].toInt())
-    assertEquals(-4321, out[1].toInt())
-  }
+        assertThrows(AudioProcessor.UnhandledAudioFormatException::class.java) {
+            processor.configure(format(channels = 6))
+        }
 
-  @Test(expected = AudioProcessor.UnhandledAudioFormatException::class)
-  fun `rejects more than two channels`() {
-    processor.configure(format(6))
-  }
+        processor.configure(format())
+        assertTrue(processor.isActive())
 
-  @Test
-  fun `active only after configure and reset clears it`() {
-    assertFalse(processor.isActive)
-    processor.configure(format(2))
-    assertTrue(processor.isActive)
-
-    processor.reset()
-    assertFalse(processor.isActive)
-  }
-
-  private fun run(samples: ShortArray): ShortArray {
-    val input = ByteBuffer.allocateDirect(samples.size * 2).order(ByteOrder.nativeOrder())
-    samples.forEach { input.putShort(it) }
-    input.flip()
-
-    processor.queueInput(input)
-    val output = processor.getOutput()
-    return ShortArray(output.remaining() / 2) { output.getShort() }
-  }
-
-  private fun format(channels: Int) =
-    AudioProcessor.AudioFormat(44100, channels, C.ENCODING_PCM_16BIT)
+        processor.reset()
+        assertFalse(processor.isActive())
+    }
 }

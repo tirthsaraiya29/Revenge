@@ -1,112 +1,109 @@
+@file:OptIn(androidx.media3.common.util.UnstableApi::class)
+
 package com.revenge.dsp.controller
 
-import androidx.annotation.OptIn
 import androidx.media3.common.C
 import androidx.media3.common.audio.AudioProcessor
-import androidx.media3.common.util.UnstableApi
+import com.revenge.dsp.core.models.ParametricEQBand
 import com.revenge.dsp.core.models.SavedEQProfile
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
-import org.junit.Before
 import org.junit.Test
 
-@OptIn(UnstableApi::class)
 class DspControllerImplTest {
 
-  private lateinit var controller: DspControllerImpl
+    private fun format(rate: Int = 48000, channels: Int = 2) =
+        AudioProcessor.AudioFormat(rate, channels, C.ENCODING_PCM_16BIT)
 
-  @Before
-  fun setUp() {
-    controller = DspControllerImpl()
-  }
+    private fun profile(id: String) = SavedEQProfile(
+        id = id,
+        name = id,
+        bands = listOf(ParametricEQBand(frequency = 1000.0, gain = 3.0)),
+    )
 
-  @Test
-  fun `initial state is disabled and neutral`() {
-    assertNull(controller.activeProfile.value)
-    assertFalse(controller.isEnabled.value)
-    assertEquals(1f, controller.stereoWidth.value, 0.0001f)
-    assertTrue(controller.getAudioProcessors().isEmpty())
-    assertFalse(controller.isInitialized())
-  }
+    @Test
+    fun initialStateIsEmptyAndDisabled() {
+        val controller = DspControllerImpl()
 
-  @Test
-  fun `created processors are registered, ordered and released`() {
-    val trio = controller.createProcessors()
+        assertNull(controller.activeProfile.value)
+        assertFalse(controller.isEnabled.value)
+        assertEquals(1f, controller.stereoWidth.value, 0f)
+        assertTrue(controller.getAudioProcessors().isEmpty())
+        assertFalse(controller.isInitialized())
+    }
 
-    assertTrue(controller.isInitialized())
-    assertEquals(3, controller.getAudioProcessors().size)
-    assertEquals(trio.equalizer, controller.getAudioProcessors()[0])
-    assertEquals(trio.duckProcessor, controller.getAudioProcessors()[1])
-    assertEquals(trio.stereoWidener, controller.getAudioProcessors()[2])
+    @Test
+    fun createProcessorsRegistersOrderedChainAndReleaseClearsIt() {
+        val controller = DspControllerImpl()
+        val trio = controller.createProcessors()
 
-    controller.releaseProcessors(trio)
-    assertFalse(controller.isInitialized())
-    assertTrue(controller.getAudioProcessors().isEmpty())
-  }
+        val chain = controller.getAudioProcessors()
+        assertEquals(3, chain.size)
+        assertSame(trio.equalizer, chain[0])
+        assertSame(trio.duckProcessor, chain[1])
+        assertSame(trio.stereoWidener, chain[2])
+        assertTrue(controller.isInitialized())
 
-  @Test
-  fun `apply profile reaches a configured processor`() {
-    val trio = controller.createProcessors()
-    trio.equalizer.configure(AudioFormat(44100, 2))
+        controller.releaseProcessors(trio)
+        assertTrue(controller.getAudioProcessors().isEmpty())
+        assertFalse(controller.isInitialized())
+    }
 
-    val profile =
-      SavedEQProfile(
-        id = "flat",
-        name = "Flat",
-        preamp = -2.0,
-        bands = emptyList(),
-      )
+    @Test
+    fun applyProfileUpdatesFlowsAndProcessorThenDisableClears() {
+        val controller = DspControllerImpl()
+        val trio = controller.createProcessors()
+        trio.equalizer.configure(format())
 
-    val result = controller.applyProfile(profile)
+        val result = controller.applyProfile(profile("rock"))
+        assertTrue(result.isSuccess)
+        assertEquals("rock", controller.activeProfile.value?.id)
+        assertTrue(controller.isEnabled.value)
+        assertTrue(trio.equalizer.isEnabled())
 
-    assertTrue(result.isSuccess)
-    assertEquals("flat", controller.activeProfile.value?.id)
-    assertTrue(controller.isEnabled.value)
-    assertTrue(trio.equalizer.isEnabled())
+        controller.disableEqualizer()
+        assertNull(controller.activeProfile.value)
+        assertFalse(controller.isEnabled.value)
+        assertFalse(trio.equalizer.isEnabled())
+    }
 
-    controller.disableEqualizer()
+    @Test
+    fun profileRetainedBeforeRegistrationIsRestoredOnConfigure() {
+        val controller = DspControllerImpl()
+        val result = controller.applyProfile(profile("held"))
+        assertTrue(result.isSuccess)
+        assertTrue(controller.getAudioProcessors().isEmpty())
 
-    assertNull(controller.activeProfile.value)
-    assertFalse(controller.isEnabled.value)
-    assertFalse(trio.equalizer.isEnabled())
-  }
+        val trio = controller.createProcessors()
+        trio.equalizer.configure(format())
+        assertTrue(trio.equalizer.isEnabled())
+        assertEquals("held", controller.activeProfile.value?.id)
+    }
 
-  @Test
-  fun `profile applied before registration is restored on configure`() {
-    controller.applyProfile(SavedEQProfile(id = "early", name = "Early", preamp = 1.0))
-    assertTrue(controller.isEnabled.value)
+    @Test
+    fun stereoWidthIsClampedAndForwarded() {
+        val controller = DspControllerImpl()
+        val trio = controller.createProcessors()
 
-    val trio = controller.createProcessors()
-    assertFalse(trio.equalizer.isEnabled())
+        controller.setStereoWidth(1.6f)
+        assertEquals(1.6f, controller.stereoWidth.value, 0f)
+        assertEquals(1.6f, trio.stereoWidener.width, 0f)
 
-    trio.equalizer.configure(AudioFormat(48000, 2))
-    assertTrue(trio.equalizer.isEnabled())
-  }
+        controller.setStereoWidth(7f)
+        assertEquals(2f, controller.stereoWidth.value, 0f)
+        assertEquals(2f, trio.stereoWidener.width, 0f)
+    }
 
-  @Test
-  fun `stereo width fans out to registered wideners`() {
-    val trio = controller.createProcessors()
+    @Test
+    fun releaseEmptiesRegistries() {
+        val controller = DspControllerImpl()
+        controller.createProcessors()
 
-    controller.setStereoWidth(1.6f)
-
-    assertEquals(1.6f, controller.stereoWidth.value, 0.0001f)
-    assertEquals(1.6f, trio.stereoWidener.width, 0.0001f)
-
-    controller.setStereoWidth(7f)
-    assertEquals(2f, trio.stereoWidener.width, 0.0001f)
-  }
-
-  @Test
-  fun `release clears all processors`() {
-    controller.createProcessors()
-    controller.release()
-
-    assertTrue(controller.getAudioProcessors().isEmpty())
-    assertFalse(controller.isInitialized())
-  }
-
-  private fun AudioFormat(rate: Int, channels: Int) =
-    AudioProcessor.AudioFormat(rate, channels, C.ENCODING_PCM_16BIT)
+        controller.release()
+        assertTrue(controller.getAudioProcessors().isEmpty())
+        assertFalse(controller.isInitialized())
+    }
 }

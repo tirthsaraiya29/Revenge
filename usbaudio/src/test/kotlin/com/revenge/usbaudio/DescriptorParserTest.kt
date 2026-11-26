@@ -7,113 +7,98 @@ import org.junit.Test
 
 class DescriptorParserTest {
 
-  @Test
-  fun uac2ClockSourceAdvertisesDefaultRate() {
-    val descriptors =
-      byteArrayOf(
-        // Configuration.
-        0x09, 0x02, 0x64, 0x00, 0x02, 0x01, 0x00, 0xC0.toByte(), 0x32,
-        // AudioControl interface, UAC 2 protocol.
-        0x09, 0x04, 0x00, 0x00, 0x00, 0x01, 0x01, 0x20, 0x00,
-        // AC header.
-        0x09, 0x24, 0x01, 0x00, 0x02, 0x01, 0x30, 0x00, 0x00,
-        // Clock source id 1.
-        0x08, 0x24, 0x0A, 0x01, 0x03, 0x07, 0x00, 0x00,
-        // AudioStreaming interface, alternate setting 1.
-        0x09, 0x04, 0x01, 0x01, 0x02, 0x01, 0x02, 0x20, 0x00,
-      )
+    private fun bytes(vararg values: Int): ByteArray = ByteArray(values.size) { values[it].toByte() }
 
-    val capabilities = UsbAudioDriver().parseDescriptors(descriptors)
+    private fun concat(vararg chunks: ByteArray): ByteArray {
+        val total = chunks.sumOf { it.size }
+        val result = ByteArray(total)
+        var cursor = 0
+        for (chunk in chunks) {
+            chunk.copyInto(result, cursor)
+            cursor += chunk.size
+        }
+        return result
+    }
 
-    assertEquals(2, capabilities.uacVersion)
-    assertEquals(1, capabilities.clockSourceId)
-    assertTrue(capabilities.supportedSampleRates.contains(48_000))
-    assertEquals(1, capabilities.supportedFormats.size)
-    assertTrue(capabilities.supportedFormats.first().sampleRates.contains(48_000))
-  }
+    private fun rate(value: Int): ByteArray =
+        bytes(value and 0xFF, (value ushr 8) and 0xFF, (value ushr 16) and 0xFF)
 
-  @Test
-  fun uac1FormatTypeOneParsesDepthChannelsAndRates() {
-    val descriptors =
-      byteArrayOf(
-        // Configuration.
-        0x09, 0x02, 0x64, 0x00, 0x01, 0x01, 0x00, 0x80.toByte(), 0x32,
-        // AudioControl interface, UAC 1 protocol.
-        0x09, 0x04, 0x00, 0x00, 0x00, 0x01, 0x01, 0x00, 0x00,
-        // AC header.
-        0x09, 0x24, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
-        // Feature unit id 2 => hardware volume.
-        0x07, 0x24, 0x06, 0x02, 0x01, 0x00, 0x00,
-        // AudioStreaming interface, alt 1, one endpoint.
-        0x09, 0x04, 0x01, 0x01, 0x01, 0x01, 0x02, 0x00, 0x00,
-        // AS general.
-        0x07, 0x24, 0x01, 0x01, 0x00, 0x00, 0x00,
-        // Format Type I: 2 channels, 3-byte subslots, 24 bits, two discrete rates.
-        0x0E, 0x24, 0x02, 0x01, 0x02, 0x03, 0x18, 0x02,
-        0x44, 0xAC.toByte(), 0x00,
-        0x80.toByte(), 0xBB.toByte(), 0x00,
-        // Isochronous OUT endpoint 0x01.
-        0x07, 0x05, 0x01, 0x09, 0x60, 0x00, 0x01,
-      )
+    private fun uac1Fixture(): ByteArray = concat(
+        bytes(9, 0x04, 0, 0, 0, 0x01, 0x01, 0x00, 0),
+        bytes(6, 0x24, 0x06, 2, 0, 0),
+        bytes(9, 0x04, 1, 1, 1, 0x01, 0x02, 0x00, 0),
+        bytes(14, 0x24, 0x02, 0x01, 2, 3, 24, 2) + rate(44100) + rate(48000),
+        bytes(7, 0x05, 0x01, 0x01, 0, 0, 1),
+    )
 
-    val capabilities = UsbAudioDriver().parseDescriptors(descriptors)
+    private fun continuousRangeFixture(): ByteArray = concat(
+        bytes(9, 0x04, 0, 0, 0, 0x01, 0x01, 0x00, 0),
+        bytes(9, 0x04, 1, 1, 1, 0x01, 0x02, 0x00, 0),
+        bytes(14, 0x24, 0x02, 0x01, 2, 3, 24, 0) + rate(44100) + rate(96000),
+    )
 
-    assertEquals(1, capabilities.uacVersion)
-    assertTrue(capabilities.hasHardwareVolume)
-    assertEquals(2, capabilities.volumeFeatureUnitId)
-    assertEquals(listOf(44_100, 48_000), capabilities.supportedSampleRates)
+    private fun uac2ClockFixture(): ByteArray = concat(
+        bytes(9, 0x04, 0, 0, 0, 0x01, 0x01, 0x20, 0),
+        bytes(8, 0x24, 0x0A, 1, 0, 0, 0, 0),
+        bytes(9, 0x04, 1, 1, 1, 0x01, 0x02, 0x00, 0),
+        bytes(11, 0x24, 0x01, 0, 0, 0, 0, 0, 0, 0, 2),
+        bytes(7, 0x24, 0x02, 0x01, 4, 24, 0),
+        bytes(7, 0x05, 0x01, 0x01, 0, 0, 1),
+    )
 
-    val format = capabilities.supportedFormats.single()
-    assertEquals(1, format.interfaceNumber)
-    assertEquals(1, format.altSetting)
-    assertEquals(0x01, format.endpointAddress)
-    assertEquals(24, format.bitDepth)
-    assertEquals(3, format.subslotBytes)
-    assertEquals(2, format.channels)
-    assertEquals(listOf(44_100, 48_000), format.sampleRates)
-    assertNull(format.syncEndpointAddress)
-  }
+    @Test
+    fun uac1FixtureIsParsedCompletely() {
+        val capabilities = UsbDescriptorParser.parse(uac1Fixture())
 
-  @Test
-  fun continuousUac1RangeExpandsToStandardRates() {
-    val descriptors =
-      byteArrayOf(
-        0x09, 0x04, 0x00, 0x00, 0x00, 0x01, 0x01, 0x00, 0x00,
-        0x09, 0x04, 0x01, 0x01, 0x00, 0x01, 0x02, 0x00, 0x00,
-        // 16-bit stereo, continuous 44.1 kHz .. 96 kHz.
-        0x0E, 0x24, 0x02, 0x01, 0x02, 0x02, 0x10, 0x00,
-        0x44, 0xAC.toByte(), 0x00,
-        0x80.toByte(), 0x77, 0x01,
-      )
+        assertEquals(1, capabilities.uacVersion)
+        assertTrue(capabilities.hasHardwareVolume)
+        assertEquals(2, capabilities.volumeFeatureUnitId)
+        assertEquals(listOf(44100, 48000), capabilities.supportedSampleRates)
+        assertEquals(1, capabilities.supportedFormats.size)
 
-    val capabilities = UsbAudioDriver().parseDescriptors(descriptors)
+        val format = capabilities.supportedFormats.first()
+        assertEquals(1, format.interfaceNumber)
+        assertEquals(1, format.altSetting)
+        assertEquals(0x01, format.endpointAddress)
+        assertEquals(24, format.bitDepth)
+        assertEquals(3, format.subslotBytes)
+        assertEquals(2, format.channels)
+        assertEquals(listOf(44100, 48000), format.sampleRates)
+        assertNull(format.syncEndpointAddress)
+    }
 
-    assertEquals(listOf(44_100, 48_000, 88_200, 96_000), capabilities.supportedSampleRates)
-  }
+    @Test
+    fun continuousRangeUsesStandardRatesInsideBounds() {
+        val capabilities = UsbDescriptorParser.parse(continuousRangeFixture())
 
-  @Test
-  fun malformedAndTruncatedDescriptorsStopSafely() {
-    val descriptors =
-      byteArrayOf(
-        0x02, 0x24, // CS_INTERFACE without a subtype.
-        0x03, 0x24, 0x02, // Format type with no payload.
-        0x09, 0x04, 0x01, // Interface truncated below nine bytes.
-        0x00, // Zero-length terminator.
-      )
+        assertEquals(listOf(44100, 48000, 88200, 96000), capabilities.supportedSampleRates)
+    }
 
-    val capabilities = UsbAudioDriver().parseDescriptors(descriptors)
+    @Test
+    fun uac2ClockSourceSeedsFortyEightKhz() {
+        val capabilities = UsbDescriptorParser.parse(uac2ClockFixture())
 
-    assertEquals(1, capabilities.uacVersion)
-    assertTrue(capabilities.supportedFormats.isEmpty())
-    assertTrue(capabilities.supportedSampleRates.isEmpty())
-  }
+        assertEquals(2, capabilities.uacVersion)
+        assertEquals(1, capabilities.clockSourceId)
+        assertTrue(capabilities.supportedSampleRates.contains(48000))
+        assertEquals(1, capabilities.supportedFormats.size)
+        assertTrue(capabilities.supportedFormats.first().sampleRates.contains(48000))
+    }
 
-  @Test
-  fun emptyDescriptorsYieldUac1Defaults() {
-    val capabilities = UsbAudioDriver().parseDescriptors(ByteArray(0))
-
-    assertEquals(1, capabilities.uacVersion)
-    assertTrue(capabilities.supportedFormats.isEmpty())
-    assertNull(capabilities.clockSourceId)
-  }
+    @Test
+    fun malformedAndEmptyInputYieldsUac1Defaults() {
+        val inputs = listOf(
+            ByteArray(0),
+            bytes(0x04),
+            bytes(0x04, 0x04),
+            bytes(2, 0x24, 0x01),
+        )
+        for (input in inputs) {
+            val capabilities = UsbDescriptorParser.parse(input)
+            assertEquals(1, capabilities.uacVersion)
+            assertTrue(capabilities.supportedFormats.isEmpty())
+            assertTrue(capabilities.supportedSampleRates.isEmpty())
+            assertNull(capabilities.clockSourceId)
+        }
+    }
 }

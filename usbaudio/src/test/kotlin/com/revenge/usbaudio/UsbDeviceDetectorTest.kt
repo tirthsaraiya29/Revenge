@@ -6,10 +6,10 @@ import org.junit.Test
 
 class UsbDeviceDetectorTest {
 
-  @Test
-  fun audioInterfacePredicatePassesThrough() {
-    val detector = UsbDeviceDetector()
-    assertTrue(detector.isAudioClassDevice(hasAudioInterface = true))
-    assertFalse(detector.isAudioClassDevice(hasAudioInterface = false))
-  }
+    @Test
+    fun audioClassPassThroughMirrorsArgument() {
+        val detector = UsbDeviceDetector()
+        assertTrue(detector.isAudioClassDevice(true))
+        assertFalse(detector.isAudioClassDevice(false))
+    }
 }

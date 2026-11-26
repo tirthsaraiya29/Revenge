@@ -1,98 +1,97 @@
+@file:OptIn(androidx.media3.common.util.UnstableApi::class)
+
 package com.revenge.dsp.audio
 
-import androidx.annotation.OptIn
 import androidx.media3.common.C
 import androidx.media3.common.audio.AudioProcessor
-import androidx.media3.common.util.UnstableApi
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
-import org.junit.Before
 import org.junit.Test
 
-@OptIn(UnstableApi::class)
 class AutomixDuckAudioProcessorTest {
 
-  private lateinit var processor: AutomixDuckAudioProcessor
+    private fun format(rate: Int = 48000, channels: Int = 1, encoding: Int = C.ENCODING_PCM_16BIT) =
+        AudioProcessor.AudioFormat(rate, channels, encoding)
 
-  @Before
-  fun setUp() {
-    processor = AutomixDuckAudioProcessor()
-  }
+    private fun pcmBuffer(vararg samples: Short): ByteBuffer {
+        val buffer = ByteBuffer.allocateDirect(samples.size * 2).order(ByteOrder.nativeOrder())
+        samples.forEach(buffer::putShort)
+        buffer.flip()
+        return buffer
+    }
 
-  @Test
-  fun `no duck leaves the signal untouched`() {
-    processor.configure(format(2))
-    processor.setMix(0f)
-    processor.resetGain()
+    private fun readPcm(buffer: ByteBuffer): ShortArray {
+        val view = buffer.duplicate().order(ByteOrder.nativeOrder())
+        val values = ShortArray(view.remaining() / 2)
+        for (index in values.indices) values[index] = view.getShort()
+        return values
+    }
 
-    val out = run(shortArrayOf(1000, -1000, 2000, -2000))
+    private fun constantBuffer(sample: Short, count: Int): ByteBuffer {
+        val buffer = ByteBuffer.allocateDirect(count * 2).order(ByteOrder.nativeOrder())
+        repeat(count) { buffer.putShort(sample) }
+        buffer.flip()
+        return buffer
+    }
 
-    assertEquals(1000, out[0].toInt())
-    assertEquals(-1000, out[1].toInt())
-    assertEquals(2000, out[2].toInt())
-    assertEquals(-2000, out[3].toInt())
-  }
+    @Test
+    fun mixZeroLeavesSamplesUnchanged() {
+        val processor = AutomixDuckAudioProcessor()
+        processor.configure(format())
+        processor.setMix(0f)
+        processor.resetGain()
 
-  @Test
-  fun `full duck attenuates a low tone`() {
-    processor.configure(format(1))
-    processor.setMix(1f)
+        processor.queueInput(pcmBuffer(1000, -2000))
+        assertArrayEquals(shortArrayOf(1000, -2000), readPcm(processor.getOutput()))
+    }
 
-    // A DC-ish low signal is inside the 150 Hz shelf, so it must lose level.
-    val input = ShortArray(256) { 8000 }
-    val output = run(input)
+    @Test
+    fun fullMixAttenuatesLowToneWithoutFlippingSign() {
+        val processor = AutomixDuckAudioProcessor()
+        processor.configure(format())
+        processor.setMix(1f)
 
-    val last = output.last().toInt()
-    assertTrue("expected ducked output, was $last", last < 8000)
-    assertTrue("expected ducked output, was $last", last > 0)
-  }
+        processor.queueInput(constantBuffer(8000, 20_000))
+        val output = readPcm(processor.getOutput())
+        val last = output.last().toInt()
+        assertTrue(last in 1 until 8000)
+    }
 
-  @Test
-  fun `mix is clamped and reset releases it`() {
-    processor.configure(format(2))
-    processor.setMix(5f)
-    processor.resetGain()
+    @Test
+    fun clampedMixThenResetGainLeavesSamplesUnchanged() {
+        val processor = AutomixDuckAudioProcessor()
+        processor.configure(format())
+        processor.setMix(5f)
+        processor.resetGain()
 
-    val out = run(shortArrayOf(3000, -3000))
-    assertEquals(3000, out[0].toInt())
-    assertEquals(-3000, out[1].toInt())
-  }
+        processor.queueInput(pcmBuffer(500, -500))
+        assertArrayEquals(shortArrayOf(500, -500), readPcm(processor.getOutput()))
+    }
 
-  @Test(expected = AudioProcessor.UnhandledAudioFormatException::class)
-  fun `rejects more than two channels`() {
-    processor.configure(format(6))
-  }
+    @Test
+    fun unsupportedFormatsAreRejected() {
+        val processor = AutomixDuckAudioProcessor()
+        assertThrows(AudioProcessor.UnhandledAudioFormatException::class.java) {
+            processor.configure(format(channels = 6))
+        }
+        assertThrows(AudioProcessor.UnhandledAudioFormatException::class.java) {
+            processor.configure(format(encoding = C.ENCODING_PCM_FLOAT))
+        }
+    }
 
-  @Test(expected = AudioProcessor.UnhandledAudioFormatException::class)
-  fun `rejects non 16 bit pcm`() {
-    processor.configure(AudioProcessor.AudioFormat(44100, 2, C.ENCODING_PCM_FLOAT))
-  }
+    @Test
+    fun endOfStreamAndResetStates() {
+        val processor = AutomixDuckAudioProcessor()
+        processor.configure(format())
+        processor.queueEndOfStream()
+        assertTrue(processor.isEnded())
 
-  @Test
-  fun `stream end and reset lifecycle`() {
-    processor.configure(format(2))
-    assertTrue(processor.isActive)
-
-    processor.queueEndOfStream()
-    assertTrue(processor.isEnded)
-
-    processor.reset()
-    assertFalse(processor.isActive)
-  }
-
-  private fun run(samples: ShortArray): ShortArray {
-    val input = ByteBuffer.allocateDirect(samples.size * 2).order(ByteOrder.nativeOrder())
-    samples.forEach { input.putShort(it) }
-    input.flip()
-
-    processor.queueInput(input)
-    val output = processor.getOutput()
-    return ShortArray(output.remaining() / 2) { output.getShort() }
-  }
-
-  private fun format(channels: Int) =
-    AudioProcessor.AudioFormat(44100, channels, C.ENCODING_PCM_16BIT)
+        processor.reset()
+        assertFalse(processor.isActive())
+    }
 }

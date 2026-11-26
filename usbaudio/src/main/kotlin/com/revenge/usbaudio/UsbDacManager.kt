@@ -47,15 +47,15 @@ class UsbDacManager(
             val action = intent?.action ?: return
             when (action) {
                 UsbManager.ACTION_USB_DEVICE_ATTACHED -> {
-                    val device = intent.deviceExtra() ?: return
+                    val device = deviceFromIntent(intent) ?: return
                     onAttached(device)
                 }
                 UsbManager.ACTION_USB_DEVICE_DETACHED -> {
-                    val device = intent.deviceExtra() ?: return
+                    val device = deviceFromIntent(intent) ?: return
                     onDetached(device)
                 }
                 ACTION_USB_PERMISSION -> {
-                    val device = intent.deviceExtra() ?: return
+                    val device = deviceFromIntent(intent) ?: return
                     val granted = intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)
                     onPermissionResult(device, granted)
                 }
@@ -193,8 +193,8 @@ class UsbDacManager(
 
     private fun usbManager(): UsbManager? =
         context.getSystemService(Context.USB_SERVICE) as? UsbManager
-
-    @Suppress("DEPRECATION")
-    private fun Intent.deviceExtra(): UsbDevice? =
-        getParcelableExtra(UsbManager.EXTRA_DEVICE)
 }
+
+@Suppress("DEPRECATION")
+private fun deviceFromIntent(intent: Intent): UsbDevice? =
+    intent.getParcelableExtra(UsbManager.EXTRA_DEVICE)

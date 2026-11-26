@@ -259,4 +259,82 @@ class MetadataCleanerTest {
         assertNotNull(result.cleanTitle)
         assertNotNull(result.cleanArtist)
     }
+
+    // ---- CleanerRules surface (spec 11.2) --------------------------------
+
+    @Test
+    fun `version table exposes the documented precedence sequence`() {
+        assertEquals(
+            listOf(
+                VersionType.REMIX, VersionType.LIVE, VersionType.ACOUSTIC,
+                VersionType.REMASTER, VersionType.INSTRUMENTAL, VersionType.COVER,
+                VersionType.RADIO_EDIT, VersionType.EXTENDED, VersionType.SLOWED,
+                VersionType.SPED_UP,
+            ),
+            CleanerRules.VERSION_PATTERNS.map { it.second },
+        )
+    }
+
+    @Test
+    fun `artist separators are the documented ordered list`() {
+        assertEquals(
+            listOf(
+                " & ", ", ", " feat. ", " feat ", " ft. ", " ft ",
+                " featuring ", " and ", " x ", " X ",
+            ),
+            CleanerRules.ARTIST_SEPARATORS,
+        )
+    }
+
+    @Test
+    fun `junk patterns match their documented fragments`() {
+        val fragments = listOf(
+            "(Official Music Video)",
+            "[HD]",
+            "【Official Video】",
+            "「Audio」",
+            "Song | Official Video",
+            "Song // Audio",
+            "#shorts",
+            "Song - Official Video",
+        )
+        assertEquals(fragments.size, CleanerRules.JUNK_PATTERNS.size)
+        fragments.forEachIndexed { index, fragment ->
+            assertTrue(
+                "junk pattern $index should match $fragment",
+                CleanerRules.JUNK_PATTERNS[index].containsMatchIn(fragment),
+            )
+        }
+    }
+
+    @Test
+    fun `featuring patterns expose the artist text in group one`() {
+        assertEquals("X", CleanerRules.FEATURING_PATTERNS[0].find("(feat. X)")!!.groupValues[1])
+        assertEquals("Y", CleanerRules.FEATURING_PATTERNS[1].find("[ft. Y]")!!.groupValues[1])
+        assertEquals("Z", CleanerRules.FEATURING_PATTERNS[2].find("featuring Z")!!.groupValues[1])
+    }
+
+    @Test
+    fun `every documented version keyword classifies correctly`() {
+        val table = mapOf(
+            VersionType.REMIX to listOf(
+                "remix", "flip", "bootleg", "vip", "re-edit", "club mix", "dub",
+            ),
+            VersionType.LIVE to listOf("live", "session", "unplugged", "in concert"),
+            VersionType.ACOUSTIC to listOf("acoustic", "orchestral", "symphonic"),
+            VersionType.REMASTER to listOf("remaster", "remastered", "deluxe", "anniversary"),
+            VersionType.INSTRUMENTAL to listOf("instrumental", "karaoke"),
+            VersionType.COVER to listOf("cover"),
+            VersionType.RADIO_EDIT to listOf("radio edit", "edit"),
+            VersionType.EXTENDED to listOf("extended", "extended mix"),
+            VersionType.SLOWED to listOf("slowed", "slowed + reverb", "reverb"),
+            VersionType.SPED_UP to listOf("sped up", "nightcore"),
+        )
+        for ((type, keywords) in table) {
+            for (keyword in keywords) {
+                val result = MetadataCleaner.clean("Tune ($keyword)", "Artist")
+                assertEquals("keyword $keyword", type, result.version!!.type)
+            }
+        }
+    }
 }
