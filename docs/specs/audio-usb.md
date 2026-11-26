@@ -1,13 +1,16 @@
 # Clean-Room Specification — cluster `audio-usb`
 
+> **Required behaviour only. Any algorithm shape is illustrative; implementers must design independently and are audited for baseline similarity.**
+
 Status: M2 specification (behavioural contract only).
 Cluster modules: `:dsp-core` (Gradle path `:dsp-core`, directory `dsp-core`), `:audio-dsp`
 (`:audio-dsp`, directory `audio-dsp`), `:usbaudio` (`:usbaudio`, directory `usbaudio`).
 Downstream consumer: `:playback` and `:app` (MusicService / UI). `:playback` declares
 `api(project(":audio-dsp"))`, `api(project(":dsp-core"))`, `api(project(":usbaudio"))`.
 
-This document describes observable behaviour, API shape, invariants, ordering, threading, failure
-modes and upgrade-compatibility surfaces. It intentionally omits statement-level implementation. Any
+This document specifies observable behaviour, API shape, invariants, ordering, threading, failure
+modes and upgrade-compatibility surfaces. It intentionally does not prescribe internal structure:
+helper decomposition, containers, loops and file-per-class layout are implementation choices. Any
 implementation that satisfies the contracts and acceptance tests is acceptable. Namespaces, FQCNs,
 package paths, constructor parameter names/order/defaults, public property names and serialized
 field names are hard compatibility contracts: downstream code constructs these values with named
@@ -35,7 +38,7 @@ types. Kotlin JVM plugin + kotlinx.serialization. Used by `:audio-dsp`, `:playba
 ### 1.2 `:audio-dsp` (Android library, namespace `com.revenge.dsp.audio`)
 
 Owns three Media3 `AudioProcessor` stages (parametric EQ, automix duck, stereo widener), the shared
-`DspController` that fans state out to every registered processor, the SharedPreferences-backed
+`DspController` that publishes DSP state to every registered processor, the SharedPreferences-backed
 `EQProfileRepository`, and the Hilt binding. Public packages are `com.revenge.dsp.audio`,
 `com.revenge.dsp.controller`, `com.revenge.dsp.data`, `com.revenge.dsp.di` — note they intentionally
 do not all share the Android namespace; this must be preserved because Hilt discovers them by FQCN.
@@ -112,20 +115,19 @@ class BiquadFilter(
 
 Semantics:
 
-- Coefficients are designed once in the constructor (RBJ audio-EQ-cookbook responses, denominator
-  normalised by `a0`) and never change afterwards. Direct-form-I per channel with independent
-  left/right history.
-- Sanitisation before design:
-  - `sampleRate < 22` → 44100.
-  - `frequency` non-finite → 10.0; otherwise clamp to `[10.0, rate/2 - 1.0]`.
-  - `gain` non-finite → 0.0; otherwise clamp to `[-120.0, 120.0]`.
-  - `q` non-finite or `<= 0` → 1.41.
-- Filter responses: `PK`/`LPQ`/`HPQ` → peaking with Q and gain; `LSC`/`HSC` → shelf with slope
-  S = 1 (`alpha = sin(omega)/2 * sqrt(2)`).
-- Normalisation safety: if `a0` is non-finite or `|a0| <= 1e-12`, the section becomes identity
-  (`b0=1`, rest 0) and must emit no NaN/Inf.
-- `processSample` uses only left state; `processStereo` advances left state for the left input and
-  right state for the right input, independently.
+- The filter response is a standard RBJ audio-EQ-cookbook biquad whose coefficients are fixed at
+  construction and must not change while samples are processed.
+- Parameter sanitisation (observable through output; must never throw or emit NaN/Inf):
+  - `sampleRate < 22` is treated as 44100.
+  - Non-finite `frequency` is treated as 10.0; otherwise clamp to `[10.0, rate/2 - 1.0]`.
+  - Non-finite `gain` is treated as 0.0; otherwise clamp to `[-120.0, 120.0]`.
+  - Non-finite or non-positive `q` is treated as 1.41.
+- Responses: `PK`/`LPQ`/`HPQ` → peaking with Q and gain; `LSC`/`HSC` → shelf with slope factor
+  S = 1.
+- Degenerate design: if the normalisation denominator is non-finite or `|a0| <= 1e-12`, the section
+  must be an identity filter (pass input through) and must emit no NaN/Inf.
+- `processSample` uses the left channel's history. `processStereo` advances independent left and
+  right histories, one per input. Mono processing must not disturb the right history.
 - `reset()` zeros both channels' history; subsequent output must equal the output of a freshly
   constructed filter on the same input.
 - Invariants verified by tests: zero-gain peaking leaves a unit impulse at exactly 1.0 (±0.001);
@@ -150,19 +152,20 @@ fun validate(eq: ParametricEQ): List<String>
 
 ### 4.1 `parseText` contract (tolerant AutoEQ reader)
 
-Process input line by line after trimming; line matching is case-insensitive.
+Input is text. Matching is case-insensitive and tolerant of surrounding whitespace. Rules:
 
-- Blank lines → skipped.
-- A line whose trimmed text starts with `Preamp:` → set the profile preamp. Extract the first
-  numeric value matching `Preamp:\s*([-+]?\d+\.?\d*)\s*dB`; if absent/unparseable use 0.0.
-- A line starting with `Filter` → candidate band. It is accepted **only if** it contains `ON`
-  (case-insensitive) and all of `Fc <number> Hz`, `Gain <number> dB`, `Q <number>` are present and
-  parse to numbers, and a filter type is detectable. Otherwise the whole line is silently skipped
-  (a missing piece rejects that band, not the file).
-- Filter-type detection: `LSC`, `HSC`, `PK`, `LPQ`, `HPQ` (case-insensitive substring). Detected
+- Blank lines are skipped.
+- A line whose trimmed text starts with `Preamp:` sets the profile preamp from the first numeric
+  value followed by optional whitespace and `dB` in that directive; absent or unparseable → 0.0.
+- A line starting with `Filter` is a band candidate. It is accepted **only if** it carries an `ON`
+  token (case-insensitive) and parseable `Fc <number> Hz`, `Gain <number> dB` and `Q <number>`
+  fields, and its filter type is detectable. Otherwise that whole line is silently skipped (a
+  missing piece rejects that band, not the file).
+- Detectable filter types are `LSC`, `HSC`, `PK`, `LPQ`, `HPQ` (case-insensitive token). An accepted
   band is constructed with `enabled = true`.
 - Any other line containing `:` is stored in `metadata` as `key = text before first ':'` trimmed,
   `value = remainder` trimmed. Lines without `:` are ignored.
+- Bands appear in the parsed result in the order their lines appear in the input.
 - Unknown directives must never throw.
 
 ### 4.2 `parseFile`
@@ -201,27 +204,28 @@ Returns a list of human-readable error strings; empty list means valid. It never
 
 All three implement `androidx.media3.common.audio.AudioProcessor` and are annotated
 `@androidx.media3.common.util.UnstableApi` (or `@OptIn(UnstableApi::class)`). They handle
-**16-bit little-endian PCM, 1 or 2 channels only**. Native-order direct `ByteBuffer`s are produced.
+**16-bit little-endian PCM, 1 or 2 channels only**. Output is a native-order direct `ByteBuffer`.
 
 Shared lifecycle contract for every processor:
 
 - `configure(format)` rejects `format.encoding != C.ENCODING_PCM_16BIT` or
   `format.channelCount > 2` by throwing `AudioProcessor.UnhandledAudioFormatException(format)`.
-  On acceptance it stores the sample rate/channel count and returns the *same* `AudioFormat`.
-- `queueInput(buffer)` with `remaining() == 0` is a no-op and must not allocate or flip.
-- Output buffer capacity is at least the input `remaining()`; if smaller, a new direct buffer in
-  native order is allocated, otherwise the existing buffer is cleared. After processing the buffer
-  is flipped.
-- `getOutput()` returns the produced buffer and internally replaces it with a zero-capacity direct
-  buffer (a second `getOutput()` without intervening `queueInput` returns an empty buffer).
-- `isEnded()` is `streamEnded && outputBuffer.remaining() == 0`.
-- `queueEndOfStream()` sets `streamEnded = true`.
-- `flush()` (deprecated in Media3; still overridden) clears the output buffer, resets
-  `streamEnded = false`, resets any per-channel history, and keeps configuration usable.
-- `reset()` calls `flush()` and then clears configuration state as detailed per processor.
-- Processing arithmetic: samples are normalised as `short / 32768.0`; output is
-  `(value * 32768.0)` clamped to `[-32768.0, 32767.0]` then converted to `Int` then `Short`
-  (truncation toward zero). Stereo frames are processed left then right.
+  On acceptance it records the sample rate/channel count and returns the *same* `AudioFormat`
+  (same instance or an equal one).
+- `queueInput(buffer)` with `remaining() == 0` is a no-op; it must not allocate or flip.
+- The output buffer presented by `getOutput()` has capacity at least the input `remaining()`, its
+  position is 0 and its limit is the number of produced bytes. It must be a direct buffer in native
+  order.
+- `getOutput()` returns the produced buffer and internally replaces it with an empty direct buffer,
+  so a second `getOutput()` without intervening `queueInput` returns an empty buffer.
+- `isEnded()` is true iff end-of-stream was signalled and the output buffer has no remaining bytes.
+- `queueEndOfStream()` marks end-of-stream.
+- `flush()` (deprecated in Media3; still overridden) discards pending output, clears end-of-stream,
+  resets per-channel history, and keeps configuration usable.
+- `reset()` releases all state, including configuration, as detailed per processor.
+- Sample arithmetic (observable in output bytes): PCM16 input samples are treated as
+  `short / 32768.0`; processed values are clamped to `[-32768.0, 32767.0]`, converted to `Int` with
+  truncation toward zero, then to `Short`. No NaN/Inf may be written as PCM.
 
 ### 5.1 `com.revenge.dsp.audio.CustomEqualizerAudioProcessor`
 
@@ -237,25 +241,26 @@ class CustomEqualizerAudioProcessor : AudioProcessor {
 
 Behaviour:
 
-- Holds the last requested `ParametricEQ`. If `applyProfile` arrives while `sampleRate == 0`
-  (pipeline not configured), the profile is retained and no filter is enabled yet; it is installed
-  when `configure` runs. This allows the controller to apply a profile before a player exists.
-- `install(profile)` computes `preampLinear = 10^(preamp/20)`, builds biquads from bands in list
-  order, sets `enabled = true`. Band inclusion filter: `enabled == true && frequency > 0 &&
-  frequency < sampleRate/2.0` (strictly less than Nyquist). Excluded bands are skipped, not errors.
-  The preamp alone still enables the stage.
-- `configure` accepts the format, then installs any retained profile.
-- `isEnabled()` reports whether a profile is currently installed (false before configure/after
-  disable; true after a held profile is installed by configure).
-- `queueInput` bypasses (copies input verbatim) when `!enabled`, or when
-  `filters.isEmpty() && preampLinear == 1.0`, or `channelCount == 0`.
-- Processing: per frame, for mono run every `BiquadFilter.processSample` in order; for stereo run
-  every `BiquadFilter.processStereo` in order (each band advances both channels). Then multiply by
-  `preampLinear` and clamp to PCM16.
-- `reset()` clears sample rate/channels/active/enabled/filters/preamp **but deliberately keeps the
-  requested profile**, so a later `configure` restores the EQ.
-- `disable()` clears the requested profile, disables the stage, empties filters, restores preamp to
-  1.0.
+- The last requested `ParametricEQ` is retained. If `applyProfile` arrives while no sample rate is
+  configured, the profile is remembered but not yet active (`isEnabled()` is false); `configure`
+  installs it. This lets the controller apply a profile before a player exists.
+- Installing a profile sets the stage enabled, applies the preamp as a linear multiplier
+  `10^(preamp/20)`, and includes a band iff `enabled == true && frequency > 0 &&
+  frequency < sampleRate/2.0` (strictly below Nyquist). Excluded bands are skipped silently. A
+  profile with no included bands but non-unity preamp still enables the stage; a profile with no
+  included bands and unity preamp has no audible effect.
+- Included bands are applied in list order (cascade order is observable in the output).
+- `isEnabled()` reports whether a profile is currently installed: false before configure and after
+  `disable()`, true after a held profile is installed by `configure`.
+- `queueInput` passes input through unchanged when the stage is disabled, when no bands are
+  included and the preamp multiplier is 1.0, or when no channel configuration exists.
+- For mono, each included band processes the single sample; for stereo, each band processes the
+  left and right samples independently. After all bands, the preamp multiplier is applied and the
+  result clamped to PCM16.
+- `reset()` clears configuration and installed EQ **but deliberately keeps the requested profile**,
+  so a later `configure` restores the EQ.
+- `disable()` forgets the requested profile, disables the stage, removes the bands and restores the
+  preamp multiplier to 1.0.
 - `isActive()` is the configured/accepting state (`true` after a successful configure, `false`
   after reset), independent of whether EQ is enabled.
 
@@ -276,22 +281,22 @@ class AutomixDuckAudioProcessor(
 Behaviour:
 
 - Purpose: a low-shelf bass duck used by AutoMix DJ blends; separate from the user EQ chain.
-- Coefficients are a single RBJ low shelf (slope S = 1) designed once in `configure` from
-  `shelfFrequencyHz`, `maxDuckDb` and the configured sample rate. They must never be re-derived
-  while streaming; changing the duck amount must only move a dry/wet blend.
-- `targetMix` is volatile and written by `setMix`/`resetGain`. `appliedMix` follows it per sample
-  with one-pole easing: ease coefficient `1000 / (15 ms * sampleRate)`, clamped to `[0, 1]`; each
-  step `appliedMix += (targetMix - appliedMix) * ease`.
-- Output per sample: `dry + (wet - dry) * appliedMix`, where `wet` is the shelf output. Both
-  mono (one filter state) and stereo (independent left/right states) are supported. Clamp PCM16.
-- `setMix(5f)` clamps to 1; `setMix(-1f)` clamps to 0. With `mix = 0` and no applied easing the
-  signal is byte-identical to input.
-- A full duck of a DC/low tone inside the 150 Hz shelf must attenuate it but keep the sign
+- The shelf response (slope factor 1) is fixed when the pipeline is configured from
+  `shelfFrequencyHz`, `maxDuckDb` and the sample rate. It must never be re-derived while samples
+  flow; changing the duck amount must only move a dry/wet blend and must not cause a discontinuity.
+- `setMix`/`resetGain` request a target mix, readable safely from any thread. The applied mix
+  follows the target with exponential one-pole smoothing having a 15 ms time constant at the
+  configured rate (per-sample easing factor `1000 / (15 ms * sampleRate)`, clamped to `[0, 1]`).
+- Output per sample: `dry + (wet - dry) * appliedMix`, where `wet` is the shelf output. Mono uses
+  one filter history; stereo keeps independent left/right histories. PCM16 clamp applies.
+- `setMix(5f)` clamps to 1; `setMix(-1f)` clamps to 0. Whenever the applied mix is 0, the stage is
+  byte-identical to input.
+- A full duck of a DC/low tone inside the 150 Hz shelf must attenuate it but keep its sign
   (positive stays positive).
-- `configure` designs the shelf and sets active; unconfigured/zero-rate input passes through.
-- `flush`/`reset`: zero the per-channel delay lines; `reset` additionally forces
-  `sampleRate = 0`, `channelCount = 0`, `active = false`, and both mixes to 0. `resetGain` alone
-  requests dry but does not clear delay state.
+- `configure` designs the shelf and activates the stage; unconfigured/zero-rate input passes
+  through.
+- `flush`/`reset`: zero the per-channel histories; `reset` additionally clears configuration and
+  both mixes. `resetGain` alone requests dry but does not clear history.
 - `isActive()` is true only after a successful configure.
 
 ### 5.3 `com.revenge.dsp.audio.StereoWidenerAudioProcessor`
@@ -313,8 +318,8 @@ Behaviour:
   preserves the image; never clip channels independently). Convert to `Int` then `Short`.
 - `width = 1` recombines losslessly (identity on the sample grid).
 - Mono (`channelCount != 2`) and unconfigured buffers pass through untouched.
-- `isActive()` stays `true` even at width 1 after configure (avoids reconfiguration when toggled);
-  `reset()` sets `channelCount = 0`, `active = false`.
+- `isActive()` stays `true` at any width after a successful configure (avoids reconfiguration when
+  toggled); `reset()` clears the channel configuration and deactivates.
 - Deterministic example: stereo frame `(1000, 500)` at width 1.5 yields `(1125, 375)`.
   Frame `(32767, -32768)` at width 2 stays inside PCM16 and keeps `left > 0`, `right < 0`.
 
@@ -362,41 +367,44 @@ interface DspController {
 `@Singleton class DspControllerImpl @Inject constructor() : DspController` (also
 `@OptIn(UnstableApi::class)`).
 
-- Holds three thread-safe lists (`CopyOnWriteArrayList`) for EQ, duck, widener processors — the
-  service and player threads register/release concurrently.
+- Thread-safe state owner: safe to call from any thread, including concurrently from the service
+  and player threads. EQ, duck and widener processors each have a registry that supports concurrent
+  registration and release.
 - State flows start at `activeProfile = null`, `isEnabled = false`, `stereoWidth = 1f`.
-- Latest profile and a "pending disable" flag are retained (`@Volatile`) so processors registered
-  later are brought up to date immediately.
-- `getAudioProcessors()` returns at most one of each, in fixed chain order: first registered EQ,
-  then first registered duck, then first registered widener. Any list may be empty; result may be
-  empty.
-- `createProcessors()` constructs a fresh trio, registers all three (which applies pending state),
+- The latest requested profile and a "pending disable" flag are retained so a processor registered
+  later is brought up to date immediately.
+- `getAudioProcessors()` returns at most one of each type, in fixed chain order: first registered
+  EQ, then first registered duck, then first registered widener. Any registry may be empty; the
+  result may be empty.
+- `createProcessors()` constructs a fresh trio, registers all three (applying any pending state),
   and returns the `PlayerDspProcessors`.
 - `releaseProcessors(trio)` removes exactly those three instances (identity removal).
-- `addAudioProcessor(eq)`: add, then if pending disable → `disable()` on it, else if a pending
-  profile exists → `applyProfile(profile.parametricEQ)` on it.
-- `addStereoWidener(w)`: set `w.width = stereoWidth.value` **before** adding, so a new player
-  inherits the current width.
-- `addDuckProcessor` simply adds.
-- `applyProfile(profile)`: record pending profile, clear pending disable, set
-  `activeProfile = profile`, `isEnabled = true`. If no EQ processor is registered, store and return
-  `Result.success(Unit)`. Otherwise call `applyProfile(profile.parametricEQ)` on every registered
-  EQ processor, catching exceptions per processor, logging, continuing through the list, and
-  returning the first failure (if any) as `Result.failure`; `Result.success(Unit)` when all succeed.
+- Adding an EQ processor: if a disable is pending, the new processor is disabled; otherwise, if a
+  pending profile exists, that profile is applied to it.
+- Adding a stereo widener: it inherits the current stereo width at registration, so a new player
+  starts at the width already requested.
+- Adding a duck processor just registers it.
+- `applyProfile(profile)`: records the profile as pending, clears any pending disable, publishes
+  `activeProfile = profile` and `isEnabled = true`. If no EQ processor is registered, the request is
+  retained and `Result.success(Unit)` is returned. Otherwise the profile is applied to every
+  registered EQ processor; a failure on one processor is logged and does not prevent the others.
+  The result is `Result.failure` with the first failure if any occurred, else `Result.success(Unit)`.
   This fan-out is deliberately best-effort per processor.
 - `disable()` is an alias for `disableEqualizer()`.
-- `disableEqualizer()`: set pending disable, clear pending profile, set active profile null and
-  enabled false, then call `disable()` on every registered EQ processor catching/logging exceptions.
-- `setStereoWidth(width)`: clamp to `[1f, 2f]`, update the flow, set `width` on every registered
+- `disableEqualizer()`: marks a disable pending, clears the pending profile, publishes a null active
+  profile and `isEnabled = false`, then disables every registered EQ processor, logging and
+  continuing past failures.
+- `setStereoWidth(width)`: clamp to `[1f, 2f]`, publish the value, and set it on every registered
   widener.
-- `setAutoMixDuck(duckFactor)`: clamp to `[0f, 1f]`, call `setMix` on every registered duck.
+- `setAutoMixDuck(duckFactor)`: clamp to `[0f, 1f]` and forward to every registered duck.
 - `isInitialized()` is `true` iff at least one EQ processor is registered.
-- `release()` clears all three lists. It does not reset the exposed state flows (post-release the
-  flows keep their last values); downstream relies only on `getAudioProcessors()` being empty and
-  `isInitialized()` false after release.
+- `release()` clears all three registries. It does not reset the exposed state flows (post-release
+  the flows keep their last values); downstream relies only on `getAudioProcessors()` being empty
+  and `isInitialized()` false after release.
 
-Threading: controller methods are safe to call from any thread; processor `applyProfile`/`disable`
-are `@Synchronized` on the processor instance; `width` and duck `targetMix` are `@Volatile`.
+Threading: controller methods are safe from any thread; processor `applyProfile`/`disable` are
+`@Synchronized` on the processor instance; stereo width and duck target mix are safe for concurrent
+read/write (writes become visible to audio processing without tearing or blocking).
 
 ### 6.4 `com.revenge.dsp.di.DspModule`
 
@@ -449,18 +457,20 @@ fun getSortedProfiles(): List<SavedEQProfile>
 
 Semantics:
 
-- Construction restores synchronously: read `eq_profiles`; if absent, remain empty. If present,
-  decode; on any exception log and reset to empty/null. Then read `active_profile_id` and set the
-  active profile to the loaded profile whose `id` matches, or `null` if none/absent.
-- `saveProfile` (IO dispatcher): copy current list; replace the entry with the same `id` in place,
-  otherwise append; persist the whole list first, then publish the new list on the flow. Must be
-  atomic from the flow-observer perspective (never publish before persistence completes).
-- `deleteProfile` (IO): remove entries matching `id`, persist, publish. If the deleted id was the
-  active profile, clear `activeProfile` and remove `active_profile_id`.
-- `setActiveProfile(id)` (IO): `null` → clear flow + remove key. Non-null → look up by exact id;
-  set flow to the found profile (which may be `null` if the id is unknown) and write the key only
-  when found, otherwise remove the key. It never throws for an unknown id.
-- `importCustomProfile(name, parametricEQ)`: builds and saves a `SavedEQProfile` with
+- Construction restores state synchronously: read `eq_profiles`; if absent, remain empty. If
+  present, decode; on any exception log and fall back to empty/null. Then read `active_profile_id`
+  and set the active profile to the loaded profile whose `id` matches, or `null` if none/absent.
+- `saveProfile` runs off the main thread. Saving a profile whose `id` already exists replaces that
+  entry in place (no duplicate, position retained); otherwise the profile is appended. Persistence
+  must complete before the new list is published on the flow, so a flow observer never sees a list
+  that has not been persisted.
+- `deleteProfile` removes all entries matching the id, persists, then publishes. If the deleted id
+  was the active profile, the active profile becomes null and `active_profile_id` is removed.
+- `setActiveProfile(id)` runs off the main thread. `null` clears the published value and removes the
+  key. A non-null id is looked up exactly; the published value is the found profile (or `null` when
+  the id is unknown) and the key is written only when found, otherwise removed. It never throws for
+  an unknown id.
+- `importCustomProfile(name, parametricEQ)` builds and saves a `SavedEQProfile` with
   `id = "custom_${System.currentTimeMillis()}_${name.hashCode()}"`, `name = name`,
   `deviceModel = name`, `bands = parametricEQ.bands`, `preamp = parametricEQ.preamp`,
   `isCustom = true`; other fields default. It does not change the active profile.
@@ -514,11 +524,6 @@ fun outputBits(sourceBits: Int, supported: Collection<Int>): Int?
 fun sourceBits(encoding: Int): Int?
 fun bytesPerSample(encoding: Int): Int
 fun convert(input: ByteBuffer, encoding: Int, channelCount: Int, outputBits: Int, output: ByteBuffer): Boolean
-
-internal fun writeSample(output: ByteBuffer, sample: Int, outputBits: Int)
-internal fun orderFor(encoding: Int): ByteOrder
-internal fun recover24(value: Float): Int
-internal fun isExact24(value: Float, sample: Int): Boolean
 ```
 
 Behaviour:
@@ -528,13 +533,15 @@ Behaviour:
 - `sourceBits`: 16-bit (LE/BE) → 16; 24-bit (LE/BE) and float → 24; 32-bit (LE/BE) → 32; anything
   else → `null` (8-bit unsigned is unsupported).
 - `bytesPerSample`: 2/3/4 for the above; 0 for unsupported.
-- `convert` copies whole frames, left-aligning each sample into a 32-bit working value then writing
-  little-endian integer PCM of `outputBits`. Both buffer positions advance. It returns `true` when
-  every float sample was exactly representable at 24-bit precision, and `false` otherwise (16/24/32
-  integer sources always return `true`). It throws `IllegalArgumentException` when the encoding is
-  unsupported (8-bit) or `outputBits` would narrow below the source precision (e.g. 32→16); in the
-  unsupported case the input position must be unchanged. Buffer byte order for input is derived from
-  the encoding (BE variants read big-endian); output is always little-endian.
+- `convert` copies whole frames, placing each source sample left-aligned in the destination
+  container and writing little-endian integer PCM of `outputBits` (a 16-bit value 0x1234 written as
+  24-bit yields bytes `00 34 12`). Both buffer positions advance by the bytes actually produced and
+  consumed. It returns `true` when every float sample was exactly representable at 24-bit precision,
+  and `false` otherwise (16/24/32-bit integer sources always return `true`). It throws
+  `IllegalArgumentException` when the encoding is unsupported (8-bit) or `outputBits` would narrow
+  below the source precision (e.g. 32→16); in the unsupported case the input position must be
+  unchanged. Input byte order is derived from the encoding (BE variants read big-endian); output is
+  always little-endian.
 - Deterministic anchors: 16-bit values 12345/−12345 round-trip exactly through 16→16; 0x1234 through
   16→24 yields bytes `00 34 12`; float 0.5 through float→24 reconstructs 0.5 ± 0.001; float NaN
   maps to 0.
@@ -572,39 +579,44 @@ class UsbAudioDriver {
 
 Behaviour:
 
-- Backing transport: a bounded single-producer/single-consumer byte ring (capacity 131 072 bytes)
-  used whenever no platform `AudioTrack` exists. Once a 16-bit mono/stereo/8 kHz–192 kHz stream is
-  started, an `AudioTrack` is created in `MODE_STREAM` with media/music attributes and a buffer of
-  `max(minBufferSize, rate/1000 * 100 ms * frameBytes)`; this routes through the platform mixer to
-  the USB device. Other bit depths/channel counts/rates stay on the ring so callers never receive
-  silently corrupted audio. `startStream` returns 0 on success. If `AudioTrack` creation or `play()`
-  fails, the track is released and the ring path is used; it is not an error to the caller.
-- `startStream` (synchronized): release any existing track, flush the ring, record
-  `sampleBytes = (bitDepth + 7) / 8`, `channels = channels > 0 ? channels : 1`, sample rate, reset
-  frame counters, compute frame bytes, attempt track creation for the eligible case, return 0.
-- `stopStream` (synchronized): release track, flush ring, reset frame counters, return 0.
-- `writeAudio(buffer, size)`: queue `min(size, buffer.size)` bytes; return 0 for non-positive.
-  Apply software attenuation first when multiplier != 1.0. On the `AudioTrack` path use
-  `WRITE_NON_BLOCKING`; a negative/`IllegalStateException` result is reported as 0 (never negative).
-  Count accepted frames. On the ring path, write returns the copied byte count and also advances
-  the played-frame counter. `writeAudio` must never throw for a stale track.
-- `getAvailableWrite()`: ring free bytes when no track; otherwise free bytes computed from track
-  buffer size minus queued-but-unplayed frames; clamp to `[0, Int.MAX_VALUE]`.
-- `setSoftwareVolumeMultiplier`: clamp to `[0,1]`, store; also set `AudioTrack` volume, swallowing
-  `IllegalStateException` from a concurrently released track.
-- `flushStream()` (synchronized): on the track path pause → flush → reset queued frames → play,
-  releasing on `IllegalStateException`; always flush the ring and reset played frames.
-- `getFramesPlayed()`: `playbackHeadPosition` masked to 32 bits on the track path (0 on
-  `IllegalStateException`); ring path reports the accumulated counter.
-- `hasPendingData()`: ring non-empty, or queued frames > played frames on the track path.
+- Transport: when a 16-bit mono/stereo stream at 8 kHz–192 kHz is started, playback is rendered
+  through a platform `AudioTrack` in streaming mode with media/music usage routed by the platform
+  mixer to the USB device. The track buffer must hold at least the platform minimum and enough
+  audio to sustain roughly 100 ms at the configured rate. Other bit depths, channel counts and
+  rates use a thread-safe bounded FIFO byte buffer (capacity 131 072 bytes), so callers never
+  receive silently corrupted audio. The FIFO always exists as the fallback transport.
+- `startStream` is synchronized and returns 0 on success. It replaces any active stream, discards
+  buffered audio, records the stream configuration (`sampleBytes = (bitDepth + 7) / 8`,
+  `channels = channels > 0 ? channels : 1`, rate, frame size), resets frame counters, and attempts
+  the platform track for the eligible case. If track creation or start fails, the track is
+  released and the FIFO path is used; this is not an error to the caller.
+- `stopStream` is synchronized: releases any track, discards buffered audio, resets frame counters,
+  returns 0.
+- `writeAudio(buffer, size)` queues `min(size, buffer.size)` bytes and returns 0 for a non-positive
+  request. When the software multiplier is not 1.0, attenuation is applied before queueing. The
+  platform path writes without blocking; a negative result or a track that has become invalid is
+  reported as 0 accepted bytes (never negative) and must not throw. Accepted frames are counted.
+  The FIFO path returns the number of bytes copied and also advances the played-frame counter.
+- `getAvailableWrite()` reports free bytes in the active transport, clamped to
+  `[0, Int.MAX_VALUE]` (FIFO free space when no track; otherwise track buffer space not occupied by
+  queued-but-unplayed frames).
+- `setSoftwareVolumeMultiplier` clamps to `[0,1]`, stores the value, and also applies it to the
+  platform track, swallowing `IllegalStateException` from a concurrently released track.
+- `flushStream()` is synchronized: on the platform path it pauses, flushes, resets queued-frame
+  accounting and resumes, releasing the track if it became invalid; it always discards FIFO data
+  and resets played-frame accounting.
+- `getFramesPlayed()` reports the platform playback head position masked to 32 bits (0 if the track
+  became invalid), or the FIFO's accumulated played-frame counter when no track is active.
+- `hasPendingData()` is true when FIFO data exists, or when unplayed frames are queued on the
+  platform path.
 - `calculateNominalPacketSamples(rate)`: 0 when `rate <= 0`, else `rate / 8000` (high-speed USB
   microframes). Deterministic: 96 000 → 12, 44 100 → 5.
 - `parseDescriptors` delegates to `UsbDescriptorParser.parse`.
-- Test hooks (`testRingBuffer*`) expose the ring for deterministic unit tests; they are part of the
-  public surface but are documented as test-only. Ring semantics: FIFO, preserves byte order across
-  wraparound and partial reads; reads clamp to available bytes; writing past capacity accepts only
-  what fits; after a read empties the buffer both indices reset; flushing discards all data.
-- Attenuation helper (used by `writeAudio`) scales interleaved samples in place for 2, 3 or 4-byte
+- Test hooks (`testRingBuffer*`) expose the FIFO for deterministic unit tests; they are part of the
+  public surface but documented as test-only. FIFO semantics: byte order preserved, reads clamp to
+  available bytes, writes past capacity accept only what fits, an emptied buffer reports no pending
+  data, flushing discards all data.
+- Attenuation helper (used by `writeAudio`) scales interleaved samples for 2, 3 or 4-byte
   little-endian samples, clamping to the sample width; unsupported widths (<2 or >4) leave data
   unchanged. Deterministic: 16-bit sample 1000 at multiplier 0.5 → 500.
 
@@ -612,11 +624,13 @@ Behaviour:
 
 ## 11. `com.revenge.usbaudio.UsbDacAudioSink`
 
-`@UnstableApi class UsbDacAudioSink(private val driver: UsbAudioDriver, var capabilities: DacCapabilities = DacCapabilities(uacVersion = 2), private val dacConnectionProvider: (() -> DacDeviceState.Connected?)? = null) : android.media3.exoplayer.audio.AudioSink`
+`@UnstableApi class UsbDacAudioSink(private val driver: UsbAudioDriver, var capabilities: DacCapabilities = DacCapabilities(uacVersion = 2), private val dacConnectionProvider: (() -> DacDeviceState.Connected?)? = null) : android.media.exoplayer.audio.AudioSink`
+
+(Use the Media3 package `androidx.media3.exoplayer.audio.AudioSink`.)
 
 Purpose: bridge Media3 decoded PCM to `UsbAudioDriver`. It renders via the platform `AudioTrack`
 route; it does not bypass the mixer. It must implement the full Media3 `AudioSink` interface (see
-§14.1) with the following semantics.
+§15.2) with the following semantics.
 
 - `setListener(listener)` stores the listener for error reporting.
 - `supportsFormat(format)`:
@@ -628,56 +642,60 @@ route; it does not bypass the mixer. It must implement the full Media3 `AudioSin
   - Else → true iff rate `<= 192000`.
 - `getFormatSupport(format)` returns `SINK_FORMAT_SUPPORTED_DIRECTLY` when supported, else
   `SINK_FORMAT_UNSUPPORTED`.
-- `configure(inputFormat, specifiedBufferSize, outputChannels)`: store input format, reset frame
-  counter, stream-ended flag and start position to unset. It does not start the stream.
-- `play()`: mark playing, then `ensureStream()`.
+- `configure(inputFormat, specifiedBufferSize, outputChannels)`: records the input format, clears
+  frame count, end-of-stream and start position. It does not start the stream.
+- `play()`: marks playing, then negotiates/starts the stream if needed.
 - `handleBuffer(buffer, presentationTimeUs, encodedAccessUnitCount): Boolean`:
   1. Empty buffer → `true` (accepted).
-  2. Not playing → `false` (retry later; buffer position unchanged).
-  3. `ensureStream()`.
-  4. If a `dacConnectionProvider` exists and the stream is not streaming (DAC absent/not ready) →
-     `false` without consuming input.
-  5. If start position unset and `presentationTimeUs != C.TIME_UNSET`, record it.
-  6. Copy remaining bytes into scratch, convert input bit depth to the active stream container depth
-     (16-bit on the platform path), frame-align.
-  7. Compute writable = `(driver.getAvailableWrite() / targetFrameBytes) * targetFrameBytes`; if 0,
-     restore buffer position and return `false` (backpressure — no bytes consumed).
-  8. Write `min(payloadBytes, writable)`, advance the input buffer by exactly the input frames
-     accepted, add frames to `framesWritten`, return `consumed >= remaining`.
-- `playToEndOfStream()`: set stream-ended. `isEnded()` = stream-ended AND no pending data.
-  `hasPendingData()` delegates to the driver.
+  2. Not playing → `false` (retry later; input buffer unchanged).
+  3. Negotiate/start the stream if needed.
+  4. If a DAC connection provider exists and no stream is active (DAC absent/not ready) → `false`
+     without consuming input.
+  5. If the start position is unset and `presentationTimeUs != C.TIME_UNSET`, record it.
+  6. Convert the input bit depth to the active stream container depth (16-bit on the platform
+     path), frame-aligned.
+  7. Compute writable space as a whole number of target frames from `driver.getAvailableWrite()`;
+     if zero, leave the input buffer unchanged and return `false` (backpressure, no bytes
+     consumed).
+  8. Write as many frame-aligned bytes as fit, advance the input buffer by exactly the input frames
+     accepted, add accepted frames to the written-frame count, and return `true` iff the whole
+     input was consumed.
+- `playToEndOfStream()`: mark end-of-stream. `isEnded()` is true iff end-of-stream is marked and the
+  driver has no pending data. `hasPendingData()` delegates to the driver.
 - `getCurrentPositionUs(sourceEnded)`: `CURRENT_POSITION_NOT_SET` until a start position exists;
   otherwise `startMediaTimeUs + frames * 1_000_000 / sampleRate`, where `sampleRate` is the input
-  format rate (fallback 44 100) and `frames` is driver `getFramesPlayed()` while streaming, else
-  `framesWritten`. Deterministic: 480 stereo 16-bit frames at 48 kHz and start 1 000 000 µs →
-  1 010 000 µs.
+  format rate (fallback 44 100) and `frames` is the driver's played-frame count while streaming,
+  else the count of frames written. Deterministic: 480 stereo 16-bit frames at 48 kHz and start
+  1 000 000 µs → 1 010 000 µs.
 - `setVolume(volume)`: clamp `[0,1]`, store, forward to `driver.setSoftwareVolumeMultiplier`.
-- `pause()`: clear playing (keep stream). `flush()`: driver flush, reset frames, clear stream-ended
-  and start position. `reset()`: stop active stream, flush, clear playing/format/connection/stream
-  fields, restore container depth 16.
-- No-ops that just satisfy the interface: `handleDiscontinuity`, `setPlaybackParameters`,
+- `pause()`: clear playing (stream retained). `flush()`: flush the driver, reset frame accounting,
+  clear end-of-stream and start position. `reset()`: stop any active stream, flush, clear
+  playing/format/connection/stream state, and restore the container depth to 16.
+- Interface-only no-ops: `handleDiscontinuity`, `setPlaybackParameters`,
   `getPlaybackParameters` (returns `PlaybackParameters.DEFAULT`), `setSkipSilenceEnabled`,
   `getSkipSilenceEnabled` (false), `setAudioAttributes`, `getAudioAttributes`
   (`AudioAttributes.DEFAULT`), `setAudioSessionId`, `setAuxEffectInfo`, `enableTunnelingV21`,
   `disableTunneling`, `getAudioTrackBufferSizeUs` (0).
-- Stream negotiation (`ensureStream`, driven by `dacConnectionProvider`):
-  - No provider → nothing to do (callers/tests use the driver directly).
-  - If connected device disappeared or changed identity (different `Connected` instance) while
+- Stream negotiation, driven by `dacConnectionProvider`:
+  - No provider → nothing to negotiate (callers/tests use the driver directly).
+  - If the connected device disappears or changes identity (a different `Connected` instance) while
     streaming → stop the driver stream and clear connection state.
-  - Adopt `connected.capabilities`; take rate from input format if > 0 else 44 100; channels from
-    input format if valid else 2; input depth 16/24/32 (default 16). Choose a `DacFormat`.
-  - Target container depth is 16 whenever `UsbAudioDriver.nativeLoaded` is false (platform path).
-  - If streaming and rate/channels/container depth changed → stop, reset frame counter and start
-    position.
-  - Start the driver with the chosen interface/alt/endpoints (defaults 0 / 1 / 0x01 / −1); on
-    result 0 mark streaming and record active connection/fd/rate/channels/depth; on non-zero call
-    `listener.onAudioSinkError(IllegalStateException(...))` and do not mark streaming.
-  - `chooseFormat` preference order: exact rate+channels+depth; else highest-bitDepth format
-    matching rate+channels; else highest-bitDepth format matching rate; else first format matching
-    rate; else the first format. Empty formats → null (use defaults). A format's empty
-    `sampleRates` matches any rate.
+  - Adopt the connected device's capabilities. Take the rate from the input format if > 0 else
+    44 100; channels from the input format if valid else 2; input depth 16/24/32 (default 16).
+    Select a `DacFormat`.
+  - The target container depth is 16 whenever `UsbAudioDriver.nativeLoaded` is false (platform
+    path).
+  - If already streaming and rate, channels or container depth changed → stop, reset frame count
+    and start position.
+  - Start the driver with the chosen interface/alt/endpoints (defaults 0 / 1 / 0x01 / −1). On
+    result 0 mark streaming and record the active connection, rate, channels and depth. On non-zero
+    call `listener.onAudioSinkError(IllegalStateException(...))` and leave the sink not streaming.
+  - Format selection preference: exact rate+channels+depth; else highest-bitDepth format matching
+    rate+channels; else highest-bitDepth format matching rate; else first format matching rate;
+    else the first format. No formats → null (use defaults). A format's empty `sampleRates` matches
+    any rate.
 - PCM conversion raises depth by left-shifting (exact) and lowers it by dropping low bytes,
-  little-endian signed samples; the output is valid until the next call.
+  little-endian signed samples; the converted buffer is valid until the next call.
 
 ---
 
@@ -726,30 +744,32 @@ constructor shape and defaults.
 Behaviour:
 
 - `activeDacFlow` starts `Disconnected` and is a `StateFlow`.
-- `register()`: idempotent. If already registered, just rescan existing devices. Else register a
-  broadcast receiver for `ACTION_USB_DEVICE_ATTACHED`, `ACTION_USB_DEVICE_DETACHED` and
-  `ACTION_USB_PERMISSION` (on API 33+ use `Context.RECEIVER_NOT_EXPORTED`), set the flag, then scan.
-- `unregister()`: unregister the receiver if registered, swallowing `IllegalArgumentException`
-  ("not registered"), then `disconnect()`. Idempotent.
-- `scanExistingDevices()`: iterate `UsbManager.deviceList`; adopt the first device for which
-  `detector.isUsbAudioDevice` is true and stop. No USB service → no-op.
+- `register()` is idempotent. If already registered, just rescan existing devices. Otherwise
+  register a broadcast receiver for `ACTION_USB_DEVICE_ATTACHED`, `ACTION_USB_DEVICE_DETACHED` and
+  `ACTION_USB_PERMISSION` (on API 33+ use `Context.RECEIVER_NOT_EXPORTED`), record the registration,
+  then scan.
+- `unregister()` is idempotent: unregister the receiver if registered, swallowing
+  `IllegalArgumentException` ("not registered"), then disconnect.
+- `scanExistingDevices()`: among `UsbManager.deviceList`, adopt the first device recognised by the
+  detector as a USB audio device; stop at the first match. No USB service → no-op.
 - `requestPermission(device)`: build a broadcast `PendingIntent` for `ACTION_USB_PERMISSION` scoped
   to the app package; on API 31+ use `FLAG_MUTABLE or FLAG_UPDATE_CURRENT`, else
   `FLAG_UPDATE_CURRENT`; call `UsbManager.requestPermission`. No USB service → no-op.
-- On attach: ignore non-audio devices; if permission already granted → `connect`, else publish
-  `PermissionRequired` and request permission.
-- On permission result: granted + device present → `connect`; otherwise publish
+- On attach: ignore non-audio devices; if permission is already granted, connect; otherwise
+  publish `PermissionRequired` and request permission.
+- On permission result: if granted and the device is present, connect; otherwise publish
   `Error("USB permission denied")`.
-- On detach: only if the current state is `Connected` with the same `deviceId` → `disconnect()`
-  then invoke `onDeviceDetachedCallback`.
-- `connect(device)`: if already connected to the same device id → no-op; if connected to a different
-  device → `disconnect()` first. `UsbManager.openDevice` null → `Error("Failed to open USB device
-  connection")`. Read `connection.rawDescriptors` (empty array when null), parse capabilities via
-  the driver, publish `Connected(device, connection, capabilities, connection.fileDescriptor)`.
-- `disconnect()`: when connected, best-effort `driver.stopStream()` and `connection.close()`
+- On detach: only if the current state is `Connected` for the same `deviceId`, disconnect and then
+  invoke `onDeviceDetachedCallback`.
+- Connect: if already connected to the same device id → no-op; if connected to a different device →
+  disconnect first. A null `UsbManager.openDevice` → `Error("Failed to open USB device
+  connection")`. Read the raw descriptors (empty array when absent), parse capabilities via the
+  driver, and publish
+  `Connected(device, connection, capabilities, connection.fileDescriptor)`.
+- Disconnect: when connected, best-effort stop the driver stream and close the connection
   (exceptions swallowed because the device may already be gone), then publish `Disconnected`.
-- Receiver callbacks and flow updates happen on the main thread in production; the class itself
-  must be safe to call `register`/`unregister` repeatedly and not leak a registration.
+- Receiver callbacks and flow updates happen on the main thread in production. `register`/
+  `unregister` must be safe to call repeatedly and must not leak a registration.
 
 ---
 
@@ -761,15 +781,16 @@ Behaviour:
 
 Parses a raw USB configuration-descriptor blob (untrusted input). Contract:
 
-- `data.size < 2` → `DacCapabilities(uacVersion = 1)` (all defaults empty).
-- Walk descriptors with `length = data[offset] & 0xFF`; stop safely when `length < 2`,
-  `offset + length > data.size`, or fewer than 2 bytes remain. Never read out of bounds; malformed
-  input must return what was parsed so far (commonly UAC1 with empty lists), not throw.
+- Input shorter than a descriptor header → `DacCapabilities(uacVersion = 1)` (all defaults empty).
+- Descriptor records are length-prefixed by their first byte. Parsing must stop safely on a length
+  below 2, a record that would extend past the input, or fewer than 2 bytes remaining. It must
+  never read out of bounds, and malformed input must return what was parsed so far (commonly UAC1
+  with empty lists) rather than throw.
 - Descriptor types: Interface `0x04`, Endpoint `0x05`, CS_INTERFACE `0x24`. Class Audio `0x01`,
   subclasses AudioControl `0x01`, AudioStreaming `0x02`. Protocols UAC1 `0x00`, UAC2 `0x20`.
 - On an AudioControl interface, the protocol selects `uacVersion` (1 or 2).
-- AudioStreaming interface with alt setting > 0 opens a pending format (interface number + alt).
-  A new interface finishes the previous pending format.
+- AudioStreaming interface with alt setting > 0 opens a pending format (interface number + alt). A
+  new interface finishes the previous pending format.
 - AudioControl CS features:
   - UAC2 Clock Source (`subtype 0x0A`, len ≥ 8) → record `clockSourceId` (byte 3) and seed the
     global rate set with 48 000 (UAC2 ranges require a control request the parser cannot issue).
@@ -792,7 +813,7 @@ Parses a raw USB configuration-descriptor blob (untrusted input). Contract:
 - Output `supportedSampleRates` is the sorted union of all discovered rates; `supportedFormats`
   preserves discovery order.
 
-Deterministic anchors (see acceptance tests §16): the UAC1 fixture yields uacVersion 1, hardware
+Deterministic anchors (see acceptance tests §18): the UAC1 fixture yields uacVersion 1, hardware
 volume with unit id 2, rates `[44100, 48000]`, one format `(interface 1, alt 1, ep 0x01, depth 24,
 subslot 3, channels 2, rates [44100,48000], sync null)`; the continuous-range fixture yields
 `[44100, 48000, 88200, 96000]`; the UAC2 clock fixture yields uacVersion 2, clockSourceId 1,
@@ -835,7 +856,7 @@ class VolumeController(
   `(60 * log10(r)).coerceIn(minDb, maxDb)`. So 0.5 ≈ −18 dB (test accepts −22..−15).
 - `dbToUacMillibel`: `(db * 256).toInt()` clamped to signed 16-bit; −18 dB → −4608; ±500 dB clamp
   to `Short.MIN/MAX`.
-- `setVolume`: store clamped `[0,1]` slider ratio.
+- `setVolume`: stores the clamped `[0,1]` slider ratio.
 - `getEffectiveSoftwareMultiplier`: `PURE_BIT_PERFECT` and `HARDWARE` → exactly 1.0 (samples
   untouched; attenuation is the DAC's/external responsibility). `SOFTWARE_64BIT` →
   `10^(calculateDbForSlider(sliderRatio)/20)`.
@@ -901,7 +922,7 @@ reusable. The wrapper replays the last configuration into the newly selected sin
   `register()`/`unregister()`, collects `activeDacFlow`, casts to `DacDeviceState.Connected`, reads
   `capabilities`. It also constructs the three processors directly, sets `StereoWidener.width`,
   calls `DspController.addAudioProcessor/removeAudioProcessor/applyProfile/disableEqualizer`, and
-  reads `EqlProfileRepository.activeProfile`.
+  reads `EqProfileRepository.activeProfile`.
 - `EQViewModel`: `ParametricEQParser.parseText/validate`, `EQProfileRepository.profiles/
   activeProfile/getSortedProfiles/importCustomProfile/setActiveProfile/deleteProfile`,
   `DspController.applyProfile/disableEqualizer`.
@@ -943,56 +964,16 @@ permission is requested at runtime through `UsbManager`.
 
 ---
 
-## 17. Target file manifest
+## 17. Source layout
 
-The implementer must produce the following files (paths relative to the repository root). Each is a
-main-source file under the module src tree. Test files expected under each module's `src/test` are
-listed in §18.
-
-### `dsp-core/src/main/kotlin/com/revenge/dsp/core/`
-
-| Path | Responsibility |
-|---|---|
-| `models/FilterType.kt` | Serializable band-response enum; LPQ/HPQ aliased to peaking in DSP. |
-| `models/ParametricEQ.kt` | `ParametricEQBand` + `ParametricEQ` (+ `MAX_BANDS = 20`). |
-| `models/SavedEQProfile.kt` | Persisted profile entity + `parametricEQ` view. |
-| `BiquadFilter.kt` | RBJ biquad design, sanitisation, direct-form-I mono/stereo processing. |
-| `parser/ParametricEQParser.kt` | Tolerant AutoEQ parse, display/file serialisation, validation. |
-
-### `audio-dsp/src/main/kotlin/com/revenge/dsp/`
-
-| Path | Responsibility |
-|---|---|
-| `audio/CustomEqualizerAudioProcessor.kt` | Media3 EQ stage, preamp, held-profile install-on-configure. |
-| `audio/AutomixDuckAudioProcessor.kt` | Media3 low-shelf automix duck with eased dry/wet. |
-| `audio/StereoWidenerAudioProcessor.kt` | Media3 mid/side widener with joint peak scaling. |
-| `controller/DspController.kt` | `PlayerDspProcessors` + `DspController` interface. |
-| `controller/DspControllerImpl.kt` | Singleton fan-out state owner and processor registry. |
-| `data/EQProfileRepository.kt` | SharedPreferences JSON persistence, active-profile tracking. |
-| `di/DspModule.kt` | Hilt `@Binds` of `DspControllerImpl` → `DspController`. |
-| `../../../../../build.gradle.kts` | Module build config (§16). |
-| `../../../../../AndroidManifest.xml` | Empty manifest. |
-
-(The last two rows are the module-root `build.gradle.kts` and `src/main/AndroidManifest.xml`.)
-
-### `usbaudio/src/main/kotlin/com/revenge/usbaudio/`
-
-| Path | Responsibility |
-|---|---|
-| `model/DacFormat.kt` | Advertised streaming-format value type. |
-| `model/DacCapabilities.kt` | Parsed DAC capability aggregate. |
-| `model/VolumeMode.kt` | Volume-application enum. |
-| `BitPerfectPcm.kt` | PCM bit-depth metadata + exact container conversion. |
-| `UsbAudioDriver.kt` | Ring/AudioTrack transport, frame clock, attenuation, descriptor delegation. |
-| `UsbDacAudioSink.kt` | Media3 `AudioSink` bridge, negotiation, conversion, backpressure. |
-| `UsbDacManager.kt` | `DacDeviceState` sealed hierarchy + attach/detach/permission lifecycle. |
-| `UsbDescriptorParser.kt` | Internal safe USB descriptor walker. |
-| `UsbDeviceDetector.kt` | Audio-class OUT-endpoint recogniser. |
-| `VolumeController.kt` | Slider→dB curve, UAC millibel, software multiplier. |
-| `../../../../build.gradle.kts` | Module build config (§16). |
-| `../../../../AndroidManifest.xml` | Empty manifest. |
-
-(The last two rows are the module-root `build.gradle.kts` and `src/main/AndroidManifest.xml`.)
+Implementations compile into the module source trees
+`dsp-core/src/main/kotlin/com/revenge/dsp/core/`,
+`audio-dsp/src/main/kotlin/com/revenge/dsp/` and
+`usbaudio/src/main/kotlin/com/revenge/usbaudio/`, under the package paths and public FQCNs in
+§2–§14 (the compatibility contract). How classes, helpers and files are decomposed within those
+roots is an implementation choice. Tests live under each module's `src/test`, mirroring main
+packages. Each module's root also carries the `build.gradle.kts` and empty
+`src/main/AndroidManifest.xml` described in §16.
 
 ---
 
@@ -1118,7 +1099,7 @@ All cases are deterministic and use no real audio device. Test packages mirror m
 - No native isochronous USB backend, no USB request/URB handling, no ALSA/AAudio exclusivity.
 - No real bit-perfect or exclusive-mode claim; platform mixer routing is the contract.
 - No changes to `:playback`, `:app`, Hilt component generation, or the media3 version.
-- No new public API beyond the surfaces listed above; keep types `internal` where noted
-  (`UsbDescriptorParser`, `ByteRingBuffer`, biquad channel state).
+- No new public API beyond the surfaces listed above; keep internal helpers (descriptor parser,
+  ring-buffer state, biquad channel state) internal.
 - No SQLite/Room schema exists in these modules; the SharedPreferences document in §7 is the only
   persistence surface that must survive upgrades.

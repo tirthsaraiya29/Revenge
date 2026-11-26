@@ -7,6 +7,15 @@ Source roots: `app/src/main/kotlin`, `app/src/gms/kotlin`, `app/src/main/proto`,
 `core/src/main/kotlin`
 Build contract: `app/build.gradle.kts`
 
+> **Implementation-independence note.** This document is normative only for public API, wire
+> protocols, persistence semantics, permissions, mandated strings/constants, and observable
+> ordering, error and UI behaviour. Any algorithm shape, helper decomposition, data-structure or
+> container choice, file layout, class name, annotation or threading mechanism shown here is
+> illustrative only. Implementers must design these independently; implementations are
+> similarity-audited against the reference, so reproducing its internal structure is not
+> permitted even where this document names it. Exact protocol fields and tags, string literals,
+> identifiers and numeric constants stated here remain normative.
+
 ---
 
 ## 1. Purpose and Scope
@@ -95,7 +104,12 @@ Declared components:
 
 ---
 
-## 3. File Responsibilities
+## 3. Capability Map (illustrative layout)
+
+The file and class names below mirror the reference implementation's layout and are illustrative
+only; implementers may organise code differently. What is normative is the capability, the public
+API, the wire and persistence contract, and the observable behaviour specified in later sections.
+Names are given so each contract can be located, not to mandate files or decomposition.
 
 ### 3.1 Cloud libraries
 
@@ -238,8 +252,9 @@ Invariants:
   `accessToken` is non-null and non-blank.
 - Durations: Navidrome/Subsonic in **seconds** (`NavidromeSong.duration`); Jellyfin in
   **milliseconds** (`JellyfinSong.durationMs`). Consumers must not interchange them.
-- `CloudEntryPoint` exists because the Compose navigation graph is not a Hilt entry point. It must
-  be installable in `SingletonComponent` and return the same singleton repositories as injection.
+- `CloudEntryPoint` lets consumers outside the dependency-injection graph obtain the repositories; it
+  must return the same process-wide repository instances that injection provides. The annotation on
+  the interface above is illustrative of a dependency-injection binding, not a required mechanism.
 
 ### 4.2 Navidrome / Subsonic protocol (`NavidromeApiService`)
 
@@ -293,9 +308,10 @@ Error taxonomy:
   `serverMessage: String`, and its message is `"API Error <code>: <serverMessage>"`.
 - Any thrown transport/serialisation exception is converted to `Result.failure`.
 
-Threading: every suspend API call switches to `Dispatchers.IO`; calls are blocking OkHttp
-`execute()` internally. There is no cancellation check inside an in-flight call; cancellation is
-observed at suspension boundaries.
+Concurrency: every suspend API call must perform its network I/O off the caller's main thread.
+There is no requirement to observe cancellation inside an in-flight request; cancellation is
+observed at suspension boundaries, so a request already in flight may complete before it is
+cancelled.
 
 ### 4.3 Navidrome repository (`NavidromeRepository`)
 
@@ -349,9 +365,9 @@ All data calls require stored credentials; absent credentials produce
 5. Return the number of mirrored songs. Any exception outside the per-call `Result` handling is
    caught and returned as `Result.failure` after logging.
 
-Idempotency is not guaranteed by suppression: entities are inserted/updated by primary key.
-Re-syncing a playlist does not remove songs that disappeared remotely. This is an accepted
-limitation; the spec forbids promising pruning.
+Sync is upsert-only: local entities are matched by primary key. Re-syncing a playlist does not
+remove songs that disappeared remotely. This is an accepted limitation; the spec forbids promising
+pruning.
 
 ### 4.4 Jellyfin protocol (`JellyfinApiService`)
 
@@ -450,8 +466,7 @@ data class SpotifySession(
 ) { val isAuthenticated: Boolean }   // spDc non-blank AND accessToken non-blank
 ```
 
-Persistence keys in the single app `DataStore<Preferences>` (declared in
-`core/.../constants/PreferenceKeys.kt`):
+Persisted preference keys in the app-wide preferences store (key constants are illustrative):
 
 - `spotify_sp_dc` (`SpotifySpDcKey`)
 - `spotify_sp_key` (`SpotifySpKeyKey`)
@@ -472,8 +487,7 @@ suspend fun getValidAccessToken(context): String?
 Token validity uses a 60-second grace: a cached token is used only when
 `expiresAt > now + 60_000`. Otherwise refresh with the stored `sp_dc`/`sp_key`. A refresh returning
 HTTP 401 clears the session. Any other refresh failure returns null but does not delete credentials.
-`clearSession` also clears the WebView cookie session (`clearWebAuthSession`) best-effort and nulls
-`Spotify.accessToken`.
+`clearSession` also clears the WebView cookie session best-effort and nulls `Spotify.accessToken`.
 
 `SpotifyAuth` contract:
 
@@ -534,11 +548,11 @@ replace the recovery source, but must preserve: anonymous-token detection, singl
 
 ### 5.2 GraphQL/REST client (`Spotify`)
 
-Global state:
+Process-wide mutable state (reads and writes from concurrent callers must be safe):
 
-- `@Volatile var accessToken: String?`
-- `@Volatile var logger: ((level: String, message: String) -> Unit)?`
-- `@Volatile var onHashExpired: ((operationName: String) -> Unit)?`
+- `var accessToken: String?`
+- `var logger: ((level: String, message: String) -> Unit)?`
+- `var onHashExpired: ((operationName: String) -> Unit)?`
 - `fun isAuthenticated(): Boolean = accessToken != null`
 - `class SpotifyException(statusCode: Int, message: String, retryAfterSec: Long = 0) : Exception`
 
@@ -575,7 +589,7 @@ GraphQL semantics:
   `SpotifyException(status, "GraphQL error <status>: <body>")`.
 - Any non-persisted GraphQL `errors[0]` throws `SpotifyException(400, "GraphQL: <message>")`.
 - Missing required response roots throw `SpotifyException(500, "Invalid <operation> response")`.
-- All public methods return `Result<T>` via `runCatching`; exceptions above are the failure values.
+- All public methods return `Result<T>`; the exceptions above are the failure values.
 
 REST semantics:
 
@@ -597,7 +611,7 @@ fun updateHashes(remoteHashes: Map<String, RemoteHashEntry>, source: HashSource)
 fun getAll(): Map<String, GqlHashEntry>
 ```
 
-- Thread-safe map; all operations must be safe under concurrent `getHash`/`updateHashes`.
+- All registry operations must be safe under concurrent `getHash`/`updateHashes` calls.
 - Hardcoded defaults exist for exactly these operation names:
   `profileAttributes`, `libraryV3`, `fetchPlaylist`, `fetchLibraryTracks`, `searchDesktop`,
   `queryArtistOverview`, `getAlbum`, `queryWhatsNewFeed`, `addToPlaylist`, `removeFromPlaylist`,
@@ -789,14 +803,15 @@ Duration score (Spotify duration converted to seconds, integer division):
 
 Missing candidate duration or non-positive Spotify duration → 0.5.
 
-Caching: normalised strings and bigram sets use bounded LRU caches (256 entries) guarded by
-synchronisation; results must be identical to uncached computation. `buildSearchQuery` is
+Caching: normalisation and bigram computation may be memoised; any memoisation must be bounded and
+safe under concurrent use, and must produce results identical to uncached computation. `buildSearchQuery` is
 `"<first artist name> <track name>"`, or just the track name when there is no artist.
 Thumbnail selection prefers an image with width in 200..400, else the first image, else null.
 
 ### 5.5 Playback resolution (`SpotifyPlaybackResolver`)
 
-Singleton, open class (overridable for tests). Constructor has no required arguments.
+A single process-wide service; the methods below are its public surface, and tests must be able to
+substitute an alternative implementation.
 
 ```text
 fun clearCache()
@@ -812,9 +827,10 @@ open fun findBestMatch(candidates: List<SongItem>, track: SpotifyTrack,
 
 Semantics:
 
-- Track cache: bounded 1000-entry LRU keyed by Spotify track id, thread-safe. Blank ids are never
-  cached.
-- Concurrency: at most 6 simultaneous resolutions.
+- Resolution results may be cached by Spotify track id. Any such cache must be bounded, safe under
+  concurrent access, must never cache a blank id, and must return the same item for repeated calls
+  with the same id.
+- At most 6 resolutions may run concurrently.
 - `resolveTrack` never throws; logs and returns null on failure.
 - Query order: `"artist title"`, then `"title firstArtist"`, then bare `"title"`, deduplicated and
   non-blank.
@@ -855,7 +871,7 @@ Constants: `WINDOW_BEFORE = 10`, `WINDOW_AFTER = 20`, `PAGE_SIZE = 25`.
 Invariants:
 
 - Preserves source order, duplicates and the selected occurrence.
-- `getInitialStatus()` runs on `Dispatchers.IO`.
+- `getInitialStatus()` may perform network I/O but must not block the main thread.
 - Empty input → empty status, title preserved, index 0.
 - `safeStartIndex = startIndex.coerceIn(0, tracks.lastIndex)`.
 - Initial window is `[max(0, safeStartIndex-10), min(size, safeStartIndex+20))`; the remainder is
@@ -875,8 +891,7 @@ Invariants:
 #### Repository contract
 
 ```text
-@Singleton
-class SpotifyImportRepository(@ApplicationContext context, database: MusicDatabase) {
+class SpotifyImportRepository(context, database: MusicDatabase) {   // process-wide singleton
   suspend fun restoreSession(): SpotifyImportSession
   suspend fun connectWithCookies(spDc: String, spKey: String): SpotifyImportSession
   suspend fun logout()
@@ -946,7 +961,7 @@ Session semantics:
   `SpotifyMapper.matchScore`; a source track with no search result or no candidates is a failure,
   not an exception. Matching preserves source order in the resulting playlist.
 - Empty source (`0` tracks) still mirrors an empty local playlist and reports zero counts.
-- After a source, the local playlist is replaced atomically in one Room transaction:
+- After a source, the local playlist is replaced atomically, as a single transaction:
   - playlist entity keyed by `localPlaylistId`, name = source title, thumbnail = source thumbnail,
     `isEditable=true`, `bookmarkedAt` preserved (or now), `lastUpdateTime=now`;
   - all resolved tracks upserted;
@@ -1064,7 +1079,7 @@ suspend operator fun invoke(hideExplicit: Boolean, fromTimeStamp: Long):
 - If no seed produced recommendations, falls back to the user's top 3 Spotify artists, same flow,
   using a synthetic `Artist` with name/thumbnail and `songCount=0`.
 - Every seed failure is contained; the function returns null only when the final list is empty.
-- Work inside each phase is concurrent (`async`), cancellation propagates.
+- Work inside each phase may run concurrently; cancellation propagates.
 
 ---
 
@@ -1118,8 +1133,8 @@ Methods and parameter names:
 
 `getMobileSession` is the only method that inspects the error envelope; the others return the raw
 HTTP response inside `Result` and do not parse error codes. Callers must treat any failed `Result`
-as a scrobble failure. Session key must be non-null before calling authenticated methods; the
-current implementation uses `sessionKey!!`, so callers must guard with `isInitialized()` and a
+as a scrobble failure. The session key must be non-null before calling authenticated methods;
+calling one without a session is a caller error, so callers must guard with `isInitialized()` and a
 stored session.
 
 `getAuthUrl(token)` = `https://www.last.fm/api/auth/?api_key=<key>&token=<token>`. The web-OAuth
@@ -1157,8 +1172,8 @@ Semantics:
   duration is seconds.
 - A song change resets play time and the `scrobbled` flag. The same metadata id does not restart
   tracking.
-- While playing, a one-second ticker accumulates play-seconds. Pausing stops it; resuming resumes
-  without resetting the accumulated time. `onSongStart` with a new track resets.
+- While playing, play time accumulates in one-second steps. Pausing stops accumulation; resuming
+  continues without resetting the accumulated time. `onSongStart` with a new track resets.
 - Scrobble threshold = `min(floor(durationSeconds * scrobbleDelayPercent), scrobbleDelaySeconds)`.
   It fires once per track, cancels the ticker, and submits a scrobble with
   `timestamp = nowSeconds - playTimeSeconds`.
@@ -1232,8 +1247,7 @@ Wire contract:
 - Strings are JSON-escaped for `\`, `"` and newline.
 - Blank token or blank title returns false without network.
 - HTTP success sets `lastSubmitTime`; any HTTP failure or exception returns false and logs. These
-  methods never throw except cancellation inside the IO context (they use IO directly; callers may
-  cancel the surrounding coroutine).
+  methods never throw except for cancellation of the surrounding coroutine.
 - Called from `MusicService` only when `listenbrainz_enabled` is true and the trimmed token is
   non-empty.
 
@@ -1280,7 +1294,7 @@ Parsing:
 - Errors are logged and returned as `Result.failure`; downstream generators must treat failure as
   "no signal".
 
-`AppModule` binds `RealLastFmTasteApi` to `LastFmTasteApi` as a singleton.
+A single shared implementation must be bound to `LastFmTasteApi` and reused process-wide.
 
 ---
 
@@ -1620,8 +1634,8 @@ Semantics:
 - Queue load retries at most 2 extra times with 1 s × attempt backoff; repeated failure sets
   `autoReconnecting`/error handling and clears buffering.
 - Queue mirroring is tracked per occurrence, not per media id, because the receiver reports only a
-  small window. Queue mutations are serialised with a mutex. Forward/backward extension keeps the
-  Cast queue aligned with the local player around transitions.
+  small window. Queue mutations must be applied in order and never interleave. Forward/backward
+  extension keeps the Cast queue aligned with the local player around transitions.
 - `navigateToMediaIfInQueue` returns true when the target media id exists in the receiver queue and
   the local player is moved to the matching local index; otherwise the caller calls `loadMedia`.
 - Volume is clamped 0..1 and applied to the Cast session; `castVolume` reflects session volume, not
@@ -1664,7 +1678,8 @@ Large bitmaps embedded per item are unreliable.
 - Remote URL → `content://<applicationId>.artwork/art/<base64url(url)>/<signature>`.
   - Base64 is URL-safe, no wrap, no padding.
   - Signature = first 16 bytes of `HMAC-SHA256(per-install secret, url)`, lowercase hex.
-- Mapping is memoised in a 1024-entry LRU.
+- Mapping must be cheap enough to run for every browse item and metadata read; implementations may
+  memoise it. Any memoised mapping must be bounded and must remain correct for every URL.
 - The per-install secret is 32 random bytes persisted in SharedPreferences file
   `automotive_artwork` under `uri_secret`; it survives process restarts so previously browsed URIs
   remain valid.
@@ -1706,10 +1721,10 @@ replaced. They must be cheap (LRU hit) because they run for every browse item an
 
 - Directory `<cacheDir>/automotive_artwork`; filename `sha256Hex(url) + ".jpg"`.
 - Existing non-empty file is returned after touching `lastModified` (LRU recency).
-- Otherwise fetch through Coil at 1024×1024, software bitmaps only, 10 s timeout. On a network
-  error, retry using Coil's disk cache read-only; then compress to JPEG quality 90 on
-  `Dispatchers.Default`.
-- Write to a temp file and rename atomically; delete temp on failure. Never expose partial files.
+- Otherwise fetch the image at 1024×1024 with a 10 s timeout. On a network error, retry from the
+  image loader's read-only disk cache; then encode JPEG at quality 90 off the provider thread.
+- Publish the file atomically (for example by writing a temporary file and renaming it); never
+  expose a partially written file.
 - Trim after write: if the directory exceeds 64 MiB, delete oldest files until at most 48 MiB.
 - Returns null when fetch/compress fails.
 
@@ -1741,26 +1756,27 @@ optimisation and must not block playback.
 
 ## 11. Threading, Cancellation and Concurrency Summary
 
-- **Cloud repositories/API**: `Dispatchers.IO`, blocking OkHttp. `Result`-based; no exceptions
-  escape public suspend methods except cancellation. SharedPreferences writes use `apply()`.
-- **Spotify**: coroutine-based; mutable global token and callbacks are `@Volatile`. Hash registry,
-  resolver cache and mapper caches are synchronised. Resolver limits to 6 concurrent resolutions;
-  import matching to 4; playlist count enrichment to 4.
-- **Import**: repository methods run on IO; ViewModel launches on IO; a `Mutex` serialises source
-  list mutation. `CancellationException` is always rethrown. Progress callbacks may arrive from
-  multiple matching coroutines; consumers must tolerate concurrent updates (the ViewModel uses an
-  atomic `StateFlow.update`).
-- **Scrobbling**: one-second ticker in the caller's scope; now-playing/scrobble jobs cancel and
-  replace each other. `destroy` cancels both.
-- **ListenBrainz**: IO; exceptions converted to false.
-- **Listen Together**: client scope is IO + SupervisorJob; events are a 64-slot
-  `MutableSharedFlow` with `DROP_OLDEST`; manager player mutations are on `Dispatchers.Main`.
-  Reconnect jobs are cancelled/replaced. Wake lock is time-bounded (10 minutes) and released on
-  leave.
-- **Cast**: callbacks arrive on binder/main threads; queue mutations are serialised by a mutex;
-  position polls run in the service scope. No Cast work may run in `foss`.
-- **Automotive artwork**: provider `openFile` is blocking by design; fetch runs `runBlocking` with a
-  10 s timeout inside that binder call. Compression is offloaded to `Dispatchers.Default`.
+- **Cloud repositories/API**: network I/O must not run on the main thread. Public suspend methods are
+  `Result`-based; no exception escapes them except cancellation. Preference writes must not block
+  the main thread and must be visible to subsequent reads in the same process.
+- **Spotify**: process-wide token and callbacks must be safely published to concurrent readers.
+  Registry and cache access must be safe under concurrency. Resolver limits to 6 concurrent
+  resolutions; import matching to 4; playlist count enrichment to 4.
+- **Import**: repository methods must perform I/O off the main thread; mutations of the source list
+  must be serialised. `CancellationException` is always rethrown. Progress callbacks may arrive from
+  multiple matching tasks; consumers must tolerate concurrent updates without losing or duplicating
+  state transitions.
+- **Scrobbling**: time accumulates in one-second steps; a new now-playing/scrobble submission
+  supersedes the previous one. `destroy` stops all outstanding work.
+- **ListenBrainz**: network I/O off the main thread; exceptions converted to false.
+- **Listen Together**: a failure in one background task must not cancel the client. Events are
+  delivered through a 64-event buffer with drop-oldest backpressure. Player mutations run on the
+  main thread. A new reconnect supersedes the previous attempt. Wake lock is time-bounded (10
+  minutes) and released on leave.
+- **Cast**: callbacks may arrive on binder or main threads; queue mutations are applied in order.
+  Position polling continues while a media service is alive. No Cast work may run in `foss`.
+- **Automotive artwork**: provider `openFile` may block its binder thread and must complete within
+  10 s; image encoding must not run on the main thread.
 
 ---
 
@@ -1816,8 +1832,8 @@ optimisation and must not block playback.
 ## 14. Acceptance Tests
 
 All tests must be deterministic: no real network, real clock, or real Spotify/Last.fm/ListenBrainz/
-Jellyfin/Navidrome servers. Use fake HTTP engines, in-memory DataStore/SharedPreferences, a
-Robolectric or JVM `MusicDatabase` substitute, and fixed clocks.
+Jellyfin/Navidrome servers. Use fake HTTP engines, in-memory preference and database substitutes,
+and fixed clocks.
 
 ### 14.1 Cloud models and protocol
 

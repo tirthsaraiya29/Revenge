@@ -30,6 +30,7 @@ dependencies {
     implementation(libs.compose.animation)
     implementation(libs.material3)
     implementation(libs.media3)
+    implementation(libs.media3.hls)
     implementation(libs.media3.ui)
     implementation(libs.media3.okhttp)
     coreLibraryDesugaring(libs.desugaring)

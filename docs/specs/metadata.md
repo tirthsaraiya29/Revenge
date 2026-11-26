@@ -5,6 +5,10 @@ Module: `:metadata`
 Target namespace: `com.revenge.metadata`
 Source root: `metadata/src`
 
+> **Implementation note.** This spec describes required behaviour; any algorithm shape shown is
+> illustrative. Implementers must design their own structure and will be audited for similarity to
+> the baseline.
+
 ---
 
 ## 1. Purpose and Scope
@@ -159,6 +163,10 @@ Equality/copy/`toString` follow Kotlin data-class defaults so the class behaves 
 parse titles themselves. The exposed values and their ordering are API. Matching is
 case-insensitive wherever keyword matching is described.
 
+The rule data is normative: the keyword sets, their precedence order, and the separator/suffix
+strings below are part of the contract. Only the concrete `Regex` source text is illustrative and
+non-ABI; an implementer may author different patterns that match the same described fragments.
+
 ### 5.1 `val JUNK_PATTERNS: List<Regex>`
 
 Patterns identifying text that describes the *upload*, not the song. The list must cover, in this
@@ -217,8 +225,9 @@ or the standalone `EDIT` constant.
 
 ### 5.4 `val ARTIST_SEPARATORS: List<String>`
 
-Ordered multi-artist delimiters. Splitting is performed with each separator in this order (later
-splits apply to every token produced by earlier splits):
+Multi-artist delimiters. The list content and order are API. Tokenisation treats every occurrence
+of any entry as a delimiter; because no entry is a substring of another, the resulting tokens do
+not depend on application order.
 
 `" & "`, `", "`, `" feat. "`, `" feat "`, `" ft. "`, `" ft "`, `" featuring "`, `" and "`, `" x "`,
 `" X "`.
@@ -243,27 +252,38 @@ Pure function. `rawArtist` may be omitted, in which case it is `""`. Both argume
 be non-null Kotlin `String`; `null` is a caller error (Kotlin type system). The function never throws
 for any pair of strings, including empty, blank, or malformed input.
 
-### 6.1 Observable pipeline
+### 6.1 Required behaviour and transformation constraints
 
-The result is computed in the following stages. Stage order is observable and part of the contract.
-"Sanitise" means the Unicode/entity normalisation described in §6.2; "scrub" means §6.6; "scan"
-means §6.4; "split" means §6.7; "normalise title" means §6.8.
+`clean` derives every field of `CleanedMetadata` from the two arguments. The description below
+states the observable transformations and the ordering constraints that affect the result; it is
+not a required decomposition into functions, helpers, or intermediate data structures. Implementers
+may structure the code differently as long as the observable results match.
 
-1. Sanitise `rawTitle` and `rawArtist` independently.
-2. **Artist-prefix peel** (§6.3) on the sanitised title, returning a possibly replaced title and
-   artist.
-3. **Tag scan** (§6.4) on the peeled title → title fragment, junk tags, featured names, version.
-4. **Channel scrub** (§6.6) on the peeled artist.
-5. **Artist split** (§6.7) on the scrubbed artist.
-6. Assemble `CleanedMetadata`:
-   - `rawTitle` / `rawArtist` = the original, untouched arguments.
-   - `cleanTitle` = normalise-title(scan title).
-   - `primaryArtist` = first split token (or `""`).
-   - `cleanArtist` = scrubbed artist if non-blank, else `primaryArtist`.
-   - `featuredArtists` = `(scan.featured + split.others).distinct()`, then remove blank entries and
-     entries equal to `primaryArtist` ignoring case. Order is first-seen order.
-   - `version` = scan version (nullable).
-   - `junkTags` = scan junk in extraction order.
+Working from sanitised copies of both inputs (§6.2):
+
+- **Title/artist attribution (§6.3).** If the sanitised title has an acceptable `"Artist - Title"`
+  form, the title-side part becomes the working title and the candidate artist replaces the
+  incoming artist; otherwise both pass through unchanged.
+- **Title extraction (§6.4).** The tag rules extract junk fragments, featured names, and at most one
+  version from the working title, and remove the matched text from it.
+- **Artist cleanup (§6.6–§6.7).** Channel suffixes are removed from the working artist, then the
+  result is tokenised into artists.
+- Assemble:
+  - `rawTitle` / `rawArtist` = the original, untouched arguments.
+  - `cleanTitle` = the working title after §6.8 normalisation.
+  - `primaryArtist` = first artist token, or `""`.
+  - `cleanArtist` = the channel-scrubbed artist when non-blank, else `primaryArtist`.
+  - `featuredArtists` = the featured names extracted from the title followed by the non-primary
+    artist tokens, de-duplicated preserving first-seen order, with blanks and names equal ignoring
+    case to `primaryArtist` removed.
+  - `version` = the single extracted version, or `null`.
+  - `junkTags` = the extracted junk fragments in extraction order.
+
+Ordering that is observable and therefore normative: sanitisation (§6.2) precedes all matching, so
+decoded entities participate in it; the `"Artist - Title"` decision is made on sanitised text and
+uses the candidate title's behaviour under the §6.4 rules; and the precedence rules stated inside
+§6.4 determine extraction order. The relative order of otherwise independent transformations is not
+part of the contract.
 
 The cleaner is idempotent on already-clean input: cleaning a plain title and plain artist (no
 entities, brackets, dash-prefix, hashtags, pipe suffix, or channel suffix) returns the same title,
@@ -284,84 +304,74 @@ Applied to both inputs before anything else:
 Sanitisation does **not** strip orphan entity fragments such as `amp;`; that behaviour belongs only
 to `ApiText` (§7).
 
-### 6.3 Artist-prefix peel (`"Artist - Title"`)
+### 6.3 `"Artist - Title"` peel
 
-Split the sanitised title on the delimiter `" - "` (space, hyphen-minus, space). If fewer than two
-parts are produced, leave title and artist unchanged.
+Using the sanitised title, locate the first `" - "` delimiter (space, hyphen-minus, space).
 
-Otherwise:
+- If there is none, title and artist pass through unchanged.
+- Otherwise the text before the first delimiter is the candidate artist and the text after it
+  (including any further `" - "`) is the candidate title; both are trimmed.
 
-- `candidateArtist` = first part, trimmed.
-- `candidateTitle` = remaining parts re-joined with `" - "`, trimmed.
-- Accept the split (returning `candidateTitle` as the new title and `candidateArtist` as the new
-  artist) only when the right-hand side is a plausible real title, defined as:
-  - `candidateTitle` is not blank, **and**
-  - `candidateTitle` does not "look like junk" (§6.3.1), **and**
-  - either the incoming artist is blank, or the candidate artist agrees with the known artist:
-    one string contains the other case-insensitively, or the known artist contains `Topic` or
-    `VEVO` (case-insensitive).
+The peel is accepted only when **all** of the following hold:
 
-If accepted, the returned artist is the **candidate artist from the title**, replacing the incoming
-artist (the incoming artist is discarded even if it also carried information). If not accepted,
-both inputs pass through unchanged (the dash stays part of the title).
+- the candidate title is not blank;
+- the candidate title is not junk-only, meaning none of: it starts with `(`, `[`, `【`, or `「`;
+  it becomes blank after the §6.4 removal rules are applied; it is wholly a version marker (matches
+  a `VERSION_PATTERNS` entry); it is wholly a junk match (matches a `JUNK_PATTERNS` entry); it
+  consists solely of the upload/quality words from §5.1;
+- the incoming artist is blank, **or** the candidate artist agrees with the known artist: one
+  contains the other ignoring case, or the known artist contains `Topic` or `VEVO` ignoring case.
 
-#### 6.3.1 `looksLikeJunk(candidateTitle)`
+If accepted, the returned title is the candidate title and the returned artist is the candidate
+artist from the title; the incoming artist is discarded even if it also carried information. If not
+accepted, both inputs pass through unchanged (the dash stays part of the title).
 
-True if any of:
+Observable consequences: `"Alone - (Official Video)"` is not split (the title keeps the dash and
+§6.4 then removes the bracket and trailing dash); `"Part - Two"` with artist `"Someone"` is not
+split; `"Major Lazer & DJ Snake - Lean On feat. MØ"` with blank artist **is** split.
 
-- starts with any opening bracket character: `(`, `[`, `【`, `「`;
-- running the tag scan (§6.4) over the candidate produces a blank title;
-- the candidate matches one of `VERSION_PATTERNS` entirely;
-- the candidate matches one of `JUNK_PATTERNS` entirely;
-- the candidate consists solely of upload/quality tag words (the §5.1 vocabulary).
+### 6.4 Title extraction rules (junk, hashtags, featuring, version)
 
-Consequences: `"Alone - (Official Video)"` is not split (title keeps the dash, then the tag scan
-removes the bracket and trailing dash); `"Part - Two"` with artist `"Someone"` is not split;
-`"Major Lazer & DJ Snake - Lean On feat. MØ"` with blank artist **is** split.
+Applied to the working title, these rules extract `junkTags`, `featuredArtists`, and at most one
+`version`, and remove the matched text. Extraction order is observable and is fixed by the
+precedence below: when rules could match overlapping text, earlier rules win. The result must not
+depend on any particular traversal or intermediate representation.
 
-### 6.4 Tag scan
+Rules, in precedence order:
 
-Operates on one title string and returns `(title, junkTags, featuredArtists, version)`.
+1. **Trailing pipe / `//` suffix.** If the title contains `|` or `//`, take the text after the
+   first occurrence. If that trailing text contains a junk-pattern match or any of the hint words
+   `official`, `video`, `visualizer`, `audio`, `mv`, `pv`, `lyric`, `lyrics`, `remaster`, `hd`, `4k`
+   (case-insensitive, whole-word), record the trimmed trailing text in `junkTags` and remove the
+   separator and trailing text from the title. Otherwise leave the pipe/`//` text in place.
+2. **Hashtags.** Every token of the form `#` followed by word characters, anywhere in the title, is
+   recorded (trimmed, `#` and original case retained) in `junkTags` and removed from the title.
+3. **Bracket groups.** Balanced groups of the forms `( ... )`, `[ ... ]`, `【 ... 】`, or
+   `「 ... 」` are handled in document order. For each, the trimmed inner content is classified by
+   this precedence:
+   1. **Featuring** — the content begins with `feat.`, `feat`, `ft.`, `ft`, or `featuring`
+      (case-insensitive) followed by names. Those names are tokenised (§6.7); the first non-blank
+      name and all remaining names are added to `featuredArtists`, and the whole bracket is removed
+      (replaced by whitespace).
+   2. **Version** — otherwise, if the content matches a `VERSION_PATTERNS` entry (first entry by
+      precedence), record `VersionInfo(type, content)` **only if no version has been recorded yet**,
+      and remove the whole bracket.
+   3. **Junk** — otherwise, if a `JUNK_PATTERNS` entry matches the whole bracket or its inner
+      content, record the inner content (or the whole bracket when the content is blank) in
+      `junkTags`, and remove the whole bracket.
+   4. Otherwise leave the bracket untouched.
+   Only balanced groups are matched; each matched group is removed, so adjacent words do not merge
+   (removal leaves whitespace). Unmatched brackets remain in the title.
+4. **Inline featuring.** After the bracket rules, the first remaining inline `feat.` / `ft.` /
+   `featuring` clause (at the start of the string or preceded by whitespace, with the artist text
+   ending before brackets, hyphens, or pipes) is tokenised (§6.7); its first non-blank name and
+   remaining names are added to `featuredArtists`, and the matched clause is removed from the
+   title.
 
-**a. Trailing pipe suffix.** Locate the first `|` or `//` and the text after it. If that trailing
-text contains a junk pattern match or any of the hint words `official`, `video`, `visualizer`,
-`audio`, `mv`, `pv`, `lyric`, `lyrics`, `remaster`, `hd`, `4k` (case-insensitive, whole-word), then:
+The resulting title is trimmed. `junkTags` and `featuredArtists` preserve extraction order and may
+contain duplicates at this stage; final de-duplication of `featuredArtists` happens in §6.1.
 
-- append the trimmed trailing text to `junkTags`;
-- remove the separator and trailing text from the title.
-
-Otherwise the pipe/`//` text is left in place.
-
-**b. Hashtags.** Every token of the form `#` + word characters, anywhere in the title, is appended
-(trimmed, `#` retained) to `junkTags` and removed from the title.
-
-**c. Bracketed tags.** For every balanced bracket group of form `( ... )`, `[ ... ]`, `【 ... 】`,
-or `「 ... 」`, process the trimmed inner content in this precedence:
-
-1. **Featuring**: if the content begins with `feat.`, `feat`, `ft.`, `ft`, or `featuring`
-   (case-insensitive) followed by names, split those names (§6.7); append the first non-blank name
-   and all remaining names to `featuredArtists`; remove the whole bracket (replaced by a space).
-2. **Version**: else, if a `VERSION_PATTERNS` entry matches the content (first entry by precedence),
-   record `VersionInfo(type, content)` **only if no version has been recorded yet**, and remove the
-   whole bracket.
-3. **Junk**: else, if any `JUNK_PATTERNS` entry matches the whole bracket or its inner content,
-   append the inner content (or the whole bracket when content is blank) to `junkTags`, and remove
-   the whole bracket.
-4. Otherwise leave the bracket untouched.
-
-Nested/unbalanced brackets follow ordinary regex scanning behaviour: the first balanced group is
-processed and removed; unmatched brackets remain. A bracket removed by any rule is replaced with
-whitespace, so adjacent words do not merge.
-
-**d. Inline featuring.** After bracket processing, the first remaining inline `feat.` / `ft.` /
-`featuring` clause (at start of string or preceded by whitespace, artist text terminated before
-brackets, hyphens, or pipes) is split (§6.7), its first non-blank name plus remaining names are
-appended to `featuredArtists`, and the matched clause is removed from the title.
-
-The returned title is trimmed. `junkTags`/`featuredArtists` preserve extraction order and may
-contain duplicates at this stage; final de-duplication happens in §6.1.
-
-### 6.5 Examples of scan precedence (normative)
+### 6.5 Examples of tag precedence (normative)
 
 - `"(Official Music Video)"` → junk, no version.
 - `"(4K)"` / `"[HD]"` → junk.
@@ -375,15 +385,15 @@ contain duplicates at this stage; final de-duplication happens in §6.1.
 
 ### 6.6 Channel scrub
 
-Applied to the peeled artist string:
+Applied to the working artist string, in this order (the order is observable):
 
 1. Trim.
-2. Strip a trailing `- Topic` suffix (case-insensitive) and trim.
-3. If the result ends with `VEVO` (case-insensitive): drop the four trailing characters, trim, then
-   split camel case: insert a space at each lowercase-to-uppercase boundary, except leave the text
-   untouched when it already contains a space, is entirely uppercase, or is entirely lowercase.
-   Example: `"TaylorSwiftVEVO"` → `"Taylor Swift"`; `"AlanWalkerVEVO"` → `"Alan Walker"`.
-4. Strip trailing ` Records` and trailing ` Official` (case-insensitive), trim.
+2. Remove a trailing `- Topic` suffix (case-insensitive) and trim.
+3. If the result ends with `VEVO` (case-insensitive), remove that suffix and trim. If the remaining
+   name contains no space and is neither entirely uppercase nor entirely lowercase, split it into
+   words at each lowercase-to-uppercase boundary. Examples: `"TaylorSwiftVEVO"` → `"Taylor Swift"`;
+   `"AlanWalkerVEVO"` → `"Alan Walker"`; `"ABCVEVO"` → `"ABC"`; `"somebandVEVO"` → `"someband"`.
+4. Remove a trailing ` Records` and a trailing ` Official` (case-insensitive), trimming after each.
 
 No other channel rewriting occurs.
 
@@ -395,11 +405,12 @@ internal behaviour, exposed through clean()
 
 Given a string:
 
-- Blank input → primary `""`, others empty.
-- Split sequentially on every entry of `ARTIST_SEPARATORS` (§5.4) in list order; each split applies
-  to all tokens accumulated so far.
-- Trim every resulting token and drop empty tokens.
-- The first token is the primary artist; the rest are "other" artists in order.
+- Blank input → primary `""`, no other artists.
+- Tokenise on every occurrence of every entry of `ARTIST_SEPARATORS` (§5.4). Splitting on all
+  delimiters simultaneously is equivalent to applying them in any order; the resulting tokens must
+  not depend on application order.
+- Trim every token and drop empty tokens.
+- The first token is the primary artist; the rest are "other" artists in the order they appear.
 
 Examples:
 
@@ -413,9 +424,9 @@ Because `cleanArtist` is the full string, splitting never degrades the display/s
 
 ### 6.8 Title normalisation
 
-For the scanned title: collapse every run of whitespace to a single space, trim, then remove any
-trailing characters from the set hyphen-minus `-`, en dash `–`, em dash `—`, `|`, `/`, and trim
-again. Internal punctuation and internal spaces are preserved. Examples: `"Alone - "` → `"Alone"`;
+For the extracted title (after §6.4): collapse every run of whitespace to a single space, trim, then
+remove any trailing characters from the set hyphen-minus `-`, en dash `–`, em dash `—`, `|`, `/`,
+and trim again. Internal punctuation and internal spaces are preserved. Examples: `"Alone - "` → `"Alone"`;
 `"  Song   Name  "` → `"Song Name"`; `"Part - Two"` stays `"Part - Two"` when no peel occurred.
 
 ### 6.9 Errors and edge cases
@@ -430,6 +441,30 @@ again. Internal punctuation and internal spaces are preserved. Examples: `"Alone
   default locale (use Kotlin/Java `ignoreCase`, not `lowercase()`/`uppercase()` with a locale).
 - Results are deterministic across runs and threads.
 
+### 6.10 Normative edge rules
+
+The following tie-breaks and edge outcomes are observable and normative, independent of how the
+implementation is structured:
+
+1. Only the first version-bearing bracket sets `version`; later version brackets are removed but do
+   not overwrite it.
+2. Only the first inline featuring clause is extracted from the title.
+3. Bracket inner content is classified featuring → version → junk → untouched, in that precedence.
+4. Trailing `|` / `//` text is removed only when it contains a junk match or a §6.4 hint word;
+   otherwise it stays in the title.
+5. Hashtags and junk fragments retain their original case; hashtags retain their leading `#`.
+6. A peel is rejected when the right-hand side is junk-only or version-only; when accepted, the
+   incoming artist is replaced, not merged.
+7. `featuredArtists` de-duplication is first-seen order and case-insensitive only with respect to
+   `primaryArtist`.
+8. VEVO camel-case splitting is suppressed when the remaining name already contains a space or is
+   uniformly cased.
+9. `rawTitle` and `rawArtist` are echoed byte-for-byte and never sanitised.
+10. Empty or whitespace-only input never throws; a title made entirely of junk may yield an empty
+    `cleanTitle`.
+11. Case-insensitive matching is locale-independent.
+12. Cleaning already-clean input is idempotent.
+
 ---
 
 ## 7. `ApiText.clean` Contract
@@ -440,7 +475,7 @@ fun clean(raw: String): String
 
 Normalises a short API display string. Pure, non-throwing, non-null in and out; `""` → `""`.
 
-Processing order (observable):
+Required transformations (the order below is observable and normative):
 
 1. **Numeric character references.** Replace every `&#<decimal>;` and every `&#x<hex>;` (lowercase
    `x`; hex digits either case) with the character for that code point when the value is in

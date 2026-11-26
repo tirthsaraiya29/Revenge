@@ -1,5 +1,8 @@
 # Clean-Room Specification — `:core` cluster `core-models-utils`
 
+> **Required behaviour only.** Any algorithm shape is illustrative; implementers must design
+> independently and are audited for baseline similarity.
+
 Status: M2 specification (behavioural contract only; no implementation bodies).
 Module: `:core` — directory `core`, Gradle path `:core`.
 Cluster scope: `models`, `constants` (DataStore preference keys), `extensions`, `utils`, `ui`, `di`, `ai`, and `com.revenge.core` (domain mapping + repository implementations).
@@ -21,7 +24,9 @@ Module build contract (`core/build.gradle.kts`, must remain):
 - Test dependencies: JUnit 4, `kotlinx-coroutines-test`, Robolectric.
 
 This document describes observable behaviour and API shape. Any implementation satisfying the
-contracts and acceptance tests is acceptable. Statement-level implementation is intentionally absent.
+contracts and acceptance tests is acceptable. Control flow, helper decomposition, container choices
+and loop structure are not specified; where a description names a concrete mechanism it is
+illustrative, not required.
 
 ---
 
@@ -49,45 +54,27 @@ suspend (`AiLogger.log`, DataStore access) inherit the caller's context except w
 
 ---
 
-## 2. Package map and target files the implementer must write
+## 2. Package map and required declarations
 
-Main sources (all under `core/src/main/kotlin/` and preserving the listed package):
+The binding contract is the package names (imported verbatim by downstream modules) and the public
+declarations described below. File names, and how declarations are split across files, are indicative
+only; implementations may organise them differently.
 
-| Target path | Responsibilities |
+Main sources live under `core/src/main/kotlin/` and must be in the listed packages:
+
+| Package | Required public declarations |
 |---|---|
-| `com/revenge/music/models/AccountData.kt` | `@Serializable` account record. |
-| `com/revenge/music/models/ItemsPage.kt` | Generic page of `YTItem` + continuation. |
-| `com/revenge/music/models/lastfm/Authentication.kt` | Last.fm auth/session/error/token models. |
-| `com/revenge/music/models/MediaMetadata.kt` | Playback metadata + `QueueItemSource`, nested `Artist`/`Album`, `isVideoSong`. |
-| `com/revenge/music/models/MediaMetadataMappers.kt` | `MediaMetadata` ⇄ `SongEntity`/`Song`/`SongItem` mapping. |
-| `com/revenge/music/models/PersistPlayerState.kt` | Java-serialisable transport snapshot. |
-| `com/revenge/music/models/PersistQueue.kt` | Java-serialisable queue snapshot + `QueueType`/`QueueData`. |
-| `com/revenge/music/models/SimilarRecommendation.kt` | Local item + recommended `YTItem` list. |
-| `com/revenge/music/models/SponsorBlockModels.kt` | `@Serializable` SponsorBlock segment. |
-| `com/revenge/music/constants/PreferenceKeys.kt` | All preference keys, key-related enums, locale/region tables, key constants. |
-| `com/revenge/music/constants/Dimensions.kt` | Content-type ints, layout `Dp` tokens, animation specs. |
-| `com/revenge/music/constants/HistorySource.kt` | `HistorySource` enum. |
-| `com/revenge/music/constants/LibraryFilter.kt` | `LibraryFilter` enum. |
-| `com/revenge/music/constants/MediaSessionConstants.kt` | Media-session custom action names + `SessionCommand` values. |
-| `com/revenge/music/extensions/ContextExt.kt` | Login/sync/connectivity predicates. |
-| `com/revenge/music/extensions/CoroutineExt.kt` | `Flow` scope collectors, silent handler. |
-| `com/revenge/music/extensions/FileExt.kt` | `File.div`, zip stream helpers. |
-| `com/revenge/music/extensions/ListExt.kt` | Collection reordering/merging and entity filters. |
-| `com/revenge/music/extensions/MediaItemExt.kt` | `MediaItem` construction and metadata extraction. |
-| `com/revenge/music/extensions/PlayerExt.kt` | `Player` transport/queue/track-selection helpers. |
-| `com/revenge/music/extensions/StringExt.kt` | `toEnum`, `toSQLiteQuery`, `toInetSocketAddress`. |
-| `com/revenge/music/extensions/UtilExt.kt` | `tryOrNull`. |
-| `com/revenge/music/utils/DataStore.kt` | `Context.dataStore`, blocking readers, preference delegates. |
-| `com/revenge/music/utils/CrashUtils.kt` | `exceptionReporter` hook and `reportException`. |
-| `com/revenge/music/utils/NetworkConnectivityObserver.kt` | Connectivity callback wrapper. |
-| `com/revenge/music/utils/PlaybackLogManager.kt` | Ring-buffer playback diagnostics. |
-| `com/revenge/music/ui/utils/YouTubeUtils.kt` | `String.resize`, `ytimgFallbackUrl`. |
-| `com/revenge/music/ui/screens/OptionStats.kt` | `OptionStats` enum. |
-| `com/revenge/music/di/Qualifiers.kt` | Hilt `@Qualifier` annotations. |
-| `com/revenge/music/ai/AiLogger.kt` | DataStore-backed AI action log. |
-| `com/revenge/core/mapping/DomainMappers.kt` | Room → `:domain` mapping extensions. |
-| `com/revenge/core/repository/SongRepositoryImpl.kt` | `:domain` `SongRepository` implementation. |
-| `com/revenge/core/repository/PlaylistRepositoryImpl.kt` | `:domain` `PlaylistRepository` implementation. |
+| `com.revenge.music.models` | `MediaMetadata` (nested `Artist`/`Album`, `isVideoSong`), `QueueItemSource`, `AccountData` (`@Serializable`), `ItemsPage`, `SimilarRecommendation`, `SponsorBlockSegment` (`@Serializable`), `PersistPlayerState`, `PersistQueue` (+ `QueueType`/`QueueData`), and the `MediaMetadata` ⇄ `SongEntity`/`Song`/`SongItem` mappers. |
+| `com.revenge.music.models.lastfm` | `Authentication` (+ nested `Session`), `TokenResponse`, `LastFmError`. |
+| `com.revenge.music.constants` | `PreferenceKeys` and the enums/tables it declares, `Dimensions` (content-type ints, layout `Dp` tokens, animation specs), `HistorySource`, `LibraryFilter`, `MediaSessionConstants` (action names + `SessionCommand` values). |
+| `com.revenge.music.extensions` | Login/sync/connectivity predicates; `Flow` scope collectors + `SilentHandler`; `File.div` and zip-stream helpers; collection reordering/merging and entity filters; `MediaItem` construction and metadata extraction; `Player` transport/queue/track-selection helpers; `toEnum`/`toSQLiteQuery`/`toInetSocketAddress`; `tryOrNull`. |
+| `com.revenge.music.utils` | `Context.dataStore`, blocking preference readers and property delegates; `exceptionReporter` hook and `reportException`; `NetworkConnectivityObserver`; `PlaybackLogManager` (+ `PlaybackLogLevel`/`PlaybackLogEntry`). |
+| `com.revenge.music.ui.utils` | `String.resize`, `ytimgFallbackUrl`. |
+| `com.revenge.music.ui.screens` | `OptionStats` enum. |
+| `com.revenge.music.di` | Hilt `@Qualifier` annotations. |
+| `com.revenge.music.ai` | `AiLogger`. |
+| `com.revenge.core.mapping` | Room → `:domain` mapping extensions. |
+| `com.revenge.core.repository` | `SongRepositoryImpl`, `PlaylistRepositoryImpl` (`:domain` repository implementations). |
 
 Tests (suggested; see §13):
 
@@ -291,8 +278,8 @@ on-disk name and must never change. Types are `Boolean` (B), `String` (S), `Int`
 `Float` (F), `Set<String>` (SS). Missing keys are read through callers' defaults; no default is stored
 in the key object itself.
 
-Implementation shape: private factory helpers may be used, but the public type of every key must remain
-`Preferences.Key<T>`. `PreferenceKeys.kt` also declares the enums and tables in §4.2 and §4.4.
+Each key's public type must be `Preferences.Key<T>`; how keys are constructed is unconstrained.
+`PreferenceKeys` also declares the enums and tables in §4.2 and §4.4.
 
 Account / Spotify / app icon
 
@@ -847,10 +834,11 @@ fun List<Album>.filterExplicitAlbums(enabled: Boolean = true): List<Album>
 fun List<Playlist>.filterYoutubeShorts(enabled: Boolean = false): List<Playlist>
 ```
 
-- `reversed(true)` returns `asReversed()` (a live view, no copy); `false` returns `this` unchanged.
-- `move(from, to)` mutates in place by removing the element at `from` and inserting it at `to`
-  (so shifting matches `add(toIndex, removeAt(fromIndex))`), returning the same list instance.
-  Indices are not validated; out-of-range throws `IndexOutOfBoundsException`.
+- `reversed(true)` returns a live reversed view of the receiver (no copy); `false` returns the
+  receiver itself.
+- `move(from, to)` repositions the element at `from` to index `to`, shifting the intervening elements,
+  mutates the receiver in place, and returns the same instance. Indices are not validated; out-of-range
+  throws `IndexOutOfBoundsException`.
 - `mergeNearbyElements` collapses only **adjacent** runs where `key` is equal. Empty input ⇒ empty
   list. The default `key` is the element itself; the default `merge` keeps the first element. Output
   order is input order. Elements are of a non-null type (`T : Any`).
@@ -928,26 +916,23 @@ fun Player.setOffloadEnabled(enabled: Boolean)
   timeline. Side effects are exactly Media3's.
 - `toggleRepeatMode()` — cycles `REPEAT_MODE_OFF → REPEAT_MODE_ALL → REPEAT_MODE_ONE → REPEAT_MODE_OFF`.
   Any other current value throws `IllegalStateException`.
-- `getQueueWindows()` — returns timeline windows ordered by playback position around the current
-  item: previous items first (in order), then the current item, then next items (in order). It walks
-  with `REPEAT_MODE_OFF` and the player's current `shuffleModeEnabled`. Returns an empty list when the
-  timeline is empty, the current index is `C.INDEX_UNSET`, negative, or `>= windowCount`. It never
-  returns more than `windowCount` windows. The returned list is a snapshot copy; windows are mutable
-  Media3 objects owned by the caller.
-- `getCurrentQueueIndex()` — position of the current item in the *unshuffled, non-repeating* playback
-  order, computed by walking previous windows. Returns `-1` for an empty timeline or an unset/
-  out-of-range index. The first item is `0`.
+- `getQueueWindows()` — returns the timeline windows in playback order around the current item:
+  previous items first (in order), then the current item, then following items (in order). When
+  shuffle is enabled the order follows the player's effective shuffled playback order. Returns an
+  empty list when the timeline is empty or the current index is unset, negative, or `>= windowCount`.
+  It never returns more than `windowCount` windows and never repeats a window. The returned list is a
+  snapshot; the window objects are mutable Media3 objects owned by the caller.
+- `getCurrentQueueIndex()` — the current item's position in the *unshuffled, non-repeating* playback
+  order. Returns `-1` for an empty timeline or an unset/out-of-range index. The first item is `0`.
 - `currentMetadata` — `currentMediaItem?.metadata` (see §5.5); `null` when nothing is current.
-- `mediaItems` — a read-only `AbstractList<MediaItem>` view backed by `mediaItemCount` /
-  `getMediaItemAt(index)`. It is live: size and contents reflect the player at access time. Mutating
-  operations are unsupported and throw the standard `AbstractList` exception.
-- `findNextMediaItemById(mediaId)` — scans from `currentMediaItemIndex` **inclusive** to
-  `mediaItemCount - 1` and returns the first item whose `mediaId` equals the argument, else `null`.
-  If the current index is unset it may scan from index 0 upward (no exception).
-- `setOffloadEnabled(enabled)` — rebuilds `trackSelectionParameters` via `buildUpon()`, setting
-  `AudioOffloadPreferences.audioOffloadMode` to `AUDIO_OFFLOAD_MODE_ENABLED` when `enabled` is true
-  and `AUDIO_OFFLOAD_MODE_DISABLED` otherwise. All other track-selection state is preserved. No-op
-  otherwise; never throws for a null player state.
+- `mediaItems` — a read-only, live view of the player's media items: size and contents reflect the
+  player at access time. Mutating operations are unsupported and throw
+  `UnsupportedOperationException`.
+- `findNextMediaItemById(mediaId)` — returns the first item at or after `currentMediaItemIndex` whose
+  `mediaId` equals the argument, else `null`. When the current index is unset it searches from the
+  start (no exception).
+- `setOffloadEnabled(enabled)` — sets the player's audio offload mode to enabled/disabled accordingly
+  while preserving all other track-selection parameters. Never throws for a null player state.
 
 ---
 
@@ -966,8 +951,8 @@ inline fun <reified T : Enum<T>> enumPreference(context: Context, key: Preferenc
 - `Context.dataStore` is the single process-wide preferences store named `"settings"`; repeated access
   on the same application context must return the same underlying store (the delegate guarantees one
   store per file name). Consumers must not create a second store with the same name.
-- `operator get(key)` — blocks on `Dispatchers.IO` reading the **first** value, returns `null` when
-  the key is absent **or any read throws** (I/O errors, corruption, cancellation surfaces are
+- `operator get(key)` — performs a blocking read of the current stored value and returns it, or
+  `null` when the key is absent **or any read throws** (I/O errors, corruption and cancellation are
   swallowed). It must not be called from the main thread by new code.
 - `get(key, defaultValue)` — same, but returns `defaultValue` on absence/failure.
 - `preference(context, key, default)` — returns a property delegate whose **getter** performs the
@@ -999,14 +984,13 @@ class NetworkConnectivityObserver(context: Context) {
 }
 ```
 
-- A conflated, hot event stream: `networkStatus` emits `true` on `onAvailable`, `false` on `onLost`.
-  Because the channel is conflated and exposed via `receiveAsFlow`, a slow collector may miss
-  intermediate values; it is not a replay source. Values are delivered to one active collector at a
-  time (fan-out is not broadcast semantics).
-- Construction registers a `NetworkCallback` for a request requiring `NET_CAPABILITY_INTERNET` and
+- `networkStatus` is a hot, conflated stream: it emits `true` when connectivity becomes available and
+  `false` when it is lost. It is not a replay source, a slow collector may miss intermediate values,
+  and values are delivered to one active collector at a time (not broadcast fan-out).
+- Construction requests connectivity callbacks for a network requiring `NET_CAPABILITY_INTERNET` and
   `NET_CAPABILITY_NOT_RESTRICTED`. If registration throws (restricted profile / missing permission),
   construction must not throw: it emits `true` (assume usable) and continues.
-- After registration, `init` emits the current state from `isCurrentlyConnected()`.
+- The stream's initial value reflects `isCurrentlyConnected()` at construction.
 - `isCurrentlyConnected()` returns `true` iff the active network has both `NET_CAPABILITY_INTERNET`
   and `NET_CAPABILITY_VALIDATED`. Any exception ⇒ `false`.
 - `unregister()` unregisters the callback and must never throw (unknown callback is swallowed).
@@ -1045,8 +1029,8 @@ fun String.toSQLiteQuery(): SimpleSQLiteQuery
 fun String.toInetSocketAddress(): InetSocketAddress
 ```
 
-- `toEnum` — `null` ⇒ `defaultValue`. Otherwise `enumValueOf<T>(this)` (case-sensitive, exact constant
-  name); `IllegalArgumentException` ⇒ `defaultValue`. Other exceptions (none expected) propagate.
+- `toEnum` — matches the string to an enum constant by exact, case-sensitive name; `null` or an
+  unknown name ⇒ `defaultValue`. Other exceptions (none expected) propagate.
 - `toSQLiteQuery` — wraps the string as `SimpleSQLiteQuery` with no bind args.
 - `toInetSocketAddress` — splits on `":"` into exactly host and port and calls
   `InetSocketAddress.createUnresolved(host, port)`, i.e. **no DNS resolution**. A missing port yields
@@ -1074,19 +1058,20 @@ fun ytimgFallbackUrl(url: String): String?
 ```
 
 **`resize(width, height)`** — rewrites a thumbnail URL to a size variant. If both arguments are
-`null`, returns the receiver unchanged. Otherwise, by host (`contains` matching, case-sensitive):
+`null`, returns the receiver unchanged. Otherwise, matching the host by case-sensitive substring,
+the result is:
 
-1. URL contains `i.ytimg.com` — replace every occurrence of the tokens `default`, `mqdefault`,
-   `hqdefault`, `sddefault`, `maxresdefault`, `hq720` followed by `.jpg` with `maxresdefault.jpg`
-   when `(width ?: 0) >= 1200`, else `hqdefault.jpg`. The rest of the URL (query included) is
-   preserved. (Normal URLs contain one such token; all matches are replaced.)
-2. URL contains `googleusercontent.com` **and** `=w` — take the substring before `=w` and append
-   `=w{S}-h{S}` where `S = 1200` when `(width ?: 0) >= 1000 || (height ?: 0) >= 1000`, else `500`.
-3. URL contains `yt3.ggpht.com` — take the substring before the first `=` and append `=s{N}` where
+1. Contains `i.ytimg.com` — every occurrence of a size token `default`, `mqdefault`, `hqdefault`,
+   `sddefault`, `maxresdefault` or `hq720` immediately followed by `.jpg` becomes
+   `maxresdefault.jpg` when `(width ?: 0) >= 1200`, else `hqdefault.jpg`. The rest of the URL
+   (path and query) is preserved.
+2. Contains `googleusercontent.com` **and** `=w` — the receiver truncated before `=w`, followed by
+   `=w{S}-h{S}`, where `S = 1200` when `(width ?: 0) >= 1000 || (height ?: 0) >= 1000`, else `500`.
+3. Contains `yt3.ggpht.com` — the receiver truncated before the first `=`, followed by `=s{N}`, where
    `N = width ?: height`. (Avatar ids may contain `-s`; only the first `=` separates the size.)
-4. Receiver matches the regex `https://lh\d\.googleusercontent\.com/.*` entirely — take the
-   substring before the first `=` and append `=w{S}-h{S}` with the same threshold as case 2.
-5. Otherwise return the receiver unchanged.
+4. The whole receiver matches `https://lh<digits>.googleusercontent.com/…` — the receiver truncated
+   before the first `=`, followed by `=w{S}-h{S}` with the same threshold as case 2.
+5. Otherwise the receiver is returned unchanged.
 
 The function never throws for arbitrary strings; it is pure and allocations-only. Unknown hosts and
 URLs without the expected suffix are returned verbatim.
@@ -1131,10 +1116,10 @@ object AiLogger {
 - Appends a record `{ timestamp: Long (epoch millis), action: String, details: String }` to a JSON
   array stored as a `String` under DataStore key `"ai_action_logs"`. The key is private to this file
   and is not part of `PreferenceKeys`.
-- Reads the current array; if the stored value is absent, use `"[]"`; if it is not valid JSON or not
-  an array, start from an empty array.
-- After appending, if the array length exceeds **50**, keep only the last 50 entries (newest kept,
-  oldest dropped). Persist with `dataStore.edit`.
+- If the stored value is absent it is treated as `"[]"`; if it is not valid JSON or not an array, the
+  log starts fresh from an empty array.
+- After appending, if the array length exceeds **50**, only the last 50 entries are kept (newest kept,
+  oldest dropped) and the result is persisted.
 - Any exception is logged via Timber and otherwise swallowed; the function never propagates an error
   to callers and is safe to call fire-and-forget. It suspends only for the DataStore read/edit.
 - Concurrent calls may race (read-modify-write); last writer wins. No locking is required by the
@@ -1178,9 +1163,9 @@ Mapping semantics:
 - `SongEntity.toDomain()` (entity only, no relations): `artists = emptyList()` always;
   `album = albumId?.let { AlbumRef(it, albumName.orEmpty()) }`; thumbnail resolution:
   - `thumbnailUrl != null` ⇒ use it;
-  - else if `isLocal` ⇒ parse `albumId` by stripping a leading `"LOCAL_ALBUM_"` and converting to
-    `Long`; when the result is `> 0`, use
-    `"content://media/external/audio/albumart/<mediaStoreAlbumId>"`; otherwise use the song `id`;
+  - else if `isLocal` and `albumId` has the form `"LOCAL_ALBUM_<n>"` with a numeric `<n> > 0` ⇒
+    `"content://media/external/audio/albumart/<n>"`;
+  - else if `isLocal` ⇒ the song `id`;
   - else `null`.
   No trimming/normalisation beyond `orEmpty()`.
 - `Playlist.toDomain()`: `id/name` from `playlist.*`; `songCount` from the relation;
@@ -1216,14 +1201,11 @@ Contract:
   most-recent-first by event row id descending), converts each `event.song` with `Song.toDomain()`,
   de-duplicates by domain `id` keeping the **first** (most recent) occurrence, then takes at most
   `limit`. `limit <= 0` yields an empty list. Fewer than `limit` when history is short.
-- `updateLiked(id, isLiked)` — dispatches a write block via `database.query { }` (the database's query
-  executor), calling the DAO update with `likedDate = LocalDateTime.now()` when `isLiked` is true and
-  `null` otherwise. Because `MusicDatabase.query` uses `executor.execute`, the call enqueues the work
-  and returns before it runs; errors inside the block surface on the executor thread, not to the
-  caller. The `suspend` modifier does not add a dispatcher hop.
-- `incrementPlayTime(id, durationMs)` — the same enqueue semantics; adds `durationMs` to
-  `totalPlayTime` via the DAO. Negative `durationMs` is passed through (the DAO applies arithmetic);
-  the repository does not clamp.
+- `updateLiked(id, isLiked)` — schedules an asynchronous write (it does not block the caller) that
+  sets `liked` and sets `likedDate` to the current wall-clock time when `isLiked` is true, or clears
+  the date otherwise. Write failures surface on the write path and are not propagated to the caller.
+- `incrementPlayTime(id, durationMs)` — the same asynchronous, non-propagating write semantics; adds
+  `durationMs` to `totalPlayTime`. Negative values are passed through unclamped.
 
 The class holds no mutable state and is safe to share; flows are cold Room flows that re-emit on
 table changes.
@@ -1240,23 +1222,18 @@ suspend fun addSongToPlaylist(playlistId: String, songId: String)
 suspend fun removeSongFromPlaylist(playlistId: String, songId: String)
 ```
 
-- `getAllPlaylists()` — maps `database.playlistsByNameAsc()`. That DAO query returns only playlists
-  with `bookmarkedAt IS NOT NULL` (saved/bookmarked), ordered by `name` ascending, with `songCount`
-  computed by a correlated count subquery. Mapped via `Playlist.toDomain()`. Empty when none.
-- `getPlaylistSongs(playlistId)` — maps `database.playlistSongs(playlistId)`
-  (`Flow<List<PlaylistSong>>`, ordered by `position`) through `it.song.toDomain()`. Unknown playlist
-  emits an empty list.
-- `addSongToPlaylist(playlistId, songId)` — dispatches a block via `database.query { }` (enqueued on
-  the query executor; returns before it runs): read existing maps for the playlist with position
-  `>= 0` (ordered by position), compute `nextPosition = (max position) + 1` (or `0` when none), and
-  insert a `PlaylistSongMap` with the new id auto-generated, the given ids, and `nextPosition`. The
-  DAO insert uses `@Insert(onConflict = IGNORE)` and its public wrapper **catches every exception and
-  discards it** (only printing a stack trace): duplicate membership, foreign-key violations for
-  unknown playlist/song, and other SQLite errors never propagate to the caller.
-- `removeSongFromPlaylist(playlistId, songId)` — dispatches via `database.query { }`: fetch maps for
-  the given `songId`, keep those whose `playlistId` matches, and delete each. Removes **all**
-  duplicate memberships; absent membership is a no-op success. As with the other writes, the caller
-  returns before the block executes and executor-thread errors are not propagated.
+- `getAllPlaylists()` — emits only saved/bookmarked playlists (`bookmarkedAt` non-null), ordered by
+  `name` ascending, each mapped via `Playlist.toDomain()` with its `songCount` populated. Empty when
+  none exist.
+- `getPlaylistSongs(playlistId)` — emits the playlist's songs ordered by `position`, each mapped via
+  `it.song.toDomain()`. Unknown playlist emits an empty list.
+- `addSongToPlaylist(playlistId, songId)` — schedules an asynchronous write that appends the song with
+  `position` equal to the current maximum position for that playlist plus one, or `0` when the
+  playlist has no entries. Conflicts and failures (duplicate membership, unknown playlist/song,
+  foreign-key violations, other SQLite errors) are swallowed and never propagate to the caller.
+- `removeSongFromPlaylist(playlistId, songId)` — schedules an asynchronous write that removes **all**
+  memberships of `songId` in that playlist; absent membership is a no-op success. As with the other
+  writes, write-time errors are not propagated to the caller.
 
 ---
 

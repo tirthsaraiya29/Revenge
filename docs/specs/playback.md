@@ -1,5 +1,8 @@
 # Clean-Room Specification — `:playback`
 
+> **Required behaviour only.** Any algorithm shape is illustrative; implementers must
+> design independently and are audited for baseline similarity.
+
 Status: M2 specification (behavioural contract only).
 Module: `:playback` — directory `playback`, Gradle path `:playback`.
 Declared dependencies: `implementation(project(":core"))`,
@@ -10,8 +13,9 @@ Android: `namespace = "com.revenge.playback"`, `compileSdk = 37`, `minSdk = 26`,
 Java 21 source/target, Kotlin toolchain 21.
 
 This document describes observable behaviour and API shape. It intentionally omits
-statement-level implementation. Any implementation that satisfies the contracts and
-acceptance tests is acceptable.
+statement-level implementation: any algorithm shape described here is illustrative,
+and any implementation that satisfies the contracts and acceptance tests is
+acceptable.
 
 ---
 
@@ -138,14 +142,14 @@ Contract:
    - provider returns `true` -> `usbSink`, except when a configuration exists and
      `usbSink.supportsFormat(configuredFormat)` is `false`, in which case `defaultSink`.
    - if the target is identical (`===`) to `activeSink`, return without side effects.
-3. On a real switch: set `activeSink` first, then `previous.pause()` and
-   `previous.flush()`, then if a last configuration exists and the new sink supports
-   its format, `wanted.configure(format, bufferSize, outputChannels)`. If the sink was
-   playing (`play()` was the last transport call and no `pause()`/`reset()` followed),
-   call `wanted.play()`.
-4. `configure(inputFormat, specifiedBufferSize, outputChannels)` records the
-   configuration first, calls `reselect()`, then configures the now-active sink with the
-   same arguments. Reconfiguration must always be replayed after a switch.
+3. On a real switch the new sink becomes active first; the previous sink is paused and
+   flushed; if a last configuration exists and the new sink supports its format it is
+   configured with the same format, buffer size and output channels; and if output was
+   playing at the time of the switch (`play()` was the last transport call and no
+   `pause()`/`reset()` followed) the new sink is asked to play.
+4. `configure(inputFormat, specifiedBufferSize, outputChannels)` reconfigures the
+   active sink; the configuration is replayed onto every sink that becomes active
+   later. A switch must never lose a configuration already applied.
 5. `setListener`: register on both sinks. `supportsFormat`, `getFormatSupport`,
    `getCurrentPositionUs`: delegate to `activeSink`.
 6. `play`: `reselect()`, mark playing, `activeSink.play()`. `pause`: clear playing and
@@ -187,22 +191,22 @@ class ChunkingDataSourceFactory(
   `min(chunkSize, remaining)` when the total is known and `chunkSize` when unknown.
   A non-positive `chunkSize` is not validated; callers must pass a positive value.
 - `read(buffer, offset, readLength)`:
-  1. `readLength == 0` -> return 0.
-  2. not open, or zero bytes remaining (known length) -> `C.RESULT_END_OF_INPUT`.
-  3. Delegate to the upstream. Positive byte counts increment `consumed` and are
-     returned. `InterruptedIOException` propagates immediately without retry.
-  4. Any other `Exception` is remembered, the upstream is closed best-effort, and a
-     fresh chunk is opened at the current position.
-  5. A reopened chunk that immediately returns bytes succeeds. A zero/negative read
-     after reopen counts as an attempt.
-  6. `InvalidResponseCodeException` with HTTP 416 -> `RESULT_END_OF_INPUT`.
-     `DataSourceException` with `POSITION_OUT_OF_RANGE` -> `RESULT_END_OF_INPUT`.
-     Other errors retry up to `maxRetries` attempts.
-  7. Between attempts sleep `attempt * 50 ms`, capped at `250 ms`. An interrupted
-     sleep restores the interrupt flag and throws `InterruptedIOException`.
-  8. After retries, if the total length was known and `consumed < expectedLength`,
-     throw `IOException` (premature EOF). Else if an error was seen, throw
-     `IOException`; else return end-of-input.
+  - `readLength == 0` returns 0; a closed source or a known-length read with zero
+    bytes remaining returns `C.RESULT_END_OF_INPUT`.
+  - Positive upstream byte counts advance the consumed position and are returned
+    unchanged. `InterruptedIOException` propagates immediately without retry.
+  - Any other failure is recoverable: the wrapper reopens at the current absolute
+    position and retries, up to `maxRetries` attempts. Retrying must never skip or
+    duplicate bytes; a short or empty read after reopen consumes an attempt but does
+    not end the stream while bytes remain.
+  - Between attempts the wrapper backs off `attempt * 50 ms`, capped at `250 ms`; an
+    interrupted backoff restores the thread's interrupt flag and throws
+    `InterruptedIOException`.
+  - `InvalidResponseCodeException` with HTTP 416 and `DataSourceException` with
+    `POSITION_OUT_OF_RANGE` are terminal end-of-input, not failures.
+  - After the retry budget: a known total length with `consumed < expectedLength`
+    throws `IOException` (premature EOF); otherwise a recorded failure surfaces as
+    `IOException`; otherwise the result is end-of-input.
 - `getUri()` returns `upstream.uri` (nullable). `close()` marks closed and closes the
   upstream once. A closed source must not be reopened; further reads return end.
 - Consumption is stateful and single-threaded. The source must not be shared between
@@ -249,14 +253,16 @@ class PlaybackCutoffGuard(
 - State is a single per-track retry counter, initially 0. `onTrackChanged` resets it;
   the `mediaId` argument is accepted but unused. The guard is not thread-safe; the
   service calls it from one thread.
-- `verifyTrackCompletion` decision order:
-  1. `position = max(currentPositionMs, 0)`.
-  2. If `playerDurationMs > 0` and `playerDurationMs - position <= thresholdMs`,
-     return `AllowEnd`. The decoder's own duration wins over longer metadata.
-  3. If `canonicalDurationMs <= 0`, return `AllowEnd` (unknown/live duration).
-  4. `missing = canonicalDurationMs - position`. If `missing <= thresholdMs` or
-     `retries >= maxRetriesPerTrack`, return `AllowEnd`.
-  5. Increment retries and return `RecoverPrematureCutoff(position, retries)`.
+- `verifyTrackCompletion` evaluates, in this order:
+  1. A negative current position is treated as 0.
+  2. If the player reports a positive duration within `thresholdMs` of the position,
+     return `AllowEnd`; the decoder's own duration wins over longer metadata.
+  3. An unknown/non-positive canonical duration (`<= 0`) returns `AllowEnd` (unknown or
+     live duration).
+  4. If the canonical duration is within `thresholdMs` of the position, or the retry
+     budget `maxRetriesPerTrack` is exhausted, return `AllowEnd`.
+  5. Otherwise consume one retry and return
+     `RecoverPrematureCutoff(position, retriesConsumed)`.
 - `getRetryCount` returns the current counter.
 - `computeEffectiveDuration`: canonical seconds are clamped to at least 0 and
   multiplied by 1000. If positive, return that. Otherwise return `playerDurationMs`
@@ -513,58 +519,55 @@ Construction and mode:
 - `radio(song)` returns `YouTubeQueue(WatchEndpoint(videoId = song.id), song)`; the
   song is the preload item.
 
-`getInitialStatus()`:
+`getInitialStatus()` starts a fresh session: any previous continuation and the session
+radio deduplication set are discarded.
 
-1. Reset `continuation` to null and reset the session radio deduplication set.
-2. If `endpoint.videoId` starts with `"addon_"` and `preloadItem != null`, mark an
-   addon request and resolve a real endpoint by searching
-   `"<title> <first artist name>"` with `YouTube.SearchFilter.FILTER_SONG`, taking the
-   first `SongItem`. Search failure (including cancellation) must not abort: cancel
-   rethrows, other errors are ignored and the original endpoint is used.
-3. Attempt `YouTube.next(endpoint, continuation)` up to 4 times (initial attempt plus
-   3 retries). On each success, adopt `page.endpoint` and `page.continuation`.
-4. Determine `current = page.items.getOrNull(page.currentIndex ?: 0)` and
-   `episodeRadio = current?.isPodcastEpisode == true`.
-5. If `episodeRadio` and any `preloadItem.artist.id` satisfies
-   `PodcastPage.isShowBrowseId(id)`, return a single-item status:
-   `title = page.title`, `items = listOf(preloadItem.toMediaItem())`,
-   `mediaItemIndex = 0`, `continuation = null`. A known podcast show must continue with
-   its next episode, never with music radio.
-6. Apply deduplication only in radio mode, using a session-wide
-   `RadioQueuePageFilter`. If `episodeRadio`, keep only podcast episodes from the
-   deduplicated page.
-7. Map the kept songs to `MediaItem`s. If this is an addon request and the mapped list
-   is empty, insert the preload item; if non-empty, replace element 0 with the preload
-   item (preserving its position as the requested track).
-8. Return `Status(title = page.title, items = mapped,
-   mediaItemIndex = if (addon) 0 else indexOfFirst { it.id == current?.id }.coerceAtLeast(0))`.
-9. Retry rule: on the first failure only, if the endpoint has a `videoId` and no
-   `playlistId`, rewrite the endpoint to
-   `WatchEndpoint(videoId = same, playlistId = "RDAMVM" + videoId)` and retry. Other
-   failures consume the remaining attempts.
-10. If all attempts fail and this is an addon request with a preload item, return
-    `Status(title = preloadItem.title, items = listOf(preloadItem.toMediaItem()),
-    mediaItemIndex = 0)`. Otherwise rethrow the last error, or
-    `IllegalStateException("Failed to get initial status")` if none was recorded.
-    `CancellationException` always propagates immediately.
+- **Addon endpoints.** When the endpoint's `videoId` starts with `"addon_"` and a
+  `preloadItem` exists, the queue first resolves a real endpoint by searching
+  `"<title> <first artist name>"` with `YouTube.SearchFilter.FILTER_SONG` and taking
+  the first `SongItem`. A failed search is non-fatal: other errors are ignored and the
+  original endpoint is used; `CancellationException` still propagates.
+- **Fetching.** The first page is requested with up to 4 attempts (initial plus 3
+  retries); every success adopts the page's endpoint and continuation. On the first
+  failure only, an endpoint that has a `videoId` and no `playlistId` is rewritten to
+  `WatchEndpoint(videoId = same, playlistId = "RDAMVM" + videoId)` and retried; other
+  failures consume the remaining attempts.
+- **Radio deduplication.** In radio mode (playlist id absent or starting with `"RD"`),
+  items already emitted in the session are dropped in input order, first occurrence
+  winning; when the page's current item is a podcast episode, only podcast episodes
+  survive that step. If the current item is a podcast episode and any `preloadItem` artist id
+  satisfies `PodcastPage.isShowBrowseId`, the result is instead a single-item status
+  carrying `page.title`, `[preloadItem.toMediaItem()]`, index 0 and a cleared
+  continuation: a known podcast show continues with its next episode, never with music
+  radio.
+- **Selection and addon replacement.** The status starts at the mapped position of the
+  page's current item (by id), clamped to at least 0, or at index 0 for an addon
+  request. For an addon request the preload item becomes element 0 when the mapped
+  list is non-empty and is the only item when it is empty, preserving it as the
+  requested track.
+- The returned `Status` carries `page.title`, the mapped items and that selection
+  index.
+- If every attempt fails: an addon request with a preload item falls back to a
+  single-item status titled by the preload item at index 0; otherwise the last error
+  is rethrown, or `IllegalStateException("Failed to get initial status")` when none
+  was recorded. `CancellationException` always propagates immediately.
 
 `hasNextPage()` is `continuation != null`.
 
 `nextPage()`:
 
-- If there is no continuation, return `emptyList()`.
-- Keep a set of continuation tokens visited during this call. At most 5 page hops per
-  call. If the next continuation was already visited, set `continuation = null` and
-  return `emptyList()` (a page pointing to itself must not loop).
-- For each hop, attempt `YouTube.next(endpoint, activeContinuation)` up to 4 times.
-  On success adopt `page.endpoint`; set `continuation = page.continuation` unless it
-  equals the token just used (self-loop guard).
-- Apply radio deduplication in radio mode and episode filtering as above.
-  - Non-empty result: map and return.
-  - Empty result: continue to the next hop (another page may have fresh tracks).
-- On exception: cancellation rethrows; other failures retry within the hop. After the
-  final failure the last exception is thrown.
-- After 5 hops without a non-empty result, return `emptyList()`.
+- With no continuation, return `emptyList()`.
+- At most 5 page fetches per call. A fetched continuation that repeats a token already
+  used in this call terminates the sequence: the stored continuation is cleared and the
+  call returns `emptyList()` (a page pointing to itself must not loop).
+- Each fetch is attempted up to 4 times. A success adopts the page endpoint and stores
+  the page continuation unless it equals the token just used. A failure consumes the
+  remaining attempts; `CancellationException` propagates; if all attempts fail the last
+  error is thrown.
+- Pages pass through the same radio deduplication and podcast handling as
+  `getInitialStatus`. A page that yields no items is skipped in favour of the next
+  fetch; the first non-empty page is mapped and returned. Five consecutive pages
+  without items yield `emptyList()`.
 
 ### 4.6 `YouTubeAlbumRadio`
 
@@ -687,24 +690,21 @@ class LocalMixQueue(
 ```
 
 - `preloadItem = null`; title constant is `"Mix from Playlist"`.
-- `getInitialStatus()` on `Dispatchers.IO`:
-  1. Read the first emission of `database.playlistSongs(playlistId)` and collect
-     `map.songId` in playlist order.
-  2. Build a local mix: for each playlist song id in order, flat-map
-     `database.relatedSongs(id)`, remove songs whose id is in the playlist id list,
-     `distinctBy { it.id }`, then `take(maxMixSize)`.
-  3. If the local mix is non-empty, return `Status(title = "Mix from Playlist",
-     items = local mix mapped, mediaItemIndex = 0)`.
-  4. If no playlist songs exist, return `Status("Mix from Playlist", emptyList(), 0)`.
-  5. Otherwise take the first playlist song id as the seed. Call
-     `YouTube.next(WatchEndpoint(videoId = seedId)).getOrNull()`.
-     - `fromNext` = its `items` mapped, filtered to ids not in the playlist.
-     - `fromRelated` = if `relatedEndpoint != null`, `YouTube.related(endpoint)`
-       `.getOrNull()?.songs` mapped and filtered the same way.
-     - Return `fromNext + fromRelated`, `distinctBy { it.mediaId }`, then
-       `take(maxMixSize)`, index 0.
-  6. YouTube failures are swallowed (`getOrNull`); the flow still returns a status.
-     Database failures and cancellation propagate.
+- `getInitialStatus()` on `Dispatchers.IO` builds a finite mix:
+  - Read the playlist's song ids in playlist order (first emission of
+    `database.playlistSongs(playlistId)`).
+  - For each playlist song id, gather `database.relatedSongs(id)`. The mix is those
+    songs in playlist order, excluding any whose id is a playlist song, deduplicated
+    by id (first occurrence wins), capped at `maxMixSize`.
+  - If the mix is non-empty, return it with title `"Mix from Playlist"` and index 0.
+  - If the playlist has no songs, return the same title with an empty list and index 0.
+  - If the playlist has songs but the local mix is empty, fall back to YouTube, seeded
+    by the first playlist song id: the mix is the songs from
+    `YouTube.next(WatchEndpoint(videoId = seedId))` followed by the songs from its
+    `relatedEndpoint` (`YouTube.related`), both filtered to exclude playlist ids,
+    deduplicated by media id across the combined list and capped at `maxMixSize`.
+  - YouTube failures are swallowed (the call still returns a status); database failures
+    and cancellation propagate.
 - `hasNextPage() = false`; `nextPage()` returns `emptyList()`. The mix is finite; the
   service's related-song extension handles continuation.
 
@@ -859,19 +859,17 @@ State and decision contract:
 - `triggerCrossfadeNow(primary)`: if not fading and state is `Armed`, begin the fade
   immediately. No-op otherwise.
 - Fade:
-  - Requires a standby player and no fade already running; otherwise no-op.
-  - Capture the primary, set `isCrossfading = true`, and set the incoming
-    `playWhenReady = true`.
-  - Cancel any previous fade job, then launch on `scope`:
-    - `steps = (fadeDurationMs / 20).toInt().coerceAtLeast(10)`.
-    - For step `0..steps` inclusive, `progress = step / steps`; publish
-      `Fading(progress)`; apply equal-power gains to the primary (outgoing) and
-      incoming players; delay 20 ms between steps. `progress` reaches exactly 1.
-    - Volume writes are wrapped so a released player cannot abort the fade.
-    - After the loop restore both volumes to 1, set `isCrossfading = false`,
-      `armedState = Idle`, detach the listener, forget the standby/primary references,
-      and invoke `onCrossfadeSwapped(primary, incoming)`.
-  - The incoming player is not released by the scheduler.
+  - Requires an armed standby player and no fade already running; otherwise no-op.
+  - While fading, `isCrossfading` is true and the incoming player plays.
+  - Equal-power gains move the outgoing player from unity to silence and the incoming
+    player from silence to unity while `Fading(progress)` rises monotonically to
+    exactly 1 over the configured fade duration (roughly a 20 ms update cadence).
+    Writes against a released player must not abort the fade.
+  - On completion both volumes are restored to unity, `isCrossfading` becomes false,
+    `armedState` becomes `Idle`, the listener is detached, the standby/primary
+    references are forgotten, and `onCrossfadeSwapped(primary, incoming)` is invoked
+    exactly once.
+  - The incoming player is never released by the scheduler.
 - `cancelCrossfade()`:
   - Cancel and forget the fade job, set `isCrossfading = false`, `armedState = Idle`.
   - If a fade was in progress, restore the primary's volume to 1.
@@ -978,30 +976,27 @@ object BeatAnalyzer {
 - Analysis window: the middle 18 s of the track when the duration is known, otherwise
   from the start; seeks to the previous sync point. Fewer than
   `1024 * 8` decoded mono samples means null.
-- Pipeline (behaviour, not implementation):
+- Analysis contract (behaviour, not implementation):
   1. Decode a mono PCM window.
-  2. Build a spectral-flux onset envelope (1024-sample FFT, 512 hop, Hann window,
-     log-compressed magnitudes, local mean removed).
-  3. Estimate tempo by autocorrelation over periods corresponding to 60..180 BPM,
-     preferring the doubled-lag candidate; refine the peak; confidence is
-     `(peak - median) / peak` clamped to `[0, 1]`, or 0 when the peak is not positive.
-     If the envelope is too short or has no energy, there is no result.
-  4. Fold octaves into the canonical `[70, 140)` BPM range; the returned `bpm` must be
-     in that range and the phase anchor follows the fold.
-  5. Estimate the beat phase by comb filtering the onset envelope.
-  6. `firstBeatOffsetMs = anchorMs mod periodMs`, normalized to `[0, periodMs)`.
-  7. Estimate key from 12-bin chroma over 65..2000 Hz correlated against the
-     Krumhansl-Schmuckler major/minor profiles. `keyPitchClass` is 0..11 (0 = C) or
-     null when there is insufficient tonal energy; `keyIsMinor` is true for the minor
-     profile, false for major, null only when `keyPitchClass` is null.
-  8. Mix-in: analyze the first 16 s only when duration > 16 s. Detect the first
-     sustained body-level 500 ms block (block energy compared to the 75th percentile);
-     snap forward to the beat grid. Return null when the body starts within the first
-     block, no sustained block is found, or the intro would exceed 20 s.
-  9. Mix-out: analyze the last 24 s only when duration > 24 s. Find the last 500 ms
-     block at or above 50% of the 75th percentile; return the block end. Return null
-     when the track stays loud within 3 s of the end, or no loud block exists. The
-     result is never earlier than `durationMs - 45_000`.
+  2. Estimate tempo from an onset envelope derived from the window's spectral flux.
+     The returned `bpm` is folded into the canonical `[70, 140)` range
+     (octave-equivalent tempi map to the same value) and the returned
+     `firstBeatOffsetMs` is the beat phase anchored to the same fold, reduced into
+     `[0, periodMs)`. An envelope with too little data or no energy yields no result.
+  3. `confidence = (peak - median) / peak` clamped to `[0, 1]`, or 0 when the peak is
+     not positive.
+  4. Estimate key by matching a 12-bin chroma distribution against standard major and
+     minor key profiles. `keyPitchClass` is 0..11 (0 = C) or null when there is
+     insufficient tonal energy; `keyIsMinor` is true for the minor profile, false for
+     major, and null only when `keyPitchClass` is null.
+  5. Mix-in: analyze the first 16 s only when duration > 16 s. Detect the first
+     sustained body-level 500 ms block (block energy compared to the 75th percentile)
+     and snap forward to the beat grid. Return null when the body starts within the
+     first block, no sustained block is found, or the intro would exceed 20 s.
+  6. Mix-out: analyze the last 24 s only when duration > 24 s. Find the last 500 ms
+     block at or above 50% of the 75th percentile and return the block end. Return
+     null when the track stays loud within 3 s of the end, or no loud block exists.
+     The result is never earlier than `durationMs - 45_000`.
 - `firstBeatOffsetMs` is always non-negative; `confidence` is in `[0, 1]`; `bpm` is in
   `[70, 140)`; mix points, when non-null, are non-negative and within the track
   duration.
@@ -1012,10 +1007,9 @@ object BeatAnalyzer {
   deletes it in a `finally` block, including on cancellation and failure.
 - Opens `dataSourceFactory.createDataSource()` with a `DataSpec` whose URI and key are
   both `mediaId` (the URI is `Uri.parse(mediaId)`).
-- Copies up to 5 MiB in 64 KiB chunks. While copying, checks `shouldCancel()` before
-  each read; cancellation returns null. `C.RESULT_END_OF_INPUT` marks the fetch
-  complete. Other read/open exceptions are logged and stop the fetch; partially
-  copied bytes are still usable.
+- Reads up to 5 MiB, checking `shouldCancel()` before each read; cancellation returns
+  null. `C.RESULT_END_OF_INPUT` marks the fetch complete. Other read/open exceptions
+  stop the fetch; partially copied bytes are still usable.
 - If fewer than 256 KiB (256 * 1024) were copied, return null. If cancelled after the
   fetch, return null.
 - Analyse the temp file. Return `CachedAnalysis(result, complete)` where `complete` is

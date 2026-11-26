@@ -1,5 +1,8 @@
 # Clean-Room Specification — `core-repositories` cluster (`:core`)
 
+> Required behaviour only. Any algorithm shape is illustrative; implementers must design independently
+> and are audited for baseline similarity.
+
 Status: M2 specification (behavioural contract only).
 Cluster: `core-repositories`.
 Module: `:core` — directory `core`, Gradle path `:core`.
@@ -91,10 +94,10 @@ Observable behaviour:
 | Method | Contract |
 |---|---|
 | `getSong(id: String): Flow<Song?>` | Emits the current row for `id` and re-emits on any change to `song` or its relations. Emits `null` when no row exists (and for `id` values that never existed). The flow is cold until collected. |
-| `getLikedSongs(): Flow<List<Song>>` | Emits all `song` rows with `liked = 1`, ordered by SQLite `rowId` ascending (insertion order, stable). Each element maps through the relation mapper (`Song → domain`), so artists are populated. Deletions/updates re-emit. Empty DB ⇒ empty list. |
-| `getRecentlyPlayed(limit: Int): Flow<List<Song>>` | Reads `event` rows ordered by `rowId` descending (newest first), maps each event's song, removes duplicates by domain `Song.id` **keeping the first (most recent) occurrence**, then takes the first `limit` items. `limit <= 0` ⇒ empty list. Fewer events than `limit` ⇒ all distinct songs. Events reference existing songs (FK cascade removes orphans), so no null handling is observable. |
+| `getLikedSongs(): Flow<List<Song>>` | Emits all `song` rows with `liked = 1`, ordered by insertion order (SQLite `rowId` ascending, stable). Emitted songs have populated `artists`. Deletions/updates re-emit. Empty DB ⇒ empty list. |
+| `getRecentlyPlayed(limit: Int): Flow<List<Song>>` | Emits distinct songs in most-recently-played-first order, truncated to `limit`. Each song appears once, at the position of its most recent `event`; older events for the same domain `Song.id` are collapsed into that occurrence. `limit <= 0` ⇒ empty list. Fewer distinct songs than `limit` ⇒ all of them. Events reference existing songs (FK cascade removes orphans), so no null handling is observable. |
 | `updateLiked(id: String, isLiked: Boolean)` | Fire-and-forget write on the database query executor (see §6.1). Sets `liked = isLiked`; when `isLiked` is `true` sets `likedDate` to `LocalDateTime.now()` (UTC-naive local timestamp), when `false` sets `likedDate = NULL`. Unknown `id` ⇒ no-op. Returns before the write necessarily completes; the write itself is guaranteed to be enqueued. |
-| `incrementPlayTime(id: String, durationMs: Long)` | Fire-and-forget enqueue of a single SQL update that adds `durationMs` to `song.totalPlayTime` for the row whose `id` matches, i.e. `totalPlayTime := totalPlayTime + :durationMs WHERE id = :id`. Negative values are accepted and subtract. Unknown `id` ⇒ no-op. No clamping, no event row is written. |
+| `incrementPlayTime(id: String, durationMs: Long)` | Fire-and-forget; increases the matching song row's `totalPlayTime` by `durationMs`. Negative values are accepted and subtract. Unknown `id` ⇒ no-op. No clamping, no event row is written. |
 
 Ordering/threading: all reads are Room `Flow`s executed on Room's query executor. The two write
 methods return immediately and run their block asynchronously on the database query executor; they
@@ -112,10 +115,10 @@ class PlaylistRepositoryImpl @Inject constructor(
 
 | Method | Contract |
 |---|---|
-| `getAllPlaylists(): Flow<List<Playlist>>` | Emits playlists with `bookmarkedAt IS NOT NULL`, ordered by `name` ascending (SQLite binary collation). `songCount` is the correlated count of `playlist_song_map` rows for the playlist. The domain thumbnail is computed as: if `playlist.thumbnailUrl` is non-null use it; otherwise the first non-null `song.thumbnailUrl` among the preview songs (positions ≤ 3); otherwise `null`. Re-emits on playlist or map changes. Empty ⇒ empty list. |
-| `getPlaylistSongs(playlistId: String): Flow<List<Song>>` | Emits entries of `playlist_song_map` for `playlistId` ordered by `position` ascending, mapped to the **relation** song mapper (artists populated). Unknown/empty playlist ⇒ empty list. Duplicate `(playlistId, songId)` rows, if present, produce duplicate songs. |
-| `suspend addSongToPlaylist(playlistId: String, songId: String)` | Enqueues a read-modify-write on the query executor: reads all maps of `playlistId` with `position >= 0` ordered by position, computes `nextPosition = (max position) + 1`, or `0` when none; inserts a new map with `setVideoId = null`. The insert is the lenient `insert(map: PlaylistSongMap)` wrapper (constraint violations swallowed). No uniqueness rule prevents adding the same song twice. Returns before completion. Because the read and insert are not wrapped in a transaction by this adapter, concurrent calls for one playlist may compute the same position; callers must not rely on atomic gap-free positions. FK rules mean an unknown `playlistId`/`songId` makes the insert fail silently (row absent). |
-| `suspend removeSongFromPlaylist(playlistId: String, songId: String)` | Enqueues: reads all `playlist_song_map` rows for that `songId`, filters those whose `playlistId` matches, deletes each. Removes **all** matching duplicates. Remaining positions are **not** renumbered (gaps persist). Unknown pair ⇒ no-op. Returns before completion. |
+| `getAllPlaylists(): Flow<List<Playlist>>` | Emits playlists with `bookmarkedAt IS NOT NULL`, ordered by `name` ascending (SQLite binary collation). `songCount` is the number of `playlist_song_map` rows for the playlist. The domain thumbnail is `playlist.thumbnailUrl` when non-null, otherwise the first non-null `song.thumbnailUrl` among the preview songs (positions ≤ 3), otherwise `null`. Re-emits on playlist or map changes. Empty ⇒ empty list. |
+| `getPlaylistSongs(playlistId: String): Flow<List<Song>>` | Emits the songs mapped in `playlist_song_map` for `playlistId`, ordered by `position` ascending, each with populated `artists`. Unknown/empty playlist ⇒ empty list. Duplicate `(playlistId, songId)` rows, if present, produce duplicate songs. |
+| `suspend addSongToPlaylist(playlistId: String, songId: String)` | Appends one membership at the position after the playlist's current maximum position, or `0` when the playlist has no memberships, with `setVideoId = null`. The write is lenient: constraint violations are swallowed and callers cannot observe them. No uniqueness rule prevents adding the same song twice. Returns before completion. Concurrent calls for one playlist are not serialised, so callers must not rely on atomic gap-free positions or a unique next position. FK rules mean an unknown `playlistId`/`songId` leaves no row and no observable error. |
+| `suspend removeSongFromPlaylist(playlistId: String, songId: String)` | Removes **every** membership matching `(playlistId, songId)`, including duplicates; other playlists' memberships are untouched. Remaining positions are **not** renumbered (gaps persist). Unknown pair ⇒ no-op. Returns before completion. |
 
 Both write methods must enqueue work on the DB executor; they must not run a blocking DB call on the
 caller's thread.
@@ -126,7 +129,7 @@ caller's thread.
 - `database` is an `MusicDatabase` facade, not `InternalDatabase`.
 - No caching, memoisation, retry or exception translation in the adapters. Room exceptions propagate
   from flow collection; write helpers swallow constraint failures as described.
-- Mappers are stateless top-level functions (§4).
+- Mapping is pure and stateless (§4).
 - The domain expressions are structural equality data classes; list order is preserved.
 
 ### 3.4 Reproduced `:domain` contracts (compile without reading `:domain`)
@@ -190,7 +193,7 @@ map to the same domain type, so overload resolution by receiver type is load-bea
 |---|---|
 | `fun com.revenge.music.db.entities.Song.toDomain(): com.revenge.domain.models.Song` | `id/title` from `song.id/song.title`; `artists` = relation artists mapped in relation order to `ArtistRef(id, name)`; `album` = relation album `AlbumRef(id,title)` when present, else `song.albumId` with `title = song.albumName.orEmpty()`; `durationSeconds = song.duration` (may be `-1`); `thumbnailUrl = thumbnailUrl` (the relation getter, which for local songs falls back to a MediaStore album-art URI or the song id); `isExplicit = song.explicit`; `isLocal = song.isLocal`; `liked = song.liked`; `totalPlayTimeMs = song.totalPlayTime`. |
 | `fun com.revenge.music.db.entities.SongEntity.toDomain(): com.revenge.domain.models.Song` | Same scalars from the flat row. **`artists` is always `emptyList()`** (this mapper has no relation data). `album = albumId?.let { AlbumRef(it, albumName.orEmpty()) }`. Thumbnail resolution order: (1) non-null `thumbnailUrl`; (2) if `isLocal`, parse `albumId` by removing prefix `"LOCAL_ALBUM_"` to a `Long`; if parse succeeds and value `> 0`, use `"content://media/external/audio/albumart/<id>"`, otherwise use the song `id` (which is a content URI for local tracks); (3) otherwise `null`. |
-| `fun com.revenge.music.db.entities.Playlist.toDomain(): com.revenge.domain.models.Playlist` | `id/name`; `songCount` from the relation's computed count; thumbnail = `thumbnails.firstOrNull() ?: playlist.thumbnailUrl`, where `thumbnails` is `listOf(playlist.thumbnailUrl)` when non-null, else the preview songs' non-null thumbnails. |
+| `fun com.revenge.music.db.entities.Playlist.toDomain(): com.revenge.domain.models.Playlist` | `id/name`; `songCount` from the relation's computed count; thumbnail is `playlist.thumbnailUrl` when non-null, otherwise the first non-null thumbnail among the preview songs (positions ≤ 3), otherwise `null`. |
 | `fun com.revenge.music.db.entities.PlaylistEntity.toDomain(songCount: Int = 0): com.revenge.domain.models.Playlist` | `id/name/thumbnailUrl` copied; `songCount` = supplied value (default `0`). |
 
 No normalisation (no trimming, no blank-to-null). Values pass through unchanged except the local
@@ -215,15 +218,14 @@ Companion function:
 fun fromName(name: String, description: String?): CastDeviceKind
 ```
 
-Semantics (classification precedence is fixed):
+Semantics (classification precedence is fixed; matching is case-insensitive; a null `description` is
+treated as an empty model string):
 
-1. Normalise both inputs with `lowercase()` (default locale-independent ASCII behaviour).
-   `description == null` ⇒ treat model as `""`.
-2. `TV` if device name or model contains `"tv"`.
-3. else `SPEAKER` if device name contains `"speaker"`, `"home"` or `"nest"`, or model contains
+1. `TV` if device name or model contains `"tv"`.
+2. else `SPEAKER` if device name contains `"speaker"`, `"home"` or `"nest"`, or model contains
    `"speaker"`.
-4. else `CHROMECAST` if device name or model contains `"chromecast"`.
-5. else `UNKNOWN`.
+3. else `CHROMECAST` if device name or model contains `"chromecast"`.
+4. else `UNKNOWN`.
 
 `fromName` never throws; empty strings classify as `UNKNOWN`. This is also the routing fallback: an
 unrecognised device is `UNKNOWN`, which downstream cast UI maps to its generic bucket.
@@ -297,10 +299,12 @@ implementation (exception or `null`), not by this interface.
 
 ### 6.1 `com.revenge.music.db.MusicDatabase` — facade
 
-The facade is a class (not the Room database itself) implementing `DatabaseDao by delegate.dao`:
+The facade is a class (not the Room database itself) that exposes the full `DatabaseDao` surface as
+if it were the DAO. How that exposure is achieved is not normative.
 
 ```kotlin
-class MusicDatabase(private val delegate: InternalDatabase) : DatabaseDao by delegate.dao {
+class MusicDatabase(private val delegate: InternalDatabase) : DatabaseDao {
+  // All DatabaseDao members are directly callable on the facade.
   val speedDialDao: SpeedDialDao
   val songPlayStatsDao: SongPlayStatsDao
   val recommendationExclusionDao: RecommendationExclusionDao
@@ -317,7 +321,7 @@ class MusicDatabase(private val delegate: InternalDatabase) : DatabaseDao by del
 Behavioural contract:
 
 - `query(block)` enqueues `block` on Room's **query executor** and returns `Unit` immediately.
-  `block`'s receiver is the `MusicDatabase` facade, so all delegated DAO methods are callable inside.
+  `block`'s receiver is the `MusicDatabase` facade, so all DAO methods are callable inside.
   Exceptions inside the block are not rethrown to the caller.
 - `transaction(block)` enqueues a single transaction on the **transaction executor** and returns
   immediately; exceptions are not rethrown.
@@ -331,12 +335,12 @@ Behavioural contract:
     `core/schemas/com.revenge.music.db.InternalDatabase/48.json`).
   - `@TypeConverters(Converters::class)`.
   - Entities and views exactly as §6.4.
-- Builder behaviour: WAL journal mode; fixed transaction pool of 4 threads; fixed query pool of 4
-  threads; `onOpen` sets `PRAGMA busy_timeout = 60000`, `PRAGMA cache_size = -16000`,
-  `PRAGMA wal_autocheckpoint = 1000`, `PRAGMA synchronous = NORMAL` inside a try/catch (failure is
-  logged, not fatal).
+- Builder behaviour: WAL journal mode; fixed-size transaction and query executors (pool size is an
+  implementation choice, not part of the contract); on open, apply `PRAGMA busy_timeout = 60000`,
+  `PRAGMA cache_size = -16000`, `PRAGMA wal_autocheckpoint = 1000`, `PRAGMA synchronous = NORMAL`.
+  A failure to apply these PRAGMAs is logged, not fatal.
 
-Consumers inside this cluster only use the delegated DAO methods and the helpers above.
+Consumers inside this cluster only use the exposed DAO methods and the helpers above.
 
 ### 6.2 `com.revenge.music.db.Converters`
 
@@ -416,11 +420,11 @@ fun insert(map: AlbumArtistMap)     // lenient wrapper, Unit, swallows
 
 Also required because the scanner/backup paths touch them: `insertRemovedPlaylistSongMaps`-style
 operations are not required beyond the above; deletion of a `SongEntity` cascades to maps/events via
-foreign keys. `checkpoint()` performs `PRAGMA wal_checkpoint(FULL)` through a raw query.
+foreign keys. `checkpoint()` performs `PRAGMA wal_checkpoint(FULL)`.
 
-Semantics of lenient wrappers: they call an `onConflict = IGNORE` insert and catch any exception,
-returning `Unit`; callers cannot observe constraint failures. `insert(song)` returns the new rowId or
-`-1` when the primary key already exists (so callers can distinguish insert-vs-update).
+Semantics of lenient wrappers: constraint violations are swallowed — the method returns `Unit` and
+callers cannot observe failures. `insert(song)` returns the new rowId, or `-1` when the primary key
+already exists (so callers can distinguish insert-vs-update).
 
 `musicVideoType`/`QueueItemSource` models needed by scanner/download metadata:
 `com.revenge.music.models.MediaMetadata` is reproduced in §6.9.
@@ -625,9 +629,9 @@ Required upgrade effects (observable results only):
 - **47→48**: rebuilds a legacy `taste_profile` (which had `genres`) into the `topArtistsJson` /
   `topTracksJson` / `topGenresJson` / `confidence` / `updatedAtMillis` shape; no-op when already new.
 
-Migration helper contracts: column existence checks use `PRAGMA table_info`; missing-column adds are
-idempotent and failures are swallowed/logged; views must be dropped before table rebuilds and
-recreated after.
+Migration behaviour: adding a column that is already present is a no-op (idempotent); individual
+migration failures are swallowed/logged; and after any table rebuild the specified views exist again
+with the SQL in §6.4. The internal mechanism for detecting an existing column is not normative.
 
 ### 6.6 Playback persistence models and file contract
 
@@ -693,7 +697,7 @@ inline fun <reified T : Enum<T>> enumPreference(context: Context, key: Preferenc
 
 - Single preferences file named `"settings"` (file `settings.preferences_pb` under
   `files/datastore`, used by backup/restore).
-- Blocking getters run on `Dispatchers.IO` and return `null`/default on any failure (never throw).
+- The blocking getters may block to read; they return `null`/default on any failure and never throw.
 - `enumPreference` maps a stored string via case-insensitive `toEnum`; unknown/missing ⇒ default.
 - Property delegates re-read on every access (no caching).
 
@@ -714,8 +718,8 @@ object PlaybackLogManager {
 }
 ```
 
-- In-memory ring buffer capped at 500 entries; when exceeding, the oldest entries are dropped and the
-  newest 500 retained.
+- At most 500 entries are retained; when exceeded, the oldest entries are dropped so the newest 500
+  remain. The retention container is not normative.
 - `logs` emits a new immutable list value on every `log`/`clearLogs`; `clearLogs` emits empty.
 - Thread-safety: updates are safe from multiple producer threads; emissions on a `StateFlow`.
 - Timestamp uses local time with milliseconds; no date component.
@@ -732,11 +736,12 @@ object PlaybackLogManager {
 
 `com.revenge.music.utils.NetworkConnectivityObserver(context: Context)`:
 
-- Exposes `val networkStatus: Flow<Boolean>` backed by a conflated channel (latest value wins; slow
-  collectors miss intermediate changes).
-- Registers a `NetworkRequest` requiring `NET_CAPABILITY_INTERNET` and
+- Exposes `val networkStatus: Flow<Boolean>` where only the latest value is retained: slow collectors
+  may miss intermediate changes.
+- Monitors a `NetworkRequest` requiring `NET_CAPABILITY_INTERNET` and
   `NET_CAPABILITY_NOT_RESTRICTED`.
-- Emits `true` on `onAvailable`, `false` on `onLost`, and an initial `isCurrentlyConnected()` value.
+- Emits `true` on network available, `false` on network lost, and emits the initial
+  `isCurrentlyConnected()` value to new collectors.
 - If callback registration fails (restricted profile), emits `true`; registration failure is not
   thrown.
 - `isCurrentlyConnected()` is `true` only when the active network has both `INTERNET` and
@@ -797,11 +802,13 @@ implementer of this cluster must not change the DAO/schema in ways that break th
 
 - Exposes `database: MusicDatabase`, `downloads: MutableStateFlow<Map<String, Download>>`,
   `downloadManager`, `getDownload(songId): Flow<Download?>`, `release()`.
-- On completion (`Download.STATE_COMPLETED`): derives a UTC `LocalDateTime` from
-  `download.updateTimeMs` when `> 0`, else current time; derives title from `request.data` decoded as
-  UTF-8 and trimmed, default `"Unknown"`; inside `database.withTransaction` inserts a minimal
-  `SongEntity(id, title, dateDownload, isDownloaded = true)`; when the insert returns `-1L` (row
-  exists) calls `updateDownloadedInfo(id, true, date)`.
+- On completion (`Download.STATE_COMPLETED`): records the download date as a UTC `LocalDateTime`
+  derived from `download.updateTimeMs` when `> 0`, else the current time, and the title from
+  `request.data` decoded as UTF-8 and trimmed, default `"Unknown"`. Inside
+  `database.withTransaction` it ensures the song row is `isDownloaded = true` with that date: if no
+  song row exists a minimal `SongEntity(id, title, dateDownload, isDownloaded = true)` is created;
+  if the row already exists its title is left alone and only the downloaded info is updated
+  (`updateDownloadedInfo(id, true, date)`).
 - On `STATE_FAILED` / `STATE_REMOVING` and on `onDownloadRemoved`: calls
   `updateDownloadedInfo(id, false, null)`.
 - On construction, loads the media3 download index into `downloads` and reconciles every
@@ -829,7 +836,7 @@ class ExportTaskQueue(
 }
 ```
 
-- Serial execution: a `Semaphore(1)`; exports run one at a time in submission order.
+- Serial execution: exports run one at a time, in submission order.
 - Deduplicate by `songId`: a second `submit` for a live id returns `false` and does not enqueue.
 - `submit` returns `true` when accepted. `isIdle` is true when no tracked jobs remain.
 - `onIdle` is invoked exactly once each time the tracked set transitions to empty, on the completion
@@ -864,8 +871,8 @@ data class LocalSongScanConfig(
 - `normalizeFolderEntry`: trim; backslashes → `/`; collapse repeated `/`; trim leading/trailing `/`.
 - `deduplicateFolderEntries`: normalise; drop empties; keep first spelling per lowercase key
   (`Locale.ROOT`); iteration order preserved.
-- `scanDevice(scanConfig = LocalSongScanConfig()): LocalSongScanSummary` runs on `Dispatchers.IO`
-  inside one `database.withTransaction`.
+- `scanDevice(scanConfig = LocalSongScanConfig()): LocalSongScanSummary` runs off the caller's
+  thread and applies its database changes inside one `database.withTransaction` (a scan is atomic).
 - `LocalSongScanSummary(scannedSongs: Int, removedSongs: Int)`.
 - Scans `MediaStore.Audio.Media.EXTERNAL_CONTENT_URI` selecting `SIZE > 0`, duration `>= min*1000`
   when min > 0 else `> 0`, `IS_PENDING = 0` (API 29+), `is_trashed = 0` (API 30+); order by title
@@ -878,8 +885,9 @@ data class LocalSongScanConfig(
   also allowed when `allowClearAll` or when no local songs currently exist. Otherwise the scan is a
   no-op with summary `(0, 0)` — it must not wipe local songs/playlists/history because of a transient
   empty MediaStore.
-- Pruning: tracks no longer present are deleted in batches of 900; local albums/artists, formats and
-  play counts are pruned afterwards. Existing user state (`liked`, `likedDate`, `totalPlayTime`,
+- Pruning: tracks no longer present are deleted (the write may be split into bounded batches to stay
+  within SQLite limits; batch size is not normative); local albums/artists, formats and play counts
+  are pruned afterwards. Existing user state (`liked`, `likedDate`, `totalPlayTime`,
   bookmarked flags, explicit, year, download date) is preserved for re-scanned tracks.
 - ID schemes: local song id = MediaStore content URI string; album id = `LOCAL_ALBUM_<mediaStoreId>`
   when the MediaStore album id is `> 0`, else `LOCAL_ALBUM_<uuid-without-dashes of "name|primaryArtistId">`;
@@ -931,9 +939,9 @@ public FQCNs and signatures above are hard compatibility constraints.
 | 9 | `core/src/main/kotlin/com/revenge/music/models/PersistQueue.kt` | Serializable queue snapshot and `QueueType`/`QueueData` hierarchy per §6.6. |
 | 10 | `core/src/main/kotlin/com/revenge/music/models/PersistPlayerState.kt` | Serializable transport-state snapshot per §6.6. |
 | 11 | `core/src/main/kotlin/com/revenge/music/utils/DataStore.kt` | `Context.dataStore` accessor, blocking getters, preference/enum delegates per §6.7. |
-| 12 | `core/src/main/kotlin/com/revenge/music/utils/PlaybackLogManager.kt` | Level/entry types and 500-entry StateFlow ring buffer per §6.8. |
+| 12 | `core/src/main/kotlin/com/revenge/music/utils/PlaybackLogManager.kt` | Level/entry types and the bounded 500-entry StateFlow log per §6.8. |
 | 13 | `core/src/main/kotlin/com/revenge/music/di/Qualifiers.kt` | `PlayerCache`, `DownloadCache`, `ApplicationScope` qualifiers per §6.9. |
-| 14 | `core/src/main/kotlin/com/revenge/music/utils/NetworkConnectivityObserver.kt` | Conflated connectivity flow and registration lifecycle per §6.9. |
+| 14 | `core/src/main/kotlin/com/revenge/music/utils/NetworkConnectivityObserver.kt` | Latest-value connectivity flow and registration lifecycle per §6.9. |
 | 15 | `core/src/main/kotlin/com/revenge/music/utils/CrashUtils.kt` | `exceptionReporter` hook and `reportException` per §6.9. |
 
 Required dependency files in the same module (contract §6.1–§6.5; may be co-owned with a database
@@ -966,7 +974,7 @@ cluster, but this cluster's acceptance tests exercise them):
 - Local thumbnail derivation is the only computation in mapping and is deterministic.
 - Cast classification is deterministic and never throws.
 - Connectivity observer emits the latest value only; registration failure degrades to "connected".
-- Playback log ring buffer is bounded at 500 and never blocks.
+- Playback log retention is bounded at 500 and never blocks.
 - All timestamps in the DB are UTC epoch millis; `LocalDateTime.now()` values for `likedDate` are
   written through the same UTC converter.
 

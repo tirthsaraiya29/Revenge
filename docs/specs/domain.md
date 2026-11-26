@@ -7,6 +7,9 @@ External dependencies: Kotlin stdlib, Kotlin coroutines core (`Flow`, `combine`,
 JVM target: toolchain 21, Kotlin JVM plugin.
 Clean-room namespace (must be preserved exactly): `com.revenge.domain.{models,repositories,usecase}`.
 
+This spec describes required behaviour; any algorithm shape shown is illustrative. Implementers must
+design their own structure and will be audited for similarity to the baseline.
+
 This document describes observable behaviour and API shape. It intentionally omits statement-level
 implementation. Any implementation that satisfies the contracts and acceptance tests is acceptable.
 
@@ -167,34 +170,36 @@ class GetQuickPicksUseCase(songRepository: SongRepository) {
 Produces a "quick picks" shelf of up to `limit` songs built from the liked songs and the recent
 listening history.
 
-Normative behaviour:
+Observable contract (what is externally required):
 
-1. **Limit guard.** Compute `requested = max(limit, 0)` (negative values behave like `0`).
-2. **History window.** Request `requested * 2` recent songs, saturating at `Int.MAX_VALUE` when
-   `requested > Int.MAX_VALUE / 2` so the multiplication can never overflow. The doubling exists so
-   that liked songs displaced by history can still be recovered from the liked source.
-3. **Emission.** Return a cold `Flow` that combines `getLikedSongs()` and
-   `getRecentlyPlayed(historyWindow)`. The returned flow emits a new list each time either source
-   emits, using the latest emission of each.
-4. **Candidate set.**
-   - Start with the recent list in its emitted order.
-   - Then append liked songs that are not already present.
-   - De-duplicate by `Song.id`, keeping the **first** occurrence (recent entries win over liked
-     entries for the same id, including their field values).
-5. **Score.** For each candidate:
-   - `likedBonus` = `50.0` if the candidate's `id` appears among the liked-source songs' ids,
-     otherwise `0.0`. (Membership in the liked source is authoritative; the candidate's own `liked`
-     field is not used here.)
-   - `minutes` = `min(totalPlayTimeMs / 60_000.0, 60.0)` (listening time in minutes, capped at one
-     hour; negative play time yields a non-positive contribution).
-   - `score = likedBonus + minutes * 2.0`.
-6. **Ordering.** Sort candidates by score descending using a **stable** sort: equal scores preserve
-   candidate insertion order (recent order first, then liked-only songs in liked order).
-7. **Truncation.** Take the first `requested` items. If `requested == 0`, the emitted list is empty
-   (do not short-circuit the flow creation; the flow may still be collected).
-8. **Empty sources.** Both sources empty ⇒ empty list. No exception.
-9. **Errors.** Exceptions from either repository flow propagate to the collector; they are not
-   swallowed.
+- **Limit guard.** A negative `limit` behaves exactly like `0`. With `requested = max(limit, 0)`, a
+  `requested` of `0` yields an empty list; the flow is still created and may be collected without
+  error.
+- **History request size.** The use case must ask `getRecentlyPlayed` for `requested * 2` songs. This
+  doubling is observable and normative: for `limit = 4` the repository is asked for 8 (B3). For
+  `requested` large enough that `requested * 2` would exceed `Int.MAX_VALUE`, the value must
+  saturate rather than overflow, and the call must still complete with a correct bounded list (B9).
+- **Reactive emission.** The result is a cold `Flow` that, each time either source emits, emits a new
+  list computed from the latest emission of both sources. Collecting again re-subscribes.
+- **Candidate set and order.** Candidates are every song from either source, de-duplicated by
+  `Song.id`. For a duplicated id the retained copy is the one from the recent source (recent field
+  values win); a song present only in the liked source keeps its liked-source values. Candidate order
+  is recent-source emission order, then liked-source emission order for songs whose id did not occur
+  in the recent source. This order is externally observable through the tie rule below.
+- **Score.** For a candidate:
+  - `likedBonus` = `50.0` when the candidate's `id` occurs among the liked-source songs' ids, else
+    `0.0`. Membership in the liked source is authoritative; the candidate's own `liked` field is not
+    consulted.
+  - `minutes` = `min(totalPlayTimeMs / 60_000.0, 60.0)` (listening minutes, capped at one hour;
+    negative play time yields a non-positive contribution).
+  - `score = likedBonus + minutes * 2.0`.
+- **Ordering.** Results are ordered by score descending. Equal scores keep candidate order — recent
+  songs before liked-only songs. This tie behaviour is normative.
+- **Truncation.** At most `requested` items are emitted. If `requested == 0` the emitted list is
+  empty.
+- **Empty sources.** Both sources empty yields an empty list; never an exception.
+- **Errors.** Exceptions from either repository flow propagate to the collector; they are not
+  swallowed.
 
 ### 4.2 `com.revenge.domain.usecase.ResolveLocalMixUseCase`
 
@@ -207,40 +212,41 @@ class ResolveLocalMixUseCase(songRepository: SongRepository) {
 Expands a seed song into an endless-mix style queue of up to `limit` songs drawn from liked and
 recently played tracks, using each source's current value.
 
-Normative behaviour:
+Observable contract (what is externally required):
 
-1. **Limit guard.** `requested = max(limit, 0)`. If `requested == 0`, return `emptyList()`
-   immediately without touching any repository.
-2. **Seed lookup.** Read the first emission of `getSong(seedSongId)`. If it is `null`, return
-   `emptyList()`. If the underlying flow completes without emitting, treat as `null` via `first`'s
-   normal no-element behaviour.
-3. **Seed artist keys.**
-   - `seedArtistIds` = ids of `seed.artists` with blank ids dropped, as a set.
-   - `seedArtistNames` = `artist.name.trim().lowercase()` for each seed artist, empty results
-     dropped, as a set. (Whitespace-trimmed, case-insensitive comparison.)
-4. **Source reads (sequential, in this order).** Read the first emission of `getLikedSongs()`, then
-   the first emission of `getRecentlyPlayed(window)` where `window = requested * 3` saturated at
-   `Int.MAX_VALUE` when `requested > Int.MAX_VALUE / 3`. The larger window compensates for the seed
-   exclusion and for liked/recent overlap.
-5. **Candidate set.**
-   - Start with liked songs in their emitted order, excluding any song whose `id == seedSongId`.
-   - Then append recent songs in their emitted order, excluding the seed and any id already present.
-   - De-duplicate by `Song.id`, keeping the first occurrence (liked entries win for the same id).
-6. **Score.** For each candidate:
-   - `artistBonus` = `100.0` if the candidate shares an artist with the seed, else `0.0`.
-     "Shares an artist" means at least one candidate artist `a` satisfies either:
-     `a.id.isNotBlank() && a.id in seedArtistIds`, or
-     `a.name.trim().lowercase() in seedArtistNames` (normalised names allow matches when ids differ).
-   - `likedBonus` = `30.0` if `song.liked` is `true`, else `0.0`. (Unlike §4.1, this uses the
-     entity field, not membership in the liked source.)
-   - `minutes` = `min(totalPlayTimeMs / 60_000.0, 60.0)`.
-   - `score = artistBonus + likedBonus + minutes` (one point per listening minute, capped at 60).
-7. **Ordering.** Stable descending sort by score; ties preserve candidate order (liked order before
-   recent-only songs).
-8. **Truncation.** Return the first `requested` items. The seed itself is never included, even if it
-   appears in liked/recent.
-9. **Errors.** Exceptions from any repository propagate; they are not swallowed. No caching between
-   calls.
+- **Limit guard.** A negative `limit` behaves exactly like `0`. With `requested = max(limit, 0)`, a
+  `requested` of `0` returns `emptyList()` and consults no repository method (observable via
+  recording fakes; see C6).
+- **Seed resolution.** The seed is the first emission of `getSong(seedSongId)`. If the seed is absent
+  — the flow emits `null`, or completes without emitting — the call returns `emptyList()`.
+- **Seed artist keys.** Derive two comparison sets from the seed's `artists`: its non-blank artist
+  ids, and its normalised names `name.trim().lowercase()` with empty results dropped. Name matching
+  is whitespace-trimmed and case-insensitive.
+- **Source reads and window.** The use case uses the first emission of `getLikedSongs()` and the
+  first emission of `getRecentlyPlayed(window)`, where `window = requested * 3`. The 3× window is
+  observable and normative: for `limit = 4` the repository is asked for 12 (C7). When
+  `requested * 3` would exceed `Int.MAX_VALUE` it must saturate rather than overflow. Whether the two
+  sources are read sequentially or concurrently, and in which order, is not part of the contract.
+- **Candidate set and order.** Candidates are all liked-source songs except the seed id, followed by
+  recent-source songs that are neither the seed nor already present, de-duplicated by `Song.id`
+  keeping the first occurrence (the liked-source copy wins for a duplicated id). Candidate order is
+  liked-source order first, then recent-only songs in recent-source order. This order is externally
+  observable through the tie rule below.
+- **Score.** For a candidate:
+  - `artistBonus` = `100.0` when the candidate shares an artist with the seed, else `0.0`. "Shares an
+    artist" means some candidate artist `a` satisfies either
+    `a.id.isNotBlank() && a.id in seedArtistIds`, or `a.name.trim().lowercase() in seedArtistNames`
+    (normalised names allow matches when ids differ).
+  - `likedBonus` = `30.0` when `song.liked` is `true`, else `0.0`. Unlike §4.1 this reads the entity
+    field, not membership in the liked source.
+  - `minutes` = `min(totalPlayTimeMs / 60_000.0, 60.0)`.
+  - `score = artistBonus + likedBonus + minutes` (one point per listening minute, capped at 60).
+- **Ordering.** Results are ordered by score descending. Equal scores keep candidate order — liked
+  songs before recent-only songs. This tie behaviour is normative.
+- **Truncation.** At most `requested` items are returned. The seed id never appears in the result,
+  even when present in the liked or recent sources.
+- **Errors.** Exceptions from any repository propagate; they are not swallowed. Nothing is cached
+  between calls.
 
 Consequences to preserve:
 
@@ -248,6 +254,38 @@ Consequences to preserve:
 - A liked song (30) outranks an unliked, unplayed song (0).
 - Heavily played songs saturate at 60 points, so they beat liked-but-unplayed songs but lose to
   shared-artist songs.
+
+### 4.3 Edge rules and normative rule data
+
+The following edge behaviours are externally observable and normative. They were singled out by the
+clean-room review and must survive any implementation redesign:
+
+- **Non-positive limits.** A negative limit is identical to zero. Zero yields an empty result; in
+  §4.2 a zero limit also performs no repository read.
+- **Overflow safety.** For a limit large enough that `requested * 2` (§4.1) or `requested * 3` (§4.2)
+  would exceed `Int.MAX_VALUE`, the computation must not overflow, throw, or hang; it must return a
+  correct bounded list (B9).
+- **Tie-breaking.** Equal scores preserve first-insertion order: recent before liked-only in §4.1;
+  liked before recent-only in §4.2.
+- **De-duplication.** Always by `Song.id`, first occurrence wins; §4.1 keeps the recent-sourced copy,
+  §4.2 keeps the liked-sourced copy.
+- **Seed exclusion.** In §4.2 the seed id never appears in the result, even when it is present in the
+  liked or recent sources.
+- **Artist matching.** Blank artist ids never match (C10); names match after trim + lowercase
+  (C2, C3); an id match and a name match are alternatives (OR).
+- **Which liked signal is used.** §4.1 scores by membership in the liked source and ignores the
+  entity's `liked` field (B8); §4.2 scores by the entity's `liked` field and ignores source
+  membership.
+- **Play-time saturation.** Each song's listening-time contribution is capped at 60 minutes, so
+  scores saturate (B5, C4).
+
+**Normative rule data.** The numeric constants and vocabulary below are part of the contract and must
+not be retuned by an implementer: liked bonus `50.0` and play-time weight `2.0` per minute (§4.1);
+artist bonus `100.0`, entity-liked bonus `30.0`, and play-time weight `1.0` per minute (§4.2); the
+60-minute cap; the `2×` history window (§4.1) and `3×` history window (§4.2); and the default limits
+`20` and `25`. The terms "recent source", "liked source", "candidate", and "score" have exactly the
+meanings given here. The names, types, defaults, and repository signatures in §2–§3 are likewise
+normative and form the hard compatibility contract.
 
 ---
 

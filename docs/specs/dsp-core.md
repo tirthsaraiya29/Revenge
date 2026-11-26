@@ -6,6 +6,10 @@ Namespace root: `com.revenge.dsp.core`
 Declared dependencies: none (pure JVM; no Android, Compose, Hilt, or network)
 Required libraries: Kotlin/JVM (toolchain 21), `kotlinx-coroutines-core`, `kotlinx-serialization-json`, JUnit for tests.
 
+> This spec describes required behaviour; any algorithm shape shown is illustrative. Implementers must design their own structure and will be audited for similarity to the baseline.
+
+The vocabulary and rule data in this spec — enum constant names, accepted tokens and their precedence, numeric bounds, and the exact error/format strings — are normative and must be matched exactly. Algorithm structure, helper decomposition, container choices, and step/loop order are NOT normative unless this spec explicitly states that the resulting order or value is observable (e.g. band order, validation error order, output strings).
+
 This module provides the pure-math DSP primitives (a biquad filter), the parametric equalizer data model, a persisted-profile model, and an AutoEQ-style text-file parser/validator. It must remain a pure JVM library: no `android.*`, `androidx.*`, or framework imports in main sources.
 
 ---
@@ -105,40 +109,37 @@ Constructor argument order is exactly `id, name, deviceModel, bands, preamp, isC
 
 `class BiquadFilter(sampleRate: Int, frequency: Double, gain: Double, q: Double = 1.41, filterType: FilterType = FilterType.PK)`
 
-A second-order (biquad) IIR section implemented in Direct Form I. All five constructor arguments are named in downstream call sites; the parameter names, order, types, and defaults above are part of the contract.
+A second-order (biquad) IIR section. The internal realisation (filter form, helper decomposition, state layout) is NOT prescribed. All five constructor arguments are named in downstream call sites; the parameter names, order, types, and defaults above are part of the contract.
 
 ### 6.1 Construction and coefficient derivation
 
-Coefficients are computed once at construction and never change afterward; only per-channel history mutates while streaming. Derivation must follow the RBJ Audio EQ Cookbook (`Frequency` in Hz, `Fs` sample rate, `A = 10^(gainDb/40)`, `ω = 2π·frequency/Fs`, `sinω`/`cosω`):
+Coefficients are fixed at construction and never change afterward; only per-channel history mutates while streaming. The filter must realise the standard RBJ Audio EQ Cookbook second-order magnitude response for the configured type and parameters (`Frequency` in Hz, `Fs` sample rate, gain in dB, `Q`). Any derivation, normalisation scheme, or state form that yields an equivalent transfer function is acceptable.
 
-- Peaking (`PK`, and also `LPQ`/`HPQ`): `α = sinω/(2q)`; numerator `[1+αA, −2cosω, 1−αA]`; denominator `[1+α/A, −2cosω, 1−α/A]`.
-- Low shelf (`LSC`): with `S = 1` so `α = (sinω/2)·√2`, `β = 2√A·α`, `sum = A+1`, `diff = A−1`:
-  numerator `[A·(sum − diff·cosω + β), 2A·(diff − sum·cosω), A·(sum − diff·cosω − β)]`;
-  denominator `[sum + diff·cosω + β, −2·(diff + sum·cosω), sum + diff·cosω − β]`.
-- High shelf (`HSC`): same quantities with
-  numerator `[A·(sum + diff·cosω + β), −2A·(diff + sum·cosω), A·(sum + diff·cosω − β)]`;
-  denominator `[sum − diff·cosω + β, 2·(diff − sum·cosω), sum − diff·cosω − β]`.
+- Peaking (`PK`): a boost/cut of `gain` dB centred at `frequency`, with bandwidth controlled by `q`.
+- Low shelf (`LSC`): `gain` dB applied below `frequency` and unity gain above it, using the standard RBJ shelf slope parameter `S = 1`.
+- High shelf (`HSC`): `gain` dB applied above `frequency` and unity gain below it, same `S = 1`.
+- `LPQ` and `HPQ` must be rendered with exactly the peaking response (`PK`); they are not true low-pass/high-pass.
 
-After derivation, every coefficient is divided by `a0` (the denominator's first element) and stored normalized. If `a0` is non-finite or `|a0| ≤ 1e-12`, the filter must instead use pass-through coefficients (`b0=1`, `b1=b2=a1=a2=0`) so a degenerate configuration emits the input unchanged rather than NaN.
+Normalisation must be numerically stable: the realised coefficients never contain NaN or infinity for any sanitised input. If the derivation would yield a non-finite or degenerate leading denominator coefficient (magnitude `≤ 1e-12` after the effective values in 6.2 are applied), the filter must degrade to pass-through (`b0=1`, `b1=b2=a1=a2=0`), so a degenerate configuration emits its input unchanged rather than NaN. (The specific normalisation mechanism is not prescribed; only this observable fallback is.)
 
-### 6.2 Input sanitisation (normative)
+### 6.2 Effective parameter values (normative)
 
-Applied before coefficient derivation, in this order:
+The constructor inputs are sanitised to effective values before coefficient derivation. The order of these rules is not prescribed; the resulting effective values are what is observable:
 
-1. Sample rate: if `sampleRate >= 22` use it; otherwise use `44100`. (`44100` is the documented fallback.)
-2. Frequency: if the supplied value is non-finite, use `10.0`; otherwise clamp it into `[10.0, rate/2.0 − 1.0]`. Note the upper bound is one Hz below Nyquist, so a request exactly at Nyquist is clamped to `Nyquist − 1`.
+1. Sample rate: if the supplied `sampleRate >= 22`, use it; otherwise use `44100`.
+2. Frequency: if the supplied value is non-finite, use `10.0`; otherwise clamp it into `[10.0, rate/2.0 − 1.0]` using the effective sample rate. The upper bound is one Hz below Nyquist, so a request exactly at Nyquist becomes `Nyquist − 1`.
 3. Gain: if non-finite, use `0.0`; then clamp into `[−120.0, +120.0]` dB.
 4. Q: if non-finite or `≤ 0`, use `1.41`; otherwise use the supplied value unclamped.
 
-These clamps guarantee finite output for adversarial inputs (sample rate 0, frequency at/above Nyquist, NaN/infinite gain or Q).
+These guarantees hold for adversarial inputs (sample rate 0, frequency at/above Nyquist, NaN/infinite gain or Q): output is always finite.
 
 ### 6.3 Public operations
 
-- `fun processSample(input: Double): Double` — filters one mono sample using the left-channel state machine; returns one output sample.
+- `fun processSample(input: Double): Double` — filters one mono sample using the left channel's history; returns one output sample.
 - `fun processStereo(inputLeft: Double, inputRight: Double): Pair<Double, Double>` — filters a stereo frame. Left and right channels have independent, persistent history. Returns `(leftOut, rightOut)`. When both inputs are equal and both channels have equal history, the two outputs are equal.
 - `fun reset()` — clears the history of both channels to zero, restoring the exact post-construction state. After reset, processing the same input sequence reproduces the original outputs.
 
-Processing semantics: each call produces `output = b0·x[n] + b1·x[n−1] + b2·x[n−2] − a1·y[n−1] − a2·y[n−2]`, then shifts the input and output histories. `processSample` and `processStereo` share the left channel's history; callers must not mix them for a given logical channel without accepting that shared state.
+Processing semantics: the required input/output relation is the second-order recurrence `output[n] = b0·x[n] + b1·x[n−1] + b2·x[n−2] − a1·y[n−1] − a2·y[n−2]`, where `b*`/`a*` are the realised coefficients. The state layout and update order within a call are not prescribed. `processSample` and `processStereo` share the left channel's history; callers must not mix them for a given logical channel without accepting that shared state.
 
 Threading: instances are NOT thread-safe. Coefficients are immutable and safely published; all mutable state (channel history) requires external synchronization if shared across threads. A `BiquadFilter` instance is otherwise reusable indefinitely.
 
@@ -158,59 +159,59 @@ Threading: instances are NOT thread-safe. Coefficients are immutable and safely 
 ### 7.1 `fun parseFile(file: File): ParametricEQ`
 
 - Requires `file.exists()`; otherwise throws `IllegalArgumentException` with message exactly `"File does not exist: <file.absolutePath>"`.
-- Reads the file as text (default JVM charset via `readText()`) and delegates to `parseText`.
+- Reads the file as text using the platform default charset and parses it with the same rules as `parseText`.
 
 ### 7.2 `fun parseFile(filePath: String): ParametricEQ`
 
-Convenience overload: wraps the path in a `File` and behaves identically (same existence check and exception).
+Convenience overload: behaves identically to 7.1 for the given path (same existence check and exception).
 
 ### 7.3 `fun parseText(content: String): ParametricEQ`
 
-Line-oriented, case-insensitive, tolerant parser. Iterate `content` line by line; trim each line. Per trimmed line:
+Line-oriented, case-insensitive, tolerant parser. Each line is evaluated by its trimmed content; the physical iteration order of lines is not prescribed, but the following observable rules must hold:
 
-1. Empty line → ignored.
-2. Line starts with `Preamp:` (case-insensitive) → parse preamp; it does NOT become metadata.
-3. Line starts with `Filter` (case-insensitive) → attempt band parse; if unparseable the line is silently skipped.
-4. Otherwise, if the line contains exactly a `key: value` split at the first `:` → record `metadata[key.trim()] = value.trim()`. Lines with no `:` are ignored. Duplicate metadata keys: last occurrence wins.
+1. An empty (after trimming) line is ignored.
+2. A line beginning with `Preamp:` (case-insensitive) is a preamp line and is never recorded as metadata.
+3. A line beginning with `Filter` (case-insensitive) is a band line and is never recorded as metadata; if it cannot be parsed it is silently skipped.
+4. Any other line containing a `:` is metadata: the trimmed text before the first `:` is the key, the trimmed text after it is the value. Lines without `:` are ignored. When keys repeat, the last occurrence wins.
 
-Preamp parsing: find the first match of (case-insensitive) `\bPreamp:\s*([-+]?\d+\.?\d*)\s*dB`; convert capture group 1 with `toDoubleOrNull`; on no match or failed conversion use `0.0`. The parser must not throw on malformed preamp lines.
+Preamp: the value is the first dB number following `Preamp:` in the form `\bPreamp:\s*([-+]?\d+\.?\d*)\s*dB` (case-insensitive), converted with `toDoubleOrNull`. With no match or a failed conversion the preamp is `0.0`. Malformed preamp lines must not throw.
 
-Band parsing — a line qualifies only if ALL of the following hold; otherwise it is skipped entirely (no partial band):
+Band lines — a line yields a band only if ALL of the following hold; otherwise it is skipped entirely (never a partial band):
 
-- The line contains `ON` (case-insensitive). Lines containing `OFF` (but not `ON`) are dropped; `ON`/`OFF` markers are not stored.
-- A filter type is identified by case-insensitive substring scan in this precedence order: `LSC` → `LSC`, `HSC` → `HSC`, `PK` → `PK`, `LPQ` → `LPQ`, `HPQ` → `HPQ`; no match → skip.
-- `Fc <number> Hz` matches (case-insensitive) `\bFc\s+([-+]?\d+\.?\d*)\s*Hz`.
-- `Gain <number> dB` matches `\bGain\s+([-+]?\d+\.?\d*)\s*dB`.
-- `Q <number>` matches `\bQ\s+([-+]?\d+\.?\d*)`.
+- It contains `ON` (case-insensitive). A line containing `OFF` but no `ON` is dropped. The `ON`/`OFF` marker is not stored.
+- A filter type is present as a case-insensitive substring. When more than one type token occurs, resolve it by this precedence: `LSC` → `LSC`, `HSC` → `HSC`, `PK` → `PK`, `LPQ` → `LPQ`, `HPQ` → `HPQ`. No match → skip.
+- `Fc <number> Hz` occurs in the form `\bFc\s+([-+]?\d+\.?\d*)\s*Hz` (case-insensitive).
+- `Gain <number> dB` occurs in the form `\bGain\s+([-+]?\d+\.?\d*)\s*dB`.
+- `Q <number>` occurs in the form `\bQ\s+([-+]?\d+\.?\d*)`.
 
-The three numeric captures must each convert via `toDoubleOrNull`; any missing/failed value skips the band. Parsed bands are appended in file order with `enabled = true` (the `ON` marker is consumed). Return `ParametricEQ(preamp, bands, metadata)`. The function never throws for text content.
+Each of the three numeric captures must convert via `toDoubleOrNull`; a missing or failed value skips the band. Parsed bands are appended in file order with `enabled = true`. Return `ParametricEQ(preamp, bands, metadata)`. This function never throws for any text content.
 
-Numbers are the subset `[-+]?digits(.digits)?` — no exponent notation, no leading decimal point; such values simply fail to match and cause the line to be skipped.
+Accepted numbers are the subset `[-+]?digits(.digits)?` — no exponent notation and no leading decimal point; such values fail to match and cause the line to be skipped.
 
 ### 7.4 `fun toString(eq: ParametricEQ): String`
 
-Human-readable display format. Output lines terminated by the platform line separator (as produced by `appendLine`):
+Human-readable display format. Each output line is terminated by the platform line separator. The emitted text is observable and exact:
 
-- First line: `Preamp: <preamp> dB` using Kotlin `Double.toString`.
-- Then, for each band at index `i` (1-based): `Filter <i>: <filterType> Fc <frequency> Hz Gain <gain> dB Q <q>` using Kotlin `Double.toString` for the three numbers.
+- First line: `Preamp: <preamp> dB`, where the number uses the standard shortest round-trip double decimal representation (Kotlin `Double.toString`).
+- Then, for each band at index `i` (1-based): `Filter <i>: <filterType> Fc <frequency> Hz Gain <gain> dB Q <q>`, with the same number formatting for the three values.
 - No `ON`/`OFF` marker. `metadata` is not emitted.
 - An empty band list yields only the preamp line.
 
 ### 7.5 `fun toFileFormat(eq: ParametricEQ): String`
 
-AutoEQ round-trip format, one line per band, `appendLine`-terminated:
+AutoEQ round-trip format, one line per band, each line terminated by the platform line separator. The emitted text is observable and exact:
 
-- First line: `Preamp: <preamp> dB` (Kotlin `Double.toString`).
-- Then, per band at index `i` (1-based): `Filter <i>: ON <filterType> Fc <frequency.toInt()> Hz Gain <gain> dB Q <q>` where:
-  - frequency is truncated to an integer via `Double.toInt()`;
-  - gain uses Kotlin `Double.toString`;
-  - Q is formatted with `String.format(Locale.ROOT, "%.2f", q)` — always a dot decimal separator and exactly two fraction digits.
+- First line: `Preamp: <preamp> dB` (standard shortest round-trip double representation, Kotlin `Double.toString`).
+- Then, per band at index `i` (1-based): `Filter <i>: ON <filterType> Fc <frequencyInt> Hz Gain <gain> dB Q <q2>` where:
+  - `frequencyInt` is the frequency truncated toward zero to an integer (`Double.toInt()`);
+  - `gain` uses the same shortest round-trip double representation;
+  - `q2` has exactly two fraction digits and a dot decimal separator (equivalent to `String.format(Locale.ROOT, "%.2f", q)`).
 
 `toString(eq)` output followed by `parseText` must NOT be relied on for round-trip (it lacks `ON`); `toFileFormat(eq)` followed by `parseText` MUST reproduce `preamp` exactly (within floating tolerance) and reproduce each band with identical `frequency` (when the band frequency is integral), `gain` (within `0.01` because of display precision for Q only; gain is unrounded), `filterType`, and `q` rounded to 2 decimals. Bands are always emitted as enabled by `toFileFormat`.
 
 ### 7.6 `fun validate(eq: ParametricEQ): List<String>`
 
-Returns a list of human-readable error strings, empty when the profile is acceptable. It never throws and never mutates `eq`. Rules are evaluated in this exact order:
+Returns a list of human-readable error strings, empty when the profile is acceptable. It never throws and never mutates `eq`. Errors are appended in the following order, which is observable in the returned list; the internal evaluation mechanism is not otherwise prescribed:
 
 1. Preamp: valid iff `-50.0 <= preamp <= 50.0`; otherwise append `"Preamp value <preamp> dB is out of range (-50 to +50 dB)"`.
 2. Empty bands: if `bands.isEmpty()`, append `"EQ profile must have at least one band"`.
@@ -323,3 +324,17 @@ Deterministic, opaque-box cases an independent test engineer can implement again
 29. **Boundary acceptance.** Preamp `±50`, frequency `100000.0`, gain `±30`, q `20.0` → no errors.
 30. **parseFile success.** A temp file with `Preamp: -2.0 dB` and one valid filter parses preamp `-2.0` and the band.
 31. **parseFile missing.** A non-existent `File` throws `IllegalArgumentException`; message contains `File does not exist:` and the absolute path.
+
+---
+
+## 12. Normative vocabulary and observable edge rules
+
+The vocabulary and rule data referenced above are normative and must be reproduced exactly; only their implementation structure is free.
+
+- **Enum vocabulary.** `FilterType` JSON encoding uses the exact names `PK`, `LSC`, `HSC`, `LPQ`, `HPQ` (declaration order `PK, LSC, HSC, LPQ, HPQ`).
+- **Biquad effective inputs.** Sample rate `>= 22` kept, else `44100`; non-finite frequency → `10.0`, else clamped to `[10, rate/2 − 1]`; non-finite gain → `0.0`, else clamped to `[−120, +120]` dB; non-finite or non-positive Q → `1.41`, else unclamped. Any degenerate derivation → pass-through. Output is never NaN/infinity.
+- **Biquad response contract.** `PK`, `LPQ`, `HPQ` share the identical peaking response; `LSC`/`HSC` use the standard RBJ shelf response with `S = 1`. Coefficient immutability and per-channel independent history are observable invariants.
+- **Parser acceptance vocabulary.** Case-insensitive `Preamp:`, `Filter`, `ON`/`OFF`, type tokens `LSC`/`HSC`/`PK`/`LPQ`/`HPQ`, and `Fc … Hz` / `Gain … dB` / `Q …` forms. Numeric subset is `[-+]?digits(.digits)?` (no exponent, no leading point). When multiple type tokens occur, the precedence is `LSC`, `HSC`, `PK`, `LPQ`, `HPQ`.
+- **Parser precedence.** Preamp lines and Filter lines are never metadata; an unparseable Filter line is skipped whole (never partial, never metadata); metadata uses the text before the first `:` as key and after it as value, trimmed, with last-wins duplicates. `parseText` never throws.
+- **Writer format.** Display format omits `ON` and metadata; file format emits `ON`, truncates frequency toward zero to an integer, and formats Q with exactly two fraction digits and `.`; both use the platform line separator.
+- **Validation order and messages.** Errors are returned in the documented 7.6 order using the exact interpolated strings there; boundaries are inclusive as stated; every violation is reported, not just the first.

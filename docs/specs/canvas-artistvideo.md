@@ -22,6 +22,14 @@ below is acceptable. Statement-level implementation is intentionally absent. Con
 are observable (TTLs, thresholds, endpoint shapes, ordering lists) are part of the contract and are
 listed explicitly.
 
+> **Implementation-shape disclaimer (read first).** The algorithm descriptions below state
+> *observable behaviour*, not prescribed structure. Helper decomposition, function names, types,
+> containers, iteration mechanics and control flow are illustrative only: implementers design
+> their own internal shape independently, and submissions are similarity-audited. Nothing here
+> requires a particular internal design except where it is a public API, a wire/protocol field, a
+> mandated string, or an acceptance-test observable. Matching the rules below is what passes
+> review; copying a baseline's internal design does not.
+
 ---
 
 ## 1. Purpose and scope
@@ -47,7 +55,7 @@ Every provider in this cluster is an **independent singleton**:
 - No provider throws for expected failures (network, HTTP error, malformed payload, no match). The
   only exception that may escape a suspend provider function is coroutine cancellation.
 - Providers are safe to call concurrently from any dispatcher; all shared mutable state is
-  concurrency-safe (see §7).
+  concurrency-safe (see §14).
 - Providers are stateless with respect to the caller: identical inputs at the same time may be
   answered from a per-provider cache.
 
@@ -95,9 +103,9 @@ These must remain true for downstream compilation and packaging.
 
 ## 3. Target files and responsibilities
 
-All paths are relative to the repository root. Implementers must create exactly these files (names
-and packages are part of the contract); additional private files are allowed only if they do not
-introduce new public symbols.
+All paths are relative to the repository root. The public package names and public symbols are part
+of the contract; file names are indicative, and internal decomposition, private files and helper
+types are the implementer's choice provided no new public symbols are introduced.
 
 ### 3.1 Main sources
 
@@ -105,15 +113,14 @@ introduce new public symbols.
 |---|---|
 | `canvas/build.gradle.kts` | JVM module definition, Ktor dependencies, JUnit. |
 | `canvas/src/main/kotlin/com/revenge/canvas/CanvasArtwork.kt` | `@Serializable` cross-provider result model + derived properties. |
-| `canvas/src/main/kotlin/com/revenge/canvas/JsonExt.kt` | Internal null-safe JSON accessors used only inside `:canvas`. |
-| `canvas/src/main/kotlin/com/revenge/canvas/TidalCanvasProvider.kt` | TIDAL v1 search → `CanvasArtwork`; URL formatting and artist matching helpers. |
+| `canvas/src/main/kotlin/com/revenge/canvas/TidalCanvasProvider.kt` | TIDAL v1 search → `CanvasArtwork` (§5). |
 | `canvas/src/main/kotlin/com/revenge/canvas/AppleMusicTokenProvider.kt` | Process-wide Apple Music web bearer token: discovery, caching, fallback, invalidation. |
 | `canvas/src/main/kotlin/com/revenge/canvas/AppleMusicArtistBackgroundProvider.kt` | Artist-name → HLS background video URL (`String?`). |
 | `applecanvas/build.gradle.kts` | JVM module definition; must expose `:canvas` as `api` (see §2.2). |
 | `applecanvas/src/main/kotlin/com/revenge/applecanvas/AppleMusicCanvasProvider.kt` | Album/song/album-id → `CanvasArtwork`; candidate scoring, album-id resolution, editorial-video extraction. |
 | `artistvideo/build.gradle.kts` | Android/Compose/Media3 module definition; must add Media3 HLS runtime artifact. |
 | `artistvideo/src/main/AndroidManifest.xml` | Empty manifest; merged into app. |
-| `artistvideo/src/main/kotlin/com/revenge/artistvideo/ArtistVideo.kt` | `@Composable ArtistVideo` muted looping surface + internal MIME selection. |
+| `artistvideo/src/main/kotlin/com/revenge/artistvideo/ArtistVideo.kt` | `@Composable ArtistVideo` muted looping video surface (§9.3). |
 | `artistvideo/src/main/kotlin/com/revenge/artistvideo/ArtistVideoCanvasProvider.kt` | Archive endpoint → `ArtistVideoResponse`; short-TTL positive and negative cache. |
 
 ### 3.2 Tests the implementer must provide
@@ -175,13 +182,11 @@ names, nullability and defaults are frozen.
   equal instance.
 - No default non-null values: `CanvasArtwork()` is valid and all fields are null.
 
-### 4.4 Internal JSON helpers (`JsonExt.kt`)
+### 4.4 JSON parsing
 
-Functions in `com.revenge.canvas`, visibility `internal` (same-module only):
-`JsonObject.objectValue(key): JsonObject?`, `JsonObject.arrayValue(key): JsonArray?`,
-`JsonObject.textValue(key): String?` where text returns the primitive's content-or-null.
-These are not part of the cross-module API; `:applecanvas` and `:artistvideo` must use their own
-private helpers.
+JSON parsing is private implementation detail; no JSON-accessor API is part of the contract. Each
+module parses payloads with its own private code. Only the wire shape in §4.1 and the tolerance
+rules in §4.3 are contractual.
 
 ---
 
@@ -214,7 +219,7 @@ Both suspend on the caller's context (they do not switch dispatchers). They are 
   cache key.
 - Expected success: HTTP 200 with a JSON object containing a section whose `items` array holds
   search results. Section lookup is by lowercased `types` (`tracks`/`albums`) and `items`; if absent,
-  a depth-first scan for the first `items` array anywhere in the document is used.
+  the first `items` array found anywhere in the document (document order) is used.
 - Compression: gzip and deflate accepted; HTTP caching enabled; `expectSuccess = false` (status
   inspected manually).
 
@@ -236,9 +241,9 @@ Both suspend on the caller's context (they do not switch dispatchers). They are 
 2. Cache key = `"album|" + lowercase(trim(album)) + "|" + lowercase(trim(artist))`.
 3. Query = `"$album $artist"`; `types=ALBUMS`.
 
-Caching: in-memory `ConcurrentHashMap` keyed as above, TTL exactly 24 h (86 400 000 ms) from the
-time of a successful store. **Misses are not cached.** Expired entries are not proactively removed
-but are ignored.
+Caching: a process-wide, concurrency-safe in-memory cache keyed as above, TTL exactly 24 h
+(86 400 000 ms) from the time of a successful store. **Misses are not cached.** Expired entries are
+treated as absent.
 
 ### 5.4 Result mapping (observable)
 
@@ -251,7 +256,8 @@ For each candidate object in order, take the first that maps to a non-null `Canv
    - `ALBUMS`: if the requested album is non-null and title is non-null, title must contain the album
      **or** album must contain the title (case-insensitive); otherwise reject.
 3. Primary artist = `artist.name`, else first element of `artists[].name`.
-4. If a primary artist is present it must match the requested artist per §5.6, else reject.
+4. If a primary artist is present it must match the requested artist per the artist-matching rule in
+   §5.5, else reject.
 5. Owner object = for `TRACKS` the `album` object; for `ALBUMS` the candidate itself.
 6. `videoCover` on the owner must be a non-blank string, else reject.
 7. Format the cover id per §5.5; a malformed id rejects the candidate.
@@ -262,23 +268,19 @@ For each candidate object in order, take the first that maps to a non-null `Canv
    - `albumName` = for `TRACKS` the owner's `title`; for `ALBUMS` the candidate title
    - all other fields null.
 
-### 5.5 Internal helpers (visible to tests in the same module)
+### 5.5 Cover-id and artist-matching rules (observable)
 
-`internal fun formatVideoUrl(id: String): String?`
+**Cover-id formatting.** A TIDAL video cover id is exactly **five** non-blank dash-separated
+segments (e.g. `aa-bb-cc-dd-ee`). Such an id maps to
+`https://resources.tidal.com/videos/<s1>/<s2>/<s3>/<s4>/<s5>/1280x1280.mp4`.
+Any other segment count, an empty id, or any blank segment is malformed and rejects the candidate.
 
-A TIDAL video cover id is exactly **five** non-blank dash-separated segments (e.g. `aa-bb-cc-dd-ee`).
-The URL is `https://resources.tidal.com/videos/<s1>/<s2>/<s3>/<s4>/<s5>/1280x1280.mp4`.
-Any other segment count, an empty id, or any blank segment → `null`.
-
-`internal fun artistsMatch(requested: String, returned: String): Boolean`
-
-- Split both strings on any of: comma, ampersand, multiplication sign `×`, bare `x` between spaces,
-  `feat`/`ft` with optional period, `featuring`, `with` — case-insensitive, allowing surrounding
-  spaces.
-- Normalize each part: collapse whitespace runs to one space, trim, lowercase; drop blanks.
-- Result is `true` iff at least one requested part and one returned part satisfy *contains* in either
-  direction.
-- Two blank lists → `false`.
+**Artist matching.** Requested and returned artist strings are split on any of: comma, ampersand,
+multiplication sign `×`, bare `x` between spaces, `feat`/`ft` with optional period, `featuring`,
+`with` — case-insensitive, allowing surrounding spaces. Each part is normalized (whitespace runs
+collapsed to one space, trimmed, lowercased) and blanks dropped. The artists match iff at least one
+requested part and one returned part contain one another (either direction). Two blank lists do not
+match.
 
 ### 5.6 Failure isolation
 
@@ -309,8 +311,8 @@ suspend fun clearToken()
 
 ### 6.2 Semantics
 
-1. All `getToken` and `clearToken` calls are serialized by a single mutex, so concurrent callers share
-   at most one discovery attempt.
+1. All `getToken` and `clearToken` calls are serialized through one coordination point, so concurrent
+   callers share at most one discovery attempt (no duplicate concurrent discovery).
 2. Cached token is reused iff `cachedExpiryMs > now + 5 min` (300 000 ms headroom). Expiry uses the
    JWT's `exp` claim converted from seconds to milliseconds.
 3. On cache miss, attempt live discovery:
@@ -327,8 +329,10 @@ suspend fun clearToken()
    - Any failure for one page/bundle skips to the next; a whole-discovery failure is swallowed.
 4. If no live token is found, use a **bundled fallback token** (a fixed compile-time JWT whose issuer
    is `AMPWebPlay` and which must be valid for catalog reads) and cache it for 24 h.
-5. Store the chosen token and its expiry in volatile fields visible after the mutex is released.
-6. `clearToken` sets the cache to empty; it does not wait for in-flight HTTP beyond the mutex.
+5. The chosen token and expiry are published so that subsequent callers observe them once the
+   serialized discovery completes.
+6. `clearToken` sets the cache to empty; it does not wait for in-flight HTTP beyond the serialization
+   point.
 
 ### 6.3 Implementation notes that are contractual
 
@@ -402,8 +406,9 @@ except cancellation yields `null`; cancellation is rethrown. No propagation to U
 
 ### 7.4 Threading
 
-`ConcurrentHashMap` cache; the HTTP client is lazily created once; no coroutine mutex is used beyond
-the token provider. Concurrent identical misses may issue duplicate requests; that is allowed.
+Caches are process-wide and concurrency-safe; any transport client is created on first use. No
+additional serialization is used beyond the token provider's coordination. Concurrent identical
+misses may issue duplicate requests; that is allowed.
 
 ---
 
@@ -423,7 +428,7 @@ suspend fun getByAlbumId(albumId: String, storefront: String = "us"): CanvasArtw
 
 ### 8.2 Caching contract
 
-- In-memory `ConcurrentHashMap`, TTL 24 h.
+- Process-wide, concurrency-safe in-memory cache, TTL 24 h.
 - Cache key = `"<prefix>|" + lowercase(trim(part))` for each part joined by `|`:
   - album: `("album", album, artist, storefront)`
   - song: `("song", song, artist, album ?: "", storefront)`
@@ -511,14 +516,15 @@ For every other type the id is `item.id`.
 
 Return the id only if it is non-blank and does not start with `pl.` (playlist); otherwise `null`.
 
-`internal fun albumIdFromUrl(url: String?): String?` — from a URL shaped
-`https://music.apple.com/.../album/<slug>/<id>?i=...` take the substring after `/album/`, cut at
-`?`, then take the text after the last `/`; return it only when non-blank and **all characters are
-digits**. `null` for a missing URL or non-numeric id.
+**Album id from a catalog URL.** From a URL shaped
+`https://music.apple.com/.../album/<slug>/<id>?i=...`, the id is the text after `/album/`, cut at
+`?`, then after the last `/`; it is accepted only when non-blank and **all characters are digits**.
+A missing URL or a non-numeric id yields no id.
 
 ### 8.6 Response mapping (album endpoint)
 
-`internal fun albumArtworkFromResponse(root, albumId, fallbackArtist, titleOverride = null, artistOverride = null): CanvasArtwork?`
+The album-endpoint mapping rule is observable as follows (`titleOverride` and `artistOverride` are
+supplied when the lookup originated from a song):
 
 1. `root.data[0]` object with `attributes`; otherwise `null`.
 2. `albumName = attributes.name ?: ""`; if blacklisted → `null`.
@@ -531,9 +537,7 @@ digits**. `null` for a missing URL or non-numeric id.
    - `animated = extracted URL`
    - all other fields null.
 
-### 8.7 Editorial video extraction
-
-`internal fun extractEditorialVideoUrl(editorialVideo: JsonObject): String?`
+### 8.7 Editorial video extraction (observable precedence)
 
 - Try these keys in fixed order: `motionSquareVideo1x1`, `motionDetailSquare`, `motionTallVideo3x4`,
   `motionDetailTall`, `motionDetailRaw`, `motionDetailStatic`; for each object use the first non-blank
@@ -544,20 +548,18 @@ digits**. `null` for a missing URL or non-numeric id.
 
 ### 8.8 Blacklist and artist matching
 
-`internal fun isBlacklisted(text: String): Boolean` — `false` for blank; otherwise `true` when the
-lowercased text contains any of: `playlist`, `set list`, `essentials`, `session`, `dj mix`, `mixed`,
+**Blacklist.** A text is not blacklisted when blank; otherwise it is blacklisted when the lowercased
+text contains any of: `playlist`, `set list`, `essentials`, `session`, `dj mix`, `mixed`,
 `apple music`, `today's hits`.
 
-`internal fun artistMatches(resultArtist: String, artist: String): Boolean` — true iff equal
-(ignore case), or either contains the other (ignore case). Blank handling falls out of the contains
-comparison.
+**Artist matching.** A returned and a requested artist match iff they are equal (ignore case) or
+either contains the other (ignore case). Blank handling falls out of the contains comparison.
 
-### 8.9 Other internal helpers
+### 8.9 Helper API
 
-`internal fun buildQuery(term, artist, album): String` — as §8.3 step 2.
-`internal fun cacheKey(prefix: String, vararg parts: String): String` — prefix then `|` then each
-trimmed lowercased part.
-`internal fun scoreCandidate(attributes, term, artist, album): Int?` — §8.4.
+No helper functions, names, signatures or types are part of the contract. The query-building,
+cache-identity, scoring, id-resolution and mapping rules are fully specified in §8.2–§8.6 and are
+the contract.
 
 ### 8.10 Failure isolation and logging
 
@@ -616,7 +618,7 @@ Behaviour:
 1. Cache key = trimmed lowercased `song`, `artist`, `album.orEmpty()`,
    `duration?.toString().orEmpty()` joined by `|`.
 2. Valid cache entry (`expiresAt > now`) → return stored value (may be `null`). Expired entries are
-   removed before fetching.
+   treated as absent.
 3. Fetch; store the result **including `null`** for 60 000 ms.
 4. There is **no blank-input guard**: blank song/artist still produce a request and are cached. This
    matches baseline behaviour and must not be "fixed" silently because callers rely only on `null`.
@@ -660,8 +662,8 @@ Observable UI/player contract:
 - No audio focus, wake lock, or lifecycle pause beyond composition disposal is implemented here;
   callers are responsible for visibility/lifecycle.
 
-`internal fun videoMimeType(url: String): String` — lowercase the URL; if it contains `mp4` →
-`video/mp4`; otherwise (including `.m3u8`, unknown, or empty) → `application/x-mpegURL`.
+**MIME selection.** Lowercase the URL; if it contains `mp4` → `video/mp4`; otherwise (including
+`.m3u8`, unknown, or empty) → `application/x-mpegURL`.
 
 MIME selection is substring-based: `clip.mp4?token=...` and uppercase variants classify as MP4;
 `master.m3u8` and `stream/playlist` classify as HLS.
@@ -757,20 +759,19 @@ Permissions and platform:
 
 ## 12. Determinism and test seams
 
-The production providers currently construct private HTTP clients and use `System.currentTimeMillis`.
-To satisfy the acceptance tests without live network or timing flakiness, implementers must add
-**internal-only** seams; the public API above must not change:
+Acceptance tests must run without live network or timing flakiness, and the public API must not
+change to enable that. The seam shape is the implementer's choice; the contract is only that the
+observable rules in §5–§9 are exercisable deterministically:
 
-1. An injectable HTTP engine/client factory per provider, or an internal constructor/initializer that
-   accepts an `HttpClient` (or Ktor `HttpClientEngine`). Tests use Ktor `MockEngine` or a local mock
-   server; production uses OkHttp.
-2. A clock seam (`internal fun nowMs(): Long` or an injectable `() -> Long`) used for cache expiry and
-   token expiry decisions.
-3. Internal visibility for the already-tested pure helpers (`formatVideoUrl`, `artistsMatch`,
-   `buildQuery`, `scoreCandidate`, `albumIdFromUrl`, `extractEditorialVideoUrl`,
-   `albumArtworkFromResponse`, `cacheKey`, `videoMimeType`) and for the background provider's name
-   scoring/URL-extraction logic.
-4. A way to inject a JWT/bundle fixture for token tests (e.g. internal discovery-from-texts function).
+1. Transport is injectable per provider, so tests can supply canned HTTP responses (mock engine or
+   local mock server). Production uses a real HTTP client.
+2. Time is controllable for every cache-expiry and token-expiry decision (injectable clock or
+   equivalent), so TTLs never depend on wall-clock flakiness.
+3. The pure decision rules in this spec (cover-id formatting, artist matching, query building,
+   candidate scoring, album-id and URL extraction, editorial precedence, MIME classification, name
+   scoring) are exercisable without a network call. Whether via internal functions or a test facade
+   is not contractual.
+4. Token discovery is exercisable from supplied HTML/JS text fixtures.
 
 All fixtures must be literal JSON/JS strings in test sources; no files outside the repository and no
 network.

@@ -11,6 +11,12 @@ This document describes observable wire shape, public API, parsing behaviour and
 intentionally omits statement-level implementation. Any implementation that satisfies the contracts
 and acceptance tests is acceptable.
 
+> **Clean-room note.** Algorithm shape, ordering of steps, and any code-like sketch in this document
+> are illustrative of the required observable result; they are not a prescription. Implementers must
+> design their implementation independently, and submissions are similarity-audited against the
+> upstream project. Where a described shape and an explicit acceptance test appear to differ, the
+> observable rule and the acceptance test win.
+
 Consumers whose code must keep compiling are listed in Section 11.
 
 ---

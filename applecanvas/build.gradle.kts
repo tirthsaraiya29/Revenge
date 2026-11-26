@@ -8,7 +8,7 @@ kotlin {
 }
 
 dependencies {
-    implementation(project(":canvas"))
+    api(project(":canvas"))
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.okhttp)
     implementation(libs.ktor.client.content.negotiation)
