@@ -4,28 +4,21 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class VideoMimeTypeTest {
-  private val hls = "application/x-mpegURL"
-  private val mp4 = "video/mp4"
+    @Test
+    fun m3u8IsHls() {
+        assertEquals("application/x-mpegURL", videoMimeType("https://cdn/master.m3u8"))
+        assertEquals("application/x-mpegURL", videoMimeType("https://cdn/MASTER.M3U8"))
+    }
 
-  @Test
-  fun detectsHlsFromUrl() {
-    assertEquals(hls, videoMimeType("https://cdn.example/artist/master.m3u8"))
-  }
+    @Test
+    fun mp4SubstringIsMp4() {
+        assertEquals("video/mp4", videoMimeType("https://cdn/clip.mp4?token=abc"))
+        assertEquals("video/mp4", videoMimeType("https://cdn/CLIP.MP4"))
+    }
 
-  @Test
-  fun detectionIsCaseInsensitive() {
-    assertEquals(hls, videoMimeType("HTTPS://CDN.EXAMPLE/ARTIST/MASTER.M3U8"))
-    assertEquals(mp4, videoMimeType("https://cdn.example/ARTIST/CLIP.MP4"))
-  }
-
-  @Test
-  fun detectsMp4WithQueryString() {
-    assertEquals(mp4, videoMimeType("https://cdn.example/clip.mp4?token=abc"))
-  }
-
-  @Test
-  fun unknownSchemeDefaultsToHls() {
-    assertEquals(hls, videoMimeType("https://cdn.example/stream/playlist"))
-    assertEquals(hls, videoMimeType(""))
-  }
+    @Test
+    fun unknownAndEmptyDefaultToHls() {
+        assertEquals("application/x-mpegURL", videoMimeType("https://cdn/stream/playlist"))
+        assertEquals("application/x-mpegURL", videoMimeType(""))
+    }
 }

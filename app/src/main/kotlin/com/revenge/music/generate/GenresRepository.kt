@@ -1,133 +1,80 @@
 package com.revenge.music.generate
 
 import com.revenge.music.db.MusicDatabase
-import com.revenge.music.db.daos.SongPlayStatsDao
 import com.revenge.music.utils.lastfm.LastFmTasteApi
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
-import timber.log.Timber
-
-data class GenreWeight(
-  val genre: String,
-  val weight: Float,
-)
-
-private data class CachedTrackGenres(
-  val genres: List<String>,
-  val timestamp: Long,
-)
-
-const val GENRE_CACHE_TTL_MILLIS = 60L * 60 * 1000 // 1 hour
 
 @Singleton
-open class GenresRepository
-@Inject
-constructor(
-  private val database: MusicDatabase? = null,
-  private val tasteApi: LastFmTasteApi,
-  private val tasteProfileProvider: TasteProfileProvider,
-  private val songPlayStatsDao: SongPlayStatsDao? = null,
+open class GenresRepository @Inject constructor(
+    private val database: MusicDatabase,
+    private val lastFmTasteApi: LastFmTasteApi,
+    private val tasteProfileProvider: TasteProfileProvider,
 ) {
-  private val statsDao: SongPlayStatsDao?
-    get() = songPlayStatsDao ?: database?.songPlayStatsDao
+    private data class CacheEntry(val genres: List<String>, val timestamp: Long)
 
-  private val trackGenresCache = ConcurrentHashMap<String, CachedTrackGenres>()
+    private val cache = ConcurrentHashMap<String, CacheEntry>()
 
-  open suspend fun topGenres(limit: Int = 10): List<GenreWeight> =
-    withContext(Dispatchers.IO) {
-      val genreScores = mutableMapOf<String, Float>()
+    suspend fun genresForTrack(trackKey: String): List<String> {
+        val now = System.currentTimeMillis()
+        cache[trackKey]?.takeIf { now - it.timestamp < GENRE_CACHE_TTL_MILLIS }?.let {
+            return it.genres
+        }
+        val artist = trackKey.split('|').getOrNull(1)?.trim().orEmpty()
+        if (artist.isBlank()) return emptyList()
+        val result = lastFmTasteApi.getTopTags(artist)
+        if (result.isFailure) return emptyList()
+        val genres = result.getOrThrow()
+            .map { it.name.trim().lowercase() }
+            .filter { it.isNotBlank() }
+            .distinct()
+        cache[trackKey] = CacheEntry(genres, now)
+        return genres
+    }
 
-      // 1. Incorporate top genres from cached TasteProfile snapshot
-      try {
+    suspend fun topGenres(limit: Int = 10): List<String> {
+        val weights = HashMap<String, Double>()
         val profile = tasteProfileProvider.get()
-        if (profile != null && profile.topGenres.isNotEmpty()) {
-          profile.topGenres.forEachIndexed { index, genre ->
-            val weight = (profile.topGenres.size - index) * 1000f
-            genreScores[genre.lowercase()] =
-              genreScores.getOrDefault(genre.lowercase(), 0f) + weight
-          }
-        }
-      } catch (e: Exception) {
-        Timber.d(e, "Error reading taste profile for top genres")
-      }
-
-      // 2. Sample top played tracks from database listening history
-      try {
-        val topTracks = statsDao?.mostPlayedSince(0L, limit = 15).orEmpty()
-        if (topTracks.isNotEmpty()) {
-          coroutineScope {
-            val genreDeferreds = topTracks.map { stats ->
-              async {
-                val genres =
-                  withTimeoutOrNull(2000L) {
-                      genresForTrack(stats.trackKey)
-                    }
-                    .orEmpty()
-                stats to genres
-              }
+        if (profile != null) {
+            val count = profile.topGenres.size
+            profile.topGenres.forEachIndexed { index, genre ->
+                weights.merge(genre.lowercase(), 1000.0 * (count - index), Double::plus)
             }
-            val results = genreDeferreds.map { it.await() }
-            for ((stats, genres) in results) {
-              val trackWeight = stats.totalPlayTimeMs.toFloat().coerceAtLeast(10f)
-              for (genre in genres) {
-                val key = genre.lowercase()
-                genreScores[key] = genreScores.getOrDefault(key, 0f) + trackWeight
-              }
-            }
-          }
         }
-      } catch (e: Exception) {
-        Timber.d(e, "Error aggregating genres from play stats")
-      }
 
-      genreScores.entries
-        .sortedByDescending { it.value }
-        .take(limit)
-        .map { GenreWeight(genre = it.key, weight = it.value) }
+        val stats = runCatching {
+            database.songPlayStatsDao.mostPlayedSince(0L, 15)
+        }.getOrDefault(emptyList())
+
+        val perTrack = coroutineScope {
+            stats.map { stat ->
+                async {
+                    val genres = withTimeoutOrNull(2_000) {
+                        genresForTrack(stat.trackKey)
+                    }.orEmpty()
+                    stat.totalPlayTimeMs.coerceAtLeast(10L) to genres
+                }
+            }.awaitAll()
+        }
+        perTrack.forEach { (weight, genres) ->
+            genres.forEach { genre -> weights.merge(genre, weight.toDouble(), Double::plus) }
+        }
+        return weights.entries
+            .sortedByDescending { it.value }
+            .take(limit)
+            .map { it.key }
     }
 
-  open suspend fun genresForTrack(trackKey: String): List<String> =
-    withContext(Dispatchers.IO) {
-      val now = System.currentTimeMillis()
-      trackGenresCache[trackKey]?.let { cached ->
-        if (now - cached.timestamp < GENRE_CACHE_TTL_MILLIS) {
-          return@withContext cached.genres
-        }
-      }
-
-      val parts = trackKey.split("|")
-      val artist = if (parts.size >= 2) parts[1].trim() else ""
-      if (artist.isBlank()) {
-        return@withContext emptyList()
-      }
-
-      val tagsResult =
-        try {
-          tasteApi.getTopTags(artist)
-        } catch (e: Exception) {
-          Timber.d(e, "Failed to get tags for trackKey: $trackKey")
-          null
-        }
-
-      if (tagsResult != null && tagsResult.isSuccess) {
-        val fetched = tagsResult.getOrNull().orEmpty().map { it.name.trim().lowercase() }.distinct()
-        trackGenresCache[trackKey] = CachedTrackGenres(genres = fetched, timestamp = now)
-        fetched
-      } else {
-        if (tagsResult != null && tagsResult.isFailure) {
-          Timber.d(tagsResult.exceptionOrNull(), "Failed to get tags for trackKey: $trackKey")
-        }
-        emptyList()
-      }
+    fun clearCache() {
+        cache.clear()
     }
 
-  fun clearCache() {
-    trackGenresCache.clear()
-  }
+    companion object {
+        const val GENRE_CACHE_TTL_MILLIS = 3_600_000L
+    }
 }

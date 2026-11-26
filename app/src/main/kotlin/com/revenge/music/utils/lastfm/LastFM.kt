@@ -1,213 +1,157 @@
 package com.revenge.music.utils.lastfm
 
-import com.revenge.music.models.lastfm.Authentication
-import com.revenge.music.models.lastfm.LastFmError
-import com.revenge.music.models.lastfm.TokenResponse
 import io.ktor.client.HttpClient
-import io.ktor.client.call.body
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
-import io.ktor.client.plugins.defaultRequest
-import io.ktor.client.request.*
-import io.ktor.client.request.forms.FormDataContent
+import io.ktor.client.request.forms.submitForm
 import io.ktor.client.statement.bodyAsText
-import io.ktor.http.*
-import io.ktor.serialization.kotlinx.json.json
+import io.ktor.http.Parameters
 import java.security.MessageDigest
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
+/** Last.fm API facade. Every network operation is wrapped in [runCatching]. */
 object LastFM {
-  var sessionKey: String? = null
+    const val BASE_URL = "https://ws.audioscrobbler.com/2.0/"
 
-  private val json = Json {
-    isLenient = true
-    ignoreUnknownKeys = true
-  }
+    @Volatile private var apiKey: String = ""
+    @Volatile private var secret: String = ""
+    @Volatile var sessionKey: String? = null
 
-  private val client by lazy {
-    HttpClient(OkHttp) {
-      install(ContentNegotiation) { json(json) }
-      defaultRequest { url("https://ws.audioscrobbler.com/2.0/") }
-      expectSuccess = false
-    }
-  }
-
-  private fun Map<String, String>.apiSig(secret: String): String {
-    val sorted = toSortedMap()
-    val toHash = sorted.entries.joinToString("") { it.key + it.value } + secret
-    val digest = MessageDigest.getInstance("MD5").digest(toHash.toByteArray())
-    return digest.joinToString("") { "%02x".format(it) }
-  }
-
-  private fun HttpRequestBuilder.lastfmParams(
-    method: String,
-    apiKey: String,
-    secret: String,
-    sessionKey: String? = null,
-    extra: Map<String, String> = emptyMap(),
-    format: String = "json",
-  ) {
-    contentType(ContentType.Application.FormUrlEncoded)
-    userAgent("Metrolist (https://github.com/MetrolistGroup/Metrolist)")
-    val paramsForSig =
-      mutableMapOf("method" to method, "api_key" to apiKey).apply {
-        sessionKey?.let { put("sk", it) }
-        putAll(extra)
-      }
-    val apiSig = paramsForSig.apiSig(secret)
-    setBody(
-      FormDataContent(
-        Parameters.build {
-          paramsForSig.forEach { (k, v) -> append(k, v) }
-          append("api_sig", apiSig)
-          append("format", format)
-        },
-      ),
-    )
-  }
-
-  // OAuth methods (kept for backward compatibility)
-  suspend fun getToken() = runCatching {
-    client
-      .post { lastfmParams(method = "auth.getToken", apiKey = API_KEY, secret = SECRET) }
-      .body<TokenResponse>()
-  }
-
-  suspend fun getSession(token: String) = runCatching {
-    client
-      .post {
-        lastfmParams(
-          method = "auth.getSession",
-          apiKey = API_KEY,
-          secret = SECRET,
-          extra = mapOf("token" to token),
-        )
-      }
-      .body<Authentication>()
-  }
-
-  fun getAuthUrl(token: String): String {
-    return "https://www.last.fm/api/auth/?api_key=$API_KEY&token=$token"
-  }
-
-  // Mobile session authentication
-  suspend fun getMobileSession(username: String, password: String) = runCatching {
-    val response = client.post {
-      lastfmParams(
-        method = "auth.getMobileSession",
-        apiKey = API_KEY,
-        secret = SECRET,
-        extra = mapOf("username" to username, "password" to password),
-      )
-      parameter("format", "json")
+    private val jsonFormat = Json {
+        ignoreUnknownKeys = true
+        isLenient = true
     }
 
-    val responseText = response.bodyAsText()
-    if (responseText.contains("\"error\"")) {
-      val error = json.decodeFromString<LastFmError>(responseText)
-      throw LastFmException(error.error, error.message)
+    private val client: HttpClient by lazy {
+        HttpClient(OkHttp) {
+            install(ContentNegotiation) { json(jsonFormat) }
+        }
     }
-    json.decodeFromString<Authentication>(responseText)
-  }
 
-  class LastFmException(val code: Int, override val message: String) : Exception(message) {
-    override fun toString(): String = "LastFmException(code=$code, message=$message)"
-  }
+    fun initialize(apiKey: String, secret: String) {
+        this.apiKey = apiKey.trim()
+        this.secret = secret.trim()
+    }
 
-  suspend fun updateNowPlaying(
-    artist: String,
-    track: String,
-    album: String? = null,
-    trackNumber: Int? = null,
-    duration: Int? = null,
-  ) = runCatching {
-    client.post {
-      lastfmParams(
-        method = "track.updateNowPlaying",
-        apiKey = API_KEY,
-        secret = SECRET,
-        sessionKey = sessionKey!!,
-        extra =
-          buildMap {
+    fun isInitialized(): Boolean = apiKey.isNotBlank() && secret.isNotBlank()
+
+    fun getApiKey(): String = apiKey
+
+    fun getKtorClient(): HttpClient = client
+
+    suspend fun getToken(): Result<String> = runCatching {
+        val body = perform("auth.getToken", emptyMap(), withSession = false)
+            ?: error("Last.fm token request failed")
+        body["token"]?.jsonPrimitive?.contentOrNull ?: error("Missing token")
+    }
+
+    suspend fun getSession(token: String): Result<String> = runCatching {
+        val body = perform("auth.getSession", mapOf("token" to token), withSession = false)
+            ?: error("Last.fm session request failed")
+        val key = body["session"]?.jsonObject?.get("key")
+            ?.jsonPrimitive?.contentOrNull ?: error("Missing session key")
+        sessionKey = key
+        key
+    }
+
+    suspend fun getMobileSession(username: String, password: String): Result<String> = runCatching {
+        val body = perform(
+            "auth.getMobileSession",
+            mapOf("username" to username, "password" to password),
+            withSession = false,
+        ) ?: error("Last.fm mobile session request failed")
+        val key = body["session"]?.jsonObject?.get("key")
+            ?.jsonPrimitive?.contentOrNull ?: error("Missing session key")
+        sessionKey = key
+        key
+    }
+
+    suspend fun updateNowPlaying(
+        artist: String,
+        track: String,
+        album: String? = null,
+        duration: Int? = null,
+    ): Result<Unit> = runCatching {
+        val params = buildMap {
             put("artist", artist)
             put("track", track)
-            album?.let { put("album", it) }
-            trackNumber?.let { put("trackNumber", it.toString()) }
-            duration?.let { put("duration", it.toString()) }
-          },
-      )
-      parameter("format", "json")
+            album?.takeIf { it.isNotBlank() }?.let { put("album", it) }
+            duration?.takeIf { it > 0 }?.let { put("duration", it.toString()) }
+        }
+        perform("track.updateNowPlaying", params) ?: error("Now playing update failed")
+        Unit
     }
-  }
 
-  suspend fun scrobble(
-    artist: String,
-    track: String,
-    timestamp: Long,
-    album: String? = null,
-    trackNumber: Int? = null,
-    duration: Int? = null,
-  ) = runCatching {
-    client.post {
-      lastfmParams(
-        method = "track.scrobble",
-        apiKey = API_KEY,
-        secret = SECRET,
-        sessionKey = sessionKey!!,
-        extra =
-          buildMap {
-            put("artist[0]", artist)
-            put("track[0]", track)
-            put("timestamp[0]", timestamp.toString())
-            album?.let { put("album[0]", it) }
-            trackNumber?.let { put("trackNumber[0]", it.toString()) }
-            duration?.let { put("duration[0]", it.toString()) }
-          },
-      )
-      parameter("format", "json")
-    }
-  }
-
-  suspend fun setLoveStatus(artist: String, track: String, love: Boolean) = runCatching {
-    val method = if (love) "track.love" else "track.unlove"
-    client.post {
-      lastfmParams(
-        method = method,
-        apiKey = API_KEY,
-        secret = SECRET,
-        sessionKey = sessionKey!!,
-        extra =
-          buildMap {
+    suspend fun scrobble(
+        artist: String,
+        track: String,
+        timestamp: Long,
+        album: String? = null,
+        duration: Int? = null,
+    ): Result<Unit> = runCatching {
+        val params = buildMap {
             put("artist", artist)
             put("track", track)
-          },
-      )
-      parameter("format", "json")
+            put("timestamp", timestamp.toString())
+            album?.takeIf { it.isNotBlank() }?.let { put("album", it) }
+            duration?.takeIf { it > 0 }?.let { put("duration", it.toString()) }
+        }
+        perform("track.scrobble", params) ?: error("Scrobble failed")
+        Unit
     }
-  }
 
-  // API keys passed from the app module (loaded from BuildConfig/GitHub Secrets)
-  private var API_KEY = ""
-  private var SECRET = ""
+    suspend fun love(artist: String, track: String): Result<Unit> = runCatching {
+        perform("track.love", mapOf("artist" to artist, "track" to track))
+            ?: error("Love failed")
+        Unit
+    }
 
-  /**
-   * Initialize LastFM with API credentials
-   *
-   * @param apiKey LastFM API key
-   * @param secret LastFM secret key
-   */
-  fun initialize(apiKey: String, secret: String) {
-    API_KEY = apiKey
-    SECRET = secret
-  }
+    suspend fun unlove(artist: String, track: String): Result<Unit> = runCatching {
+        perform("track.unlove", mapOf("artist" to artist, "track" to track))
+            ?: error("Unlove failed")
+        Unit
+    }
 
-  fun isInitialized(): Boolean = API_KEY.isNotEmpty() && SECRET.isNotEmpty()
+    internal fun signature(params: Map<String, String>, secret: String): String {
+        val concatenated = params.toSortedMap()
+            .entries
+            .joinToString(separator = "") { (key, value) -> key + value }
+        return md5(concatenated + secret)
+    }
 
-  fun getApiKey(): String = API_KEY
+    private fun md5(value: String): String {
+        val digest = MessageDigest.getInstance("MD5").digest(value.toByteArray(Charsets.UTF_8))
+        return digest.joinToString("") { "%02x".format(it.toInt() and 0xff) }
+    }
 
-  fun getKtorClient(): HttpClient = client
+    private suspend fun perform(
+        method: String,
+        params: Map<String, String>,
+        withSession: Boolean = true,
+    ): JsonObject? = runCatching {
+        val key = apiKey
+        if (key.isBlank()) return null
+        val all = LinkedHashMap<String, String>()
+        all["method"] = method
+        all["api_key"] = key
+        if (withSession) {
+            sessionKey?.takeIf { it.isNotBlank() }?.let { all["sk"] = it }
+        }
+        params.forEach { (paramKey, value) ->
+            if (value.isNotBlank()) all[paramKey] = value
+        }
+        all["api_sig"] = signature(all, secret)
+        all["format"] = "json"
 
-  const val DEFAULT_SCROBBLE_DELAY_PERCENT = 0.5f
-  const val DEFAULT_SCROBBLE_MIN_SONG_DURATION = 30
-  const val DEFAULT_SCROBBLE_DELAY_SECONDS = 180
+        val form = Parameters.build {
+            all.forEach { (k, v) -> append(k, v) }
+        }
+        val text = client.submitForm(BASE_URL, form).bodyAsText()
+        val root = jsonFormat.parseToJsonElement(text).jsonObject
+        if (root["error"] != null) null else root
+    }.getOrNull()
 }

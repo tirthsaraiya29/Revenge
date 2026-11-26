@@ -3,237 +3,240 @@ package com.revenge.music.ai
 import android.content.Context
 import com.revenge.innertube.YouTube
 import com.revenge.innertube.models.SongItem
-import com.revenge.music.ai.weather.toSnapshotString
+import com.revenge.music.api.OpenRouterService
+import com.revenge.music.ai.weather.WeatherInfo
 import com.revenge.music.constants.OpenRouterApiKey
 import com.revenge.music.constants.OpenRouterBaseUrlKey
 import com.revenge.music.constants.OpenRouterModelKey
-import com.revenge.music.db.InternalDatabase
+import com.revenge.music.db.MusicDatabase
 import com.revenge.music.db.entities.PlaylistEntity
 import com.revenge.music.db.entities.PlaylistSongMap
-import com.revenge.music.db.entities.SongEntity
+import com.revenge.music.models.MediaMetadata
 import com.revenge.music.utils.dataStore
-import com.revenge.music.utils.get
 import java.util.concurrent.TimeUnit
+import javax.inject.Inject
+import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.add
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
-import org.json.JSONArray
-import org.json.JSONObject
 
-object AiPlaylistGenerator {
-  private val client =
-    OkHttpClient.Builder()
-      .connectTimeout(30, TimeUnit.SECONDS)
-      .readTimeout(90, TimeUnit.SECONDS)
-      .writeTimeout(30, TimeUnit.SECONDS)
-      .build()
+internal object AiOpenRouter {
+    private val json = Json { ignoreUnknownKeys = true; isLenient = true }
+    private val client = OkHttpClient.Builder()
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(90, TimeUnit.SECONDS)
+        .writeTimeout(30, TimeUnit.SECONDS)
+        .build()
 
-  suspend fun generatePlaylist(
-    context: Context,
-    userPrompt: String,
-    numberOfSongs: Int = 15,
-    weatherInfo: com.revenge.music.ai.weather.WeatherInfo? = null,
-    onLog: suspend (String) -> Unit,
-  ): String? =
-    withContext(Dispatchers.IO) {
-      val database = InternalDatabase.newInstance(context)
-
-      onLog("Connecting to AI Provider...")
-
-      val weatherDirective =
-        if (weatherInfo != null) {
-          """
-            METEOROLOGICAL ATMOSPHERIC DIRECTIVE:
-            Current Weather: ${weatherInfo.condition} (${weatherInfo.weatherEmoji})
-            Temperature: ${weatherInfo.temperature}°C (Feels like ${weatherInfo.feelsLike}°C)
-            Humidity: ${weatherInfo.humidity}%
-            Wind Speed: ${weatherInfo.windSpeed} km/h
-            Time of Day: ${if (weatherInfo.isDay) "Daytime" else "Nighttime"}
-
-            ACOUSTIC SELECTION GUIDANCE:
-            Match acoustic properties (tempo, genre, instruments, energy, valence) to these meteorological conditions:
-            - Rainy/Gloomy/Thunderstorm: Lofi, acoustic indie, melancholic ambient, cozy jazz, warm piano, soft folk.
-            - Sunny/Bright/Clear: Upbeat pop, vibrant indie, summer anthems, energetic dance, cheerful acoustic.
-            - Foggy/Cold/Snowy: Soft ambient, chill synth, warm acoustic, atmospheric instrumental.
-            - Nighttime: Late night synthwave, chill beats, smooth R&B, ambient lounge, nocturnal jazz.
-            """
-            .trimIndent()
-        } else ""
-
-      val systemPrompt =
-        """
-            You are a highly accurate music curator and historian. The user will ask for an AI playlist.
-            You must output ONLY a valid JSON object with a creative playlist name and a list of exactly $numberOfSongs songs.
-
-            $weatherDirective
-
-            CRITICAL RULES:
-            1. YOU MUST VERIFY THE RELEASE YEAR, MOVIE, AND ARTIST for EVERY SINGLE TRACK.
-            2. Include songs that EXACTLY match the user's prompt and atmospheric weather directive.
-            3. You MUST output ONLY raw JSON. Do NOT include markdown formatting (like ```json), explanations, or conversational text.
-
-            Example format:
-            {
-              "name": "Creative Playlist Name",
-              "songs": [
-                {"title": "Song Name", "artist": "Artist Name"}
-              ]
-            }
-        """
-          .trimIndent()
-
-      val fullUserPrompt = buildString {
-        append("Mood: ")
-        append(userPrompt.ifBlank { "Unspecified - drive solely by the weather vibe" })
-        append("\n")
-        if (weatherInfo != null) {
-          append(
-            "Weather: ${weatherInfo.condition}, ${weatherInfo.temperature}°C (Feels like ${weatherInfo.feelsLike}°C), Humidity: ${weatherInfo.humidity}%, ${if (weatherInfo.isDay) "Daytime" else "Nighttime"}\n",
-          )
-        }
-        append("Desired playlist length: $numberOfSongs")
-      }
-
-      val jsonOutput =
-        run {
-          val apiKey = context.dataStore.get(OpenRouterApiKey, "")
-          val baseUrl =
-            context.dataStore.get(
-              OpenRouterBaseUrlKey,
-              "https://openrouter.ai/api/v1/chat/completions",
-            )
-          val model = context.dataStore.get(OpenRouterModelKey, "openrouter/free")
-
-          if (apiKey.isEmpty()) {
-            onLog("API Key is missing. Please set it in Settings.")
+    suspend fun complete(
+        context: Context,
+        systemPrompt: String,
+        userPrompt: String,
+        onLog: (String) -> Unit,
+    ): String? = withContext(Dispatchers.IO) {
+        val prefs = runCatching { context.dataStore.data.first() }.getOrNull() ?: return@withContext null
+        val apiKey = prefs[OpenRouterApiKey].orEmpty()
+        if (apiKey.isBlank()) {
+            onLog("API Key is missing. Add an OpenRouter key in settings.")
             return@withContext null
-          }
-
-          if (!com.revenge.music.api.OpenRouterService.isUrlSafe(baseUrl)) {
+        }
+        val baseUrl = prefs[OpenRouterBaseUrlKey]
+            ?: "https://openrouter.ai/api/v1/chat/completions"
+        val model = prefs[OpenRouterModelKey] ?: "openrouter/free"
+        if (!OpenRouterService.isUrlSafe(baseUrl)) {
             onLog("Restricted or unsafe AI endpoint destination.")
             return@withContext null
-          }
+        }
 
-          val requestBody =
-            JSONObject()
-              .apply {
-                put("model", model)
-                put(
-                  "messages",
-                  JSONArray().apply {
-                    put(
-                      JSONObject().apply {
-                        put("role", "system")
-                        put("content", systemPrompt)
-                      },
-                    )
-                    put(
-                      JSONObject().apply {
-                        put("role", "user")
-                        put("content", fullUserPrompt)
-                      },
-                    )
-                  },
-                )
-              }
-              .toString()
-              .toRequestBody("application/json".toMediaType())
+        val bodyJson = buildJsonObject {
+            put("model", model)
+            put(
+                "messages",
+                buildJsonArray {
+                    add(buildJsonObject { put("role", "system"); put("content", systemPrompt) })
+                    add(buildJsonObject { put("role", "user"); put("content", userPrompt) })
+                },
+            )
+        }.toString()
 
-          val request =
-            Request.Builder()
-              .url(baseUrl)
-              .addHeader("Authorization", "Bearer $apiKey")
-              .post(requestBody)
-              .build()
+        val request = Request.Builder()
+            .url(baseUrl)
+            .header("Authorization", "Bearer $apiKey")
+            .post(bodyJson.toRequestBody("application/json".toMediaType()))
+            .build()
 
-          try {
-            val response = client.newCall(request).execute()
-            if (!response.isSuccessful) {
-              onLog("AI Request failed: ${response.code}")
-              return@withContext null
+        val text = runCatching {
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    onLog("AI Request failed: ${response.code}")
+                    return@withContext null
+                }
+                response.body?.string()
             }
-
-            val responseString = response.body?.string() ?: return@withContext null
-            val responseJson = JSONObject(responseString)
-            val choices = responseJson.optJSONArray("choices") ?: return@withContext null
-            choices.optJSONObject(0)?.optJSONObject("message")?.optString("content") ?: "{}"
-          } catch (e: Exception) {
-            onLog("Network error: ${e.message}")
+        }.getOrElse {
+            onLog("AI Request failed: ${it.message}")
             return@withContext null
-          }
+        } ?: return@withContext null
+
+        val content = runCatching {
+            json.parseToJsonElement(text)
+                .let { it as kotlinx.serialization.json.JsonObject }
+                .get("choices")
+                ?.let { it as kotlinx.serialization.json.JsonArray }
+                ?.firstOrNull()
+                ?.let { it as kotlinx.serialization.json.JsonObject }
+                ?.get("message")
+                ?.let { it as kotlinx.serialization.json.JsonObject }
+                ?.get("content")
+                ?.let { it as kotlinx.serialization.json.JsonPrimitive }
+                ?.content
+        }.getOrNull()
+        if (content.isNullOrBlank()) {
+            onLog("AI response did not contain content.")
+            return@withContext null
         }
+        stripFences(content)
+    }
 
-      onLog("Parsing AI response...")
-      val cleanJsonStr = jsonOutput.replace("```json", "").replace("```", "").trim()
-
-      val parsedJson =
-        try {
-          JSONObject(cleanJsonStr)
-        } catch (e: Exception) {
-          onLog("Failed to parse AI output.")
-          return@withContext null
+    fun stripFences(content: String): String {
+        var text = content.trim()
+        if (text.startsWith("```")) {
+            val firstNewline = text.indexOf('\n')
+            if (firstNewline >= 0) text = text.substring(firstNewline + 1)
+            if (text.endsWith("```")) text = text.dropLast(3)
         }
-
-      val playlistName = parsedJson.optString("name", "AI Playlist")
-      val songsArray = parsedJson.optJSONArray("songs") ?: return@withContext null
-
-      val resolvedSongs = mutableListOf<SongItem>()
-      val totalSongs = songsArray.length()
-
-      onLog("Found $totalSongs songs. Searching InnerTube...")
-
-      for (i in 0 until totalSongs) {
-        val item = songsArray.optJSONObject(i) ?: continue
-        val title = item.optString("title")
-        val artist = item.optString("artist")
-        if (title.isNotEmpty()) {
-          onLog("Searching [${i + 1}/$totalSongs]: $title - $artist")
-          val searchQuery = "$title $artist"
-          val result = YouTube.search(searchQuery, YouTube.SearchFilter.FILTER_SONG).getOrNull()
-          val topResult = result?.items?.firstOrNull() as? SongItem
-          if (topResult != null) {
-            resolvedSongs.add(topResult)
-          }
-        }
-      }
-
-      if (resolvedSongs.isEmpty()) {
-        onLog("Failed to find any of the suggested songs.")
-        return@withContext null
-      }
-
-      onLog("Creating playlist...")
-      val weatherSnapshot = weatherInfo?.toSnapshotString()
-      val playlistEntity =
-        PlaylistEntity(
-          name = playlistName,
-          radioEndpointParams = weatherSnapshot,
-          bookmarkedAt = java.time.LocalDateTime.now(),
-          isLocal = true,
-          isEditable = true,
-        )
-      database.insert(playlistEntity)
-      val playlistId = playlistEntity.id
-
-      resolvedSongs.forEachIndexed { index, songItem ->
-        val songEntity =
-          SongEntity(
-            id = songItem.id,
-            title = songItem.title,
-            duration = songItem.duration ?: 0,
-            thumbnailUrl = songItem.thumbnail,
-          )
-        database.insert(songEntity)
-        database.insert(
-          PlaylistSongMap(playlistId = playlistId, songId = songItem.id, position = index),
-        )
-      }
-
-      AiLogger.log(context, "Prompt Playlist", "Generated playlist with AI: $playlistName")
-      onLog("Done!")
-      return@withContext playlistId
+        return text.trim()
     }
 }
+
+@Serializable
+internal data class AiGeneratedSong(val title: String = "", val artist: String = "")
+
+@Serializable
+internal data class AiGeneratedPlaylist(
+    val name: String = "AI Playlist",
+    @SerialName("songs") val songs: List<AiGeneratedSong> = emptyList(),
+)
+
+@Singleton
+class AiPlaylistGenerator @Inject constructor(
+    private val database: MusicDatabase,
+) {
+    suspend fun generatePlaylist(
+        context: Context,
+        userPrompt: String,
+        numberOfSongs: Int = 15,
+        weatherInfo: WeatherInfo? = null,
+        onLog: (String) -> Unit = {},
+    ): String? = withContext(Dispatchers.IO) {
+        val weatherDirective = weatherInfo?.let { weatherAcousticDirective(it) }.orEmpty()
+        val system = buildString {
+            append("Return only raw JSON of the shape ")
+            append("{\"name\":\"...\",\"songs\":[{\"title\":\"...\",\"artist\":\"...\"}]} ")
+            append("with exactly $numberOfSongs songs. No markdown, no commentary.")
+            if (weatherDirective.isNotBlank()) {
+                append(' ')
+                append(weatherDirective)
+            }
+        }
+        val user = buildString {
+            append("Mood: ").append(userPrompt.trim())
+            weatherInfo?.let { append("\nWeather: ").append(it.summaryBadgeText) }
+            append("\nDesired length: ").append(numberOfSongs).append(" songs")
+        }
+
+        val content = AiOpenRouter.complete(context, system, user, onLog) ?: return@withContext null
+        val parsed = parseGeneratedPlaylist(content) ?: run {
+            onLog("AI returned unparsable JSON.")
+            return@withContext null
+        }
+
+        val resolved = ArrayList<SongItem>()
+        for (song in parsed.songs.take(numberOfSongs)) {
+            if (song.title.isBlank() || song.artist.isBlank()) continue
+            val found = YouTube.search(
+                "${song.title} ${song.artist}",
+                YouTube.SearchFilter.FILTER_SONG,
+            ).getOrNull()?.items?.filterIsInstance<SongItem>()?.firstOrNull() ?: continue
+            resolved += found
+        }
+        if (resolved.isEmpty()) {
+            onLog("No songs could be resolved.")
+            return@withContext null
+        }
+
+        val playlistId = "ai_playlist_${System.currentTimeMillis()}"
+        val name = parsed.name.ifBlank { "AI Playlist" }
+        database.withTransaction {
+            database.insert(
+                PlaylistEntity(
+                    id = playlistId,
+                    name = name,
+                    radioEndpointParams = weatherInfo?.toSnapshotString(),
+                    isLocal = true,
+                    isEditable = true,
+                ),
+            )
+            resolved.forEachIndexed { index, song ->
+                database.insert(song.toAiMediaMetadata())
+                database.insert(
+                    PlaylistSongMap(
+                        playlistId = playlistId,
+                        songId = song.id,
+                        position = index,
+                    ),
+                )
+            }
+        }
+        onLog("Created playlist $name with ${resolved.size} songs.")
+        AiLogger.log(context, "AI playlist generated", name)
+        playlistId
+    }
+
+    private fun parseGeneratedPlaylist(content: String): AiGeneratedPlaylist? {
+        val start = content.indexOf('{')
+        val end = content.lastIndexOf('}')
+        if (start < 0 || end <= start) return null
+        return runCatching {
+            Json { ignoreUnknownKeys = true; isLenient = true }
+                .decodeFromString(AiGeneratedPlaylist.serializer(), content.substring(start, end + 1))
+        }.getOrNull()
+    }
+
+    private fun weatherAcousticDirective(info: WeatherInfo): String {
+        val condition = info.condition.lowercase()
+        return when {
+            "rain" in condition || "drizzle" in condition ->
+                "Prefer lo-fi and ambient tracks."
+            "sun" in condition || "clear" in condition ->
+                "Prefer upbeat, bright tracks."
+            "fog" in condition || info.temperature < 8 ->
+                "Prefer ambient, introspective tracks."
+            !info.isDay || "night" in condition ->
+                "Prefer synthwave and R&B tracks."
+            else -> ""
+        }
+    }
+}
+
+internal fun SongItem.toAiMediaMetadata(): MediaMetadata = MediaMetadata(
+    id = id,
+    title = title,
+    artists = artists.map { MediaMetadata.Artist(it.id, it.name) },
+    duration = duration ?: -1,
+    thumbnailUrl = thumbnail,
+    album = album?.let { MediaMetadata.Album(it.id, it.name) },
+    musicVideoType = musicVideoType,
+    explicit = explicit,
+)

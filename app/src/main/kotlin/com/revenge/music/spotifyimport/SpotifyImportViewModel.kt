@@ -1,208 +1,141 @@
-/*
- * Revenge (2026)
- * © Chartreux Westia — github.com/koiverse
- * GPL-3.0 License | Contributors: see git history
- * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
- */
-
 package com.revenge.music.spotifyimport
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.revenge.music.utils.reportException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
-import kotlin.jvm.Volatile
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
+import timber.log.Timber
 
 @HiltViewModel
-class SpotifyImportViewModel
-@Inject
-constructor(
+class SpotifyImportViewModel @Inject constructor(
   private val repository: SpotifyImportRepository,
 ) : ViewModel() {
+
   private val _uiState = MutableStateFlow(SpotifyImportUiState(isLoading = true))
   val uiState: StateFlow<SpotifyImportUiState> = _uiState.asStateFlow()
 
-  @Volatile private var sources: List<SpotifyImportSource> = emptyList()
-  private val sourcesMutex = Mutex()
+  private val sourceObjects = mutableMapOf<String, SpotifyImportSource>()
   private var importJob: Job? = null
-
-  private suspend fun updateSources(
-    updateAction:
-      (List<SpotifyImportSource>) -> Pair<
-          List<SpotifyImportSource>,
-          (SpotifyImportUiState) -> SpotifyImportUiState,
-        >,
-  ) {
-    sourcesMutex.withLock {
-      val (nextSources, uiStateUpdate) = updateAction(sources)
-      sources = nextSources
-      _uiState.update(uiStateUpdate)
-    }
-  }
 
   init {
     restoreSession()
   }
 
   fun restoreSession() {
-    viewModelScope.launch(Dispatchers.IO) {
-      runCatching { repository.restoreSession() }
-        .onSuccess { session ->
-          _uiState.update {
-            it.copy(
-              isAuthenticated = session.isAuthenticated,
-              accountName = session.accountName,
-              accountAvatarUrl = session.accountAvatarUrl,
-              isLoading = false,
-            )
-          }
-          if (session.isAuthenticated) {
-            loadSources()
-          }
+    viewModelScope.launch {
+      try {
+        val session = repository.restoreSession()
+        _uiState.update {
+          it.copy(
+            isAuthenticated = session.isAuthenticated,
+            accountName = session.accountName,
+            accountAvatarUrl = session.accountAvatarUrl,
+            isLoading = session.isAuthenticated,
+          )
         }
-        .onFailure { error ->
-          if (error is CancellationException) throw error
-          reportException(error)
-          _uiState.update {
-            it.copy(
-              isAuthenticated = false,
-              isLoading = false,
-              errorMessage = error.message,
-            )
-          }
-        }
+        if (session.isAuthenticated) loadSourcesInternal()
+        else _uiState.update { it.copy(isLoading = false) }
+      } catch (e: CancellationException) {
+        throw e
+      } catch (e: Throwable) {
+        fail(e)
+      }
     }
   }
 
-  fun connectWithCookies(
-    spDc: String,
-    spKey: String,
-  ) {
-    if (spDc.isBlank()) return
-    viewModelScope.launch(Dispatchers.IO) {
+  fun connectWithCookies(spDc: String, spKey: String) {
+    viewModelScope.launch {
       _uiState.update { it.copy(isLoading = true, errorMessage = null) }
-      runCatching { repository.connectWithCookies(spDc = spDc, spKey = spKey) }
-        .onSuccess { session ->
-          _uiState.update {
-            it.copy(
-              isAuthenticated = true,
-              accountName = session.accountName,
-              accountAvatarUrl = session.accountAvatarUrl,
-              isLoading = false,
-            )
-          }
-          loadSources()
+      try {
+        val session = repository.connectWithCookies(spDc, spKey)
+        _uiState.update {
+          it.copy(
+            isAuthenticated = session.isAuthenticated,
+            accountName = session.accountName,
+            accountAvatarUrl = session.accountAvatarUrl,
+            isLoading = true,
+          )
         }
-        .onFailure { error ->
-          if (error is CancellationException) throw error
-          reportException(error)
-          _uiState.update {
-            it.copy(
-              isLoading = false,
-              errorMessage = error.message,
-            )
-          }
-        }
+        loadSourcesInternal()
+      } catch (e: CancellationException) {
+        throw e
+      } catch (e: Throwable) {
+        fail(e)
+      }
     }
   }
 
   fun loadSources() {
-    viewModelScope.launch(Dispatchers.IO) {
-      _uiState.update { it.copy(isLoading = true, errorMessage = null) }
-      runCatching { repository.loadSources() }
-        .onSuccess { loadedSources ->
-          updateSources {
-            val selectedIds = loadedSources.mapTo(LinkedHashSet()) { it.id }
-            loadedSources to
-              { state ->
-                state.copy(
-                  isAuthenticated = true,
-                  sources = loadedSources.map(SpotifyImportSource::toUi),
-                  selectedSourceIds = selectedIds,
-                  isLoading = false,
-                )
-              }
-          }
-        }
-        .onFailure { error ->
-          if (error is CancellationException) throw error
-          reportException(error)
-          _uiState.update {
-            it.copy(
-              isLoading = false,
-              errorMessage = error.message,
-            )
-          }
-        }
+    viewModelScope.launch { loadSourcesInternal() }
+  }
+
+  private suspend fun loadSourcesInternal() {
+    _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+    try {
+      val sources = repository.loadSources()
+      sourceObjects.clear()
+      sources.forEach { sourceObjects[it.id] = it }
+      _uiState.update {
+        it.copy(
+          isLoading = false,
+          sources = sources.map(SpotifyImportSource::toUi),
+          selectedSourceIds = sources.map { source -> source.id }.toSet(),
+        )
+      }
+    } catch (e: CancellationException) {
+      throw e
+    } catch (e: Throwable) {
+      fail(e)
     }
   }
 
   fun addPlaylistByUrl(url: String) {
-    val trimmed = url.trim()
-    if (trimmed.isBlank() || uiState.value.progress != null) return
-    viewModelScope.launch(Dispatchers.IO) {
-      _uiState.update { it.copy(isLoading = true, errorMessage = null) }
-      runCatching { repository.addPlaylistByUrl(trimmed) }
-        .onSuccess { source ->
-          updateSources { currentSources ->
-            val existingIndex = currentSources.indexOfFirst { it.id == source.id }
-            val nextSources =
-              if (existingIndex >= 0) {
-                currentSources.toMutableList().also { it[existingIndex] = source }
-              } else {
-                listOf(source) + currentSources
-              }
-            nextSources to
-              { state ->
-                state.copy(
-                  isAuthenticated = true,
-                  sources = nextSources.map(SpotifyImportSource::toUi),
-                  selectedSourceIds = state.selectedSourceIds + source.id,
-                  isLoading = false,
-                )
-              }
-          }
+    if (_uiState.value.progress != null || url.isBlank()) return
+    viewModelScope.launch {
+      try {
+        val source = repository.addPlaylistByUrl(url)
+        sourceObjects[source.id] = source
+        val ui = source.toUi()
+        _uiState.update { state ->
+          val existing = state.sources.indexOfFirst { it.id == ui.id }
+          val sources =
+            if (existing >= 0) {
+              state.sources.toMutableList().apply { set(existing, ui) }
+            } else {
+              listOf(ui) + state.sources
+            }
+          state.copy(
+            sources = sources,
+            selectedSourceIds = state.selectedSourceIds + ui.id,
+            errorMessage = null,
+          )
         }
-        .onFailure { error ->
-          if (error is CancellationException) throw error
-          reportException(error)
-          _uiState.update {
-            it.copy(
-              isLoading = false,
-              errorMessage = error.message,
-            )
-          }
-        }
+      } catch (e: CancellationException) {
+        throw e
+      } catch (e: Throwable) {
+        fail(e)
+      }
     }
   }
 
   fun toggleSource(sourceId: String) {
     _uiState.update { state ->
       val selected =
-        if (sourceId in state.selectedSourceIds) {
-          state.selectedSourceIds - sourceId
-        } else {
-          state.selectedSourceIds + sourceId
-        }
+        if (sourceId in state.selectedSourceIds) state.selectedSourceIds - sourceId
+        else state.selectedSourceIds + sourceId
       state.copy(selectedSourceIds = selected)
     }
   }
 
   fun selectAllSources() {
-    _uiState.update { state ->
-      state.copy(selectedSourceIds = state.sources.mapTo(LinkedHashSet()) { it.id })
-    }
+    _uiState.update { it.copy(selectedSourceIds = it.sources.map { source -> source.id }.toSet()) }
   }
 
   fun clearSelection() {
@@ -210,65 +143,44 @@ constructor(
   }
 
   fun logout() {
-    if (uiState.value.progress != null) return
-    viewModelScope.launch(Dispatchers.IO) {
-      _uiState.update { it.copy(isLoading = true, errorMessage = null) }
-      runCatching { repository.logout() }
-        .onSuccess {
-          updateSources { emptyList<SpotifyImportSource>() to { SpotifyImportUiState() } }
-        }
-        .onFailure { error ->
-          if (error is CancellationException) throw error
-          reportException(error)
-          _uiState.update {
-            it.copy(
-              isLoading = false,
-              errorMessage = error.message,
-            )
-          }
-        }
+    if (_uiState.value.progress != null) return
+    viewModelScope.launch {
+      try {
+        importJob?.cancel()
+        repository.logout()
+        sourceObjects.clear()
+        _uiState.value = SpotifyImportUiState(isLoading = false)
+      } catch (e: CancellationException) {
+        throw e
+      } catch (e: Throwable) {
+        fail(e)
+      }
     }
   }
 
   fun importSelectedSources() {
-    val selectedIds = uiState.value.selectedSourceIds
-    if (selectedIds.isEmpty() || importJob?.isActive == true || uiState.value.progress != null)
-      return
-    val selectedSources = sources.filter { it.id in selectedIds }
-    if (selectedSources.isEmpty()) return
-
-    val job =
-      viewModelScope.launch(Dispatchers.IO) {
-        _uiState.update { it.copy(summary = null, errorMessage = null) }
+    val state = _uiState.value
+    if (!state.canImport || importJob?.isActive == true) return
+    val selected =
+      state.selectedSourceIds.mapNotNull { sourceObjects[it] }
+    if (selected.isEmpty()) return
+    importJob =
+      viewModelScope.launch {
+        _uiState.update { it.copy(errorMessage = null, summary = null) }
         try {
           val summary =
-            repository.importSources(selectedSources) { progress ->
+            repository.importSources(selected) { progress ->
               _uiState.update { it.copy(progress = progress) }
             }
-          _uiState.update {
-            it.copy(
-              progress = null,
-              summary = summary,
-            )
-          }
-        } catch (error: CancellationException) {
+          _uiState.update { it.copy(progress = null, summary = summary) }
+        } catch (e: CancellationException) {
           _uiState.update { it.copy(progress = null) }
-          throw error
-        } catch (error: Throwable) {
-          reportException(error)
-          _uiState.update {
-            it.copy(
-              progress = null,
-              errorMessage = error.message,
-            )
-          }
-        } finally {
-          if (importJob === coroutineContext[Job]) {
-            importJob = null
-          }
+          throw e
+        } catch (e: Throwable) {
+          _uiState.update { it.copy(progress = null) }
+          fail(e)
         }
       }
-    importJob = job
   }
 
   fun cancelImport() {
@@ -284,14 +196,26 @@ constructor(
   fun dismissError() {
     _uiState.update { it.copy(errorMessage = null) }
   }
-}
 
-private fun SpotifyImportSource.toUi(): SpotifyImportSourceUi =
-  SpotifyImportSourceUi(
-    id = id,
-    title = title,
-    subtitle = subtitle,
-    thumbnailUrl = thumbnailUrl,
-    trackCount = trackCount,
-    type = type,
-  )
+  private fun fail(error: Throwable) {
+    if (error is CancellationException) throw error
+    Timber.tag("SpotifyImportVM").w(error, "Spotify import failed")
+    _uiState.update {
+      it.copy(
+        isLoading = false,
+        progress = null,
+        errorMessage = error.localizedMessage ?: error.message ?: "Something went wrong",
+      )
+    }
+  }
+
+  private fun SpotifyImportSource.toUi() =
+    SpotifyImportSourceUi(
+      id = id,
+      title = title,
+      subtitle = subtitle,
+      thumbnailUrl = thumbnailUrl,
+      trackCount = trackCount,
+      type = type,
+    )
+}

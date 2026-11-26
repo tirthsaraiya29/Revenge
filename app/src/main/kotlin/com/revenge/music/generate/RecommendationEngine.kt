@@ -2,333 +2,178 @@ package com.revenge.music.generate
 
 import com.revenge.innertube.YouTube
 import com.revenge.innertube.models.SongItem
-import com.revenge.innertube.models.WatchEndpoint
 import com.revenge.music.db.MusicDatabase
-import com.revenge.music.db.daos.RecommendationExclusionDao
-import com.revenge.music.db.daos.SongPlayStatsDao
-import com.revenge.music.db.entities.SongPlayStatsEntity
 import com.revenge.music.utils.lastfm.LastFmTasteApi
+import java.util.Calendar
 import javax.inject.Inject
-import javax.inject.Singleton
+import kotlin.math.max
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import timber.log.Timber
 
-const val SIMILAR_TRACK_BONUS = 2.0f
-const val SIMILAR_ARTIST_BONUS = 1.0f
-const val TAG_MATCH_BONUS = 1.5f
-const val GENRE_MATCH_BONUS = 1.0f
+class RecommendationEngine @Inject constructor(
+    database: MusicDatabase,
+    private val genresRepository: GenresRepository,
+    private val tasteProfileProvider: TasteProfileProvider,
+    private val lastFmTasteApi: LastFmTasteApi,
+) : LocalTasteEngine(database) {
 
-fun scoreCandidateWithExternals(
-  baseScore: Float,
-  isSimilarTrack: Boolean = false,
-  isSimilarArtist: Boolean = false,
-  matchesTopGenre: Boolean = false,
-  matchesGenrePreference: Boolean = false,
-): Float {
-  var score = baseScore
-  if (isSimilarTrack) score += SIMILAR_TRACK_BONUS
-  if (isSimilarArtist) score += SIMILAR_ARTIST_BONUS
-  if (matchesTopGenre) score += TAG_MATCH_BONUS
-  if (matchesGenrePreference) score += GENRE_MATCH_BONUS
-  return score
-}
+    @Volatile
+    var allowNullDatabaseForTesting: Boolean = false
 
-@Singleton
-open class RecommendationEngine
-@Inject
-constructor(
-  private val songPlayStatsDao: SongPlayStatsDao,
-  private val recommendationExclusionDao: RecommendationExclusionDao,
-  private val tasteProfileProvider: TasteProfileProvider,
-  private val lastFmTasteApi: LastFmTasteApi,
-  private val genresRepository: GenresRepository? = null,
-  private val database: MusicDatabase? = null,
-) : LocalTasteEngine(songPlayStatsDao, recommendationExclusionDao, database) {
-  var allowNullDatabaseForTesting: Boolean = false
-
-  override suspend fun generate(count: Int): Result<String> =
-    withContext(Dispatchers.IO) {
-      try {
-        val exclusions = recommendationExclusionDao.getAll().map { it.trackKey }.toSet()
-        val timeOfDay = currentTimeOfDay()
-
-        val now = System.currentTimeMillis()
-        val thirtyDaysAgo = now - 30L * 86_400_000L
-
-        val recentStats =
-          songPlayStatsDao.mostPlayedSince(thirtyDaysAgo, limit = 100).ifEmpty {
-            songPlayStatsDao.recentlyPlayed(limit = 20)
-          }
-
-        if (recentStats.isEmpty()) {
-          return@withContext Result.failure(
-            IllegalStateException("No listening history available yet"),
-          )
-        }
-
-        val likedSongs = database?.likedSongsByRowIdAsc()?.firstOrNull().orEmpty()
-        val likedKeys =
-          likedSongs
-            .map { song ->
-              trackKeyOf(song.song.title, song.artists.joinToString(", ") { it.name })
-            }
-            .toSet()
-
-        val eligibleSeeds =
-          recentStats
-            .filter { it.trackKey !in exclusions && applyCandidateFilter(it) }
-            .sortedByDescending { scoreStats(it, likedKeys, timeOfDay) }
-
-        if (eligibleSeeds.isEmpty()) {
-          return@withContext Result.failure(
-            IllegalStateException("All candidate tracks have been excluded"),
-          )
-        }
-
-        // 1. Fetch taste profile (cached 1hr) and top genres
-        val tasteProfile = runCatching { tasteProfileProvider.get() }.getOrNull()
-        val userTopGenres = mutableSetOf<String>()
-        tasteProfile?.topGenres?.forEach { userTopGenres.add(it.lowercase()) }
-        genresRepository?.let { repo ->
-          runCatching {
-            repo.topGenres(15).forEach { userTopGenres.add(it.genre.lowercase()) }
-          }
-        }
-
-        // 2. Fetch external signals from Last.fm in parallel with seed expansion
-        val topSeeds = eligibleSeeds.take(3)
-        val similarTrackKeys = mutableSetOf<String>()
-        val similarArtistNames = mutableSetOf<String>()
-        val externalCandidates = mutableListOf<SongItem>()
-
+    override suspend fun generate(count: Int): Result<String> = withContext(Dispatchers.IO) {
         try {
-          coroutineScope {
-            val externalJobs = topSeeds.map { seed ->
-              async {
-                val similarTracksRes = lastFmTasteApi.getSimilarTracks(seed.artist, seed.title)
-                val similarArtistsRes = lastFmTasteApi.getSimilarArtists(seed.artist)
-                seed to
-                  Pair(
-                    similarTracksRes.getOrNull().orEmpty(),
-                    similarArtistsRes.getOrNull().orEmpty(),
-                  )
-              }
-            }
-            val results = externalJobs.map { it.await() }
-            for ((_, pair) in results) {
-              val (tracks, artists) = pair
-              for (t in tracks) {
-                similarTrackKeys.add(trackKeyOf(t.name, t.artist))
-              }
-              for (a in artists) {
-                similarArtistNames.add(a.name.trim().lowercase())
-              }
+            generateRecommended(count) ?: super.generate(count)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (t: Throwable) {
+            Timber.e(t, "Recommendation generation failed; falling back to local taste")
+            super.generate(count)
+        }
+    }
 
-              // Resolve top similar tracks on YouTube if not already excluded
-              for (track in tracks.take(5)) {
+    private suspend fun generateRecommended(count: Int): Result<String>? {
+        val exclusions = database.recommendationExclusionDao.getAll().map { it.trackKey }.toSet()
+        val timeOfDay = currentTimeOfDay(Calendar.getInstance().get(Calendar.HOUR_OF_DAY))
+        val now = System.currentTimeMillis()
+        val seeds = loadSeeds(now) ?: return Result.failure(
+            IllegalStateException("No listening history available yet"),
+        )
+        val likedKeys = likedTrackKeys()
+        val eligible = seeds
+            .filter { it.trackKey !in exclusions && applyCandidateFilter(it) }
+            .sortedByDescending { scoreStats(it, likedKeys, timeOfDay, now) }
+        if (eligible.isEmpty()) {
+            return Result.failure(IllegalStateException("All candidate tracks have been excluded"))
+        }
+
+        val profile = tasteProfileProvider.get()
+        val tasteGenres = (
+            profile?.topGenres.orEmpty() +
+                runCatching { genresRepository.topGenres(15) }.getOrDefault(emptyList())
+            ).map { it.lowercase() }.distinct().toSet()
+
+        val similarTracks = LinkedHashSet<String>()
+        val similarArtists = LinkedHashSet<String>()
+        val topSeeds = eligible.take(3)
+        coroutineScope {
+            topSeeds.map { seed ->
+                async {
+                    val tracks = lastFmTasteApi.getSimilarTracks(seed.artist, seed.title)
+                        .getOrNull().orEmpty()
+                    val artists = lastFmTasteApi.getSimilarArtists(seed.artist)
+                        .getOrNull().orEmpty()
+                    tracks to artists
+                }
+            }.awaitAll()
+        }.forEach { (tracks, artists) ->
+            tracks.forEach {
+                similarTracks += trackKeyOf(it.name, it.artist)
+            }
+            artists.forEach {
+                similarArtists += it.name.trim().lowercase()
+            }
+        }
+
+        val candidates = LinkedHashMap<String, SongItem>()
+        for (seed in topSeeds) {
+            val similar = lastFmTasteApi.getSimilarTracks(seed.artist, seed.title)
+                .getOrNull().orEmpty().take(5)
+            for (track in similar) {
                 val key = trackKeyOf(track.name, track.artist)
                 if (key in exclusions) continue
-
-                // Search YouTube Music for playable item
-                val searchResult = runCatching {
-                  YouTube.search(
-                      query = "${track.artist} ${track.name}",
-                      filter = YouTube.SearchFilter.FILTER_SONG,
-                    )
-                    .getOrNull()
-                }
-                  .getOrNull()
-
-                val songItem = searchResult?.items?.filterIsInstance<SongItem>()?.firstOrNull()
-                if (songItem != null) {
-                  externalCandidates.add(songItem)
-                }
-              }
+                val found = YouTube.search(
+                    "${track.artist} ${track.name}",
+                    YouTube.SearchFilter.FILTER_SONG,
+                ).getOrNull()?.items?.filterIsInstance<SongItem>()?.firstOrNull() ?: continue
+                candidates.putIfAbsent(key, found)
             }
-          }
-        } catch (e: Exception) {
-          Timber.d(e, "External signal expansion failed, falling back to local seeds")
         }
 
-        // 3. Local YouTube related tracks expansion (Slice 1 path)
-        val seedVideoIds = eligibleSeeds.mapNotNull { it.videoId }.distinct().take(5)
-        val localCandidates = mutableListOf<SongItem>()
-
-        for (videoId in seedVideoIds) {
-          val nextResult = runCatching {
-            YouTube.next(WatchEndpoint(videoId = videoId)).getOrNull()
-          }
-            .getOrNull()
-
-          nextResult?.items?.filterIsInstance<SongItem>()?.let { localCandidates.addAll(it) }
-
-          nextResult?.relatedEndpoint?.let { endpoint ->
-            runCatching {
-              YouTube.related(endpoint).getOrNull()?.songs
-            }
-              .getOrNull()
-              ?.let { localCandidates.addAll(it) }
-          }
+        val expanded = expandSeeds(eligible.take(5), exclusions)
+        val merged = LinkedHashMap<String, SongItem>()
+        for (item in candidates.values + expanded) {
+            val key = trackKeyOf(item.title, item.artists.joinToString(", ") { it.name })
+            if (key in exclusions) continue
+            merged.putIfAbsent(item.id, item)
         }
+        val capped = merged.values.take(max(30, count * 3))
+        if (capped.isEmpty()) return null
 
-        // 4. Merge candidates and calculate composite scores
-        data class CandidateWithScore(val song: SongItem, val score: Float)
-        val seenKeys = mutableSetOf<String>()
-        seenKeys.addAll(exclusions)
+        val statsByKey = runCatching {
+            database.songPlayStatsDao.findByKeys(
+                capped.map { trackKeyOf(it.title, it.artists.joinToString(", ") { a -> a.name }) },
+            ).associateBy { it.trackKey }
+        }.getOrDefault(emptyMap())
 
-        // Cap combined candidates before scoring (e.g. count * 3)
-        val maxCandidatesToScore = (count * 3).coerceAtLeast(30)
-        val combinedCandidates =
-          (externalCandidates + localCandidates)
-            .distinctBy { it.id }
-            .filter { songItem ->
-              val artistName = songItem.artists.joinToString(", ") { it.name }.trim()
-              val key = trackKeyOf(songItem.title, artistName)
-              if (key in seenKeys) false
-              else {
-                seenKeys.add(key)
-                true
-              }
-            }
-            .take(maxCandidatesToScore)
-
-        // Batch Room stats lookups instead of calling find for each candidate
-        val candidateKeys = combinedCandidates.map { songItem ->
-          val artistName = songItem.artists.joinToString(", ") { it.name }.trim()
-          trackKeyOf(songItem.title, artistName)
-        }
-        val statsByKey: Map<String, SongPlayStatsEntity> =
-          songPlayStatsDao.findByKeys(candidateKeys).associateBy { it.trackKey }
-
-        // Resolve genres once per distinct artist in parallel within a timeout
-        val distinctArtists =
-          combinedCandidates
-            .mapNotNull { it.artists.firstOrNull()?.name?.trim()?.takeIf { a -> a.isNotBlank() } }
-            .distinct()
-
-        val genresByArtist: Map<String, List<String>> =
-          if (genresRepository != null && distinctArtists.isNotEmpty()) {
-            kotlinx.coroutines.withTimeoutOrNull(2000L) {
-              coroutineScope {
-                distinctArtists
-                  .map { artist ->
-                    async {
-                      val dummyKey = "track|${artist.lowercase()}"
-                      val genres = runCatching {
-                        genresRepository.genresForTrack(dummyKey)
-                      }
-                        .getOrDefault(emptyList())
-                      artist.lowercase() to genres
-                    }
-                  }
-                  .map { it.await() }
-                  .toMap()
-              }
-            } ?: emptyMap()
-          } else {
-            emptyMap()
-          }
-
-        val scoredCandidates = mutableListOf<CandidateWithScore>()
-
-        for (songItem in combinedCandidates) {
-          val artistName = songItem.artists.joinToString(", ") { it.name }.trim()
-          val key = trackKeyOf(songItem.title, artistName)
-
-          val localStats = statsByKey[key]
-          val baseScore =
-            if (localStats != null) {
-              scoreStats(localStats, likedKeys, timeOfDay)
-            } else {
-              // Unplayed discovery candidate base score
-              5.0f
-            }
-
-          val isSimilarTrack = key in similarTrackKeys
-          val isSimilarArtist = artistName.lowercase() in similarArtistNames
-          val leadArtist = songItem.artists.firstOrNull()?.name?.trim()?.lowercase().orEmpty()
-          val candidateGenres = genresByArtist[leadArtist].orEmpty()
-
-          val hasGenreIntersection =
-            if (userTopGenres.isNotEmpty() && candidateGenres.isNotEmpty()) {
-              candidateGenres.any { it.lowercase() in userTopGenres }
-            } else {
-              false
-            }
-
-          val matchesTopGenre = hasGenreIntersection
-          val matchesGenrePref =
-            if (userTopGenres.isNotEmpty()) {
-              hasGenreIntersection ||
-                userTopGenres.any { g ->
-                  val regex = "\\b${Regex.escape(g)}\\b".toRegex(RegexOption.IGNORE_CASE)
-                  regex.containsMatchIn(songItem.title) || regex.containsMatchIn(artistName)
-                }
-            } else {
-              false
-            }
-
-          val finalScore =
-            scoreCandidateWithExternals(
-              baseScore = baseScore,
-              isSimilarTrack = isSimilarTrack,
-              isSimilarArtist = isSimilarArtist,
-              matchesTopGenre = matchesTopGenre,
-              matchesGenrePreference = matchesGenrePref,
+        val artistGenres = resolveArtistGenres(capped)
+        val scored = capped.map { item ->
+            val leadArtist = item.artists.firstOrNull()
+            val artistName = leadArtist?.name.orEmpty()
+            val artistKey = leadArtist?.id?.takeIf { it.isNotBlank() } ?: artistName.lowercase()
+            val key = trackKeyOf(item.title, item.artists.joinToString(", ") { it.name })
+            val stats = statsByKey[key]
+            val base = stats?.let { scoreStats(it, likedKeys, timeOfDay, now) } ?: 5.0
+            val genres = artistGenres[artistName.lowercase()].orEmpty()
+            val tagMatch = genres.any { it in (profile?.topGenres.orEmpty()) }
+            val genreMatch = genres.any { it in tasteGenres } ||
+                tasteGenres.any { genreMatches(genre = it, item = item) }
+            val score = scoreCandidateWithExternals(
+                baseScore = base,
+                similarTrack = key in similarTracks,
+                similarArtist = artistKey.lowercase() in similarArtists ||
+                    artistName.lowercase() in similarArtists,
+                tagMatch = tagMatch,
+                genreMatch = genreMatch,
             )
+            item to score
+        }.sortedByDescending { it.second }
 
-          scoredCandidates.add(CandidateWithScore(songItem, finalScore))
-        }
-
-        val sortedSongs = scoredCandidates.sortedByDescending { it.score }.map { it.song }
-
-        val finalSongs =
-          if (sortedSongs.size >= 5) {
-            sortedSongs.take(count)
-          } else {
-            // Fallback to local items if needed
-            val localFallbackItems =
-              eligibleSeeds
-                .filter { it.videoId != null }
+        val songs = if (scored.size >= 5) {
+            scored.take(count).map { it.first }
+        } else {
+            (scored.map { it.first } + eligible.map { it.toLocalSong() })
+                .distinctBy { it.id }
                 .take(count)
-                .map { stats ->
-                  SongItem(
-                    id = stats.videoId!!,
-                    title = stats.title,
-                    artists =
-                      listOf(com.revenge.innertube.models.Artist(name = stats.artist, id = null)),
-                    album = null,
-                    duration = null,
-                    thumbnail = stats.artworkUrl.orEmpty(),
-                  )
-                }
-            (sortedSongs + localFallbackItems).distinctBy { it.id }.take(count)
-          }
-
-        if (finalSongs.isEmpty()) {
-          return@withContext super.generate(count)
         }
+        if (songs.isEmpty()) return null
 
         val playlistId = "local_taste_${System.currentTimeMillis()}"
         val playlistName = "Taste Mix (${timeOfDay.replaceFirstChar { it.uppercase() }})"
+        persistPlaylist(playlistId, playlistName, songs.map { it.toMediaMetadata() })
+        return Result.success(playlistId)
+    }
 
-        if (database == null && !allowNullDatabaseForTesting) {
-          return@withContext Result.failure(
-            IllegalStateException("Database not available to persist playlist"),
-          )
+    private suspend fun resolveArtistGenres(items: List<SongItem>): Map<String, List<String>> {
+        val artists = items.mapNotNull { it.artists.firstOrNull()?.name }
+            .filter { it.isNotBlank() }
+            .distinct()
+        val pairs = coroutineScope {
+            artists.map { artist ->
+                async {
+                    val genres = withTimeoutOrNull(2_000) {
+                        genresRepository.genresForTrack("unknown|$artist")
+                    }.orEmpty()
+                    artist.lowercase() to genres
+                }
+            }.awaitAll()
         }
+        return pairs.toMap()
+    }
 
-        persistPlaylist(playlistId, playlistName, finalSongs)
-
-        Result.success(playlistId)
-      } catch (e: Exception) {
-        if (e is kotlinx.coroutines.CancellationException) throw e
-        Timber.e(e, "RecommendationEngine generation failed, attempting local fallback")
-        super.generate(count)
-      }
+    private fun genreMatches(genre: String, item: SongItem): Boolean {
+        if (genre.isBlank()) return false
+        val pattern = Regex("\\b${Regex.escape(genre)}\\b", RegexOption.IGNORE_CASE)
+        val haystack = buildString {
+            append(item.title)
+            append(' ')
+            append(item.artists.joinToString(" ") { it.name })
+        }
+        return pattern.containsMatchIn(haystack)
     }
 }

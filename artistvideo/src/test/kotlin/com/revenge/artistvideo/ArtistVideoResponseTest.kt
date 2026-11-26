@@ -6,94 +6,71 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class ArtistVideoResponseTest {
-  private val json =
-    Json {
-      ignoreUnknownKeys = true
-      isLenient = true
-      explicitNulls = false
+    private val json = Json {
+        ignoreUnknownKeys = true
+        explicitNulls = false
+        isLenient = true
     }
 
-  @Test
-  fun decodesAllDocumentedFields() {
-    val payload =
-      """
-      {
-        "name": "Song",
-        "artist": "Artist",
-        "albumId": "album-1",
-        "static": "https://cdn/static.jpg",
-        "animated": "https://cdn/anim.m3u8",
-        "videoUrl": "https://cdn/video.mp4"
-      }
-      """
+    @Test
+    fun av1_decodesAllSixFields() {
+        val payload = """
+            {"name":"N","artist":"A","albumId":"42","static":"s","animated":"an","videoUrl":"v"}
+        """.trimIndent()
 
-    val response = json.decodeFromString(ArtistVideoResponse.serializer(), payload)
+        val response = json.decodeFromString(ArtistVideoResponse.serializer(), payload)
 
-    assertEquals("Song", response.name)
-    assertEquals("Artist", response.artist)
-    assertEquals("album-1", response.albumId)
-    assertEquals("https://cdn/static.jpg", response.static)
-    assertEquals("https://cdn/anim.m3u8", response.animated)
-    assertEquals("https://cdn/video.mp4", response.videoUrl)
-  }
+        assertEquals("N", response.name)
+        assertEquals("A", response.artist)
+        assertEquals("42", response.albumId)
+        assertEquals("s", response.static)
+        assertEquals("an", response.animated)
+        assertEquals("v", response.videoUrl)
+    }
 
-  @Test
-  fun missingFieldsDecodeToNull() {
-    val response = json.decodeFromString(ArtistVideoResponse.serializer(), "{}")
+    @Test
+    fun av2_emptyObjectYieldsNulls() {
+        val response = json.decodeFromString(ArtistVideoResponse.serializer(), "{}")
+        assertNull(response.name)
+        assertNull(response.albumId)
+        assertNull(response.preferredAnimationUrl)
+    }
 
-    assertNull(response.name)
-    assertNull(response.artist)
-    assertNull(response.albumId)
-    assertNull(response.static)
-    assertNull(response.animated)
-    assertNull(response.videoUrl)
-    assertNull(response.preferredAnimationUrl)
-  }
+    @Test
+    fun av3_toleratesNullsAndUnknownKeys() {
+        val response = json.decodeFromString(
+            ArtistVideoResponse.serializer(),
+            """{"name":null,"animated":null,"extra":{"nested":[1,2]},"unknown":"x"}""",
+        )
+        assertNull(response.name)
+        assertNull(response.animated)
+        assertNull(response.preferredAnimationUrl)
+    }
 
-  @Test
-  fun explicitNullsAndUnknownKeysAreTolerated() {
-    val payload =
-      """
-      {"name": null, "albumId": null, "extra": 42, "nested": {"a": true}}
-      """
+    @Test
+    fun av4_prefersAnimated() {
+        assertEquals(
+            "an",
+            ArtistVideoResponse(animated = "an", videoUrl = "v").preferredAnimationUrl,
+        )
+    }
 
-    val response = json.decodeFromString(ArtistVideoResponse.serializer(), payload)
+    @Test
+    fun av5_fallsBackToVideoUrl() {
+        assertEquals("v", ArtistVideoResponse(videoUrl = "v").preferredAnimationUrl)
+    }
 
-    assertNull(response.name)
-    assertNull(response.albumId)
-    assertNull(response.preferredAnimationUrl)
-  }
+    @Test
+    fun av6_blankAnimatedStillWins() {
+        assertEquals("", ArtistVideoResponse(animated = "", videoUrl = "v").preferredAnimationUrl)
+    }
 
-  @Test
-  fun prefersAnimatedOverVideoUrl() {
-    val response =
-      ArtistVideoResponse(
-        animated = "https://cdn/anim.m3u8",
-        videoUrl = "https://cdn/video.mp4",
-      )
-
-    assertEquals("https://cdn/anim.m3u8", response.preferredAnimationUrl)
-  }
-
-  @Test
-  fun fallsBackToVideoUrlWhenAnimatedMissing() {
-    val response = ArtistVideoResponse(animated = null, videoUrl = "https://cdn/video.mp4")
-
-    assertEquals("https://cdn/video.mp4", response.preferredAnimationUrl)
-  }
-
-  @Test
-  fun blankAnimatedStillWins() {
-    // Callers filter blanks themselves; the getter only falls back on null.
-    val response = ArtistVideoResponse(animated = "", videoUrl = "https://cdn/video.mp4")
-
-    assertEquals("", response.preferredAnimationUrl)
-  }
-
-  @Test
-  fun nullWhenNeitherAnimationFieldPresent() {
-    val response = ArtistVideoResponse()
-
-    assertNull(response.preferredAnimationUrl)
-  }
+    @Test
+    fun av7_mimeClassification() {
+        assertEquals("application/x-mpegURL", videoMimeType("https://cdn/master.m3u8"))
+        assertEquals("application/x-mpegURL", videoMimeType("https://cdn/MASTER.M3U8"))
+        assertEquals("video/mp4", videoMimeType("https://cdn/clip.mp4?token=abc"))
+        assertEquals("application/x-mpegURL", videoMimeType("https://cdn/stream/playlist"))
+        assertEquals("application/x-mpegURL", videoMimeType(""))
+    }
 }

@@ -130,16 +130,19 @@ object AppleMusicArtistBackgroundProvider {
         val containers = listOf(artist, attributes)
         val featured = containers.flatMap { container ->
             val views = container["views"] as? JsonObject ?: return@flatMap emptyList()
-            val data = (views["featured-albums"] as? JsonObject)?.get("data") as? JsonArray ?: return@flatMap emptyList()
+            val section = views["featured-albums"] as? JsonObject
+            val data = section?.get("data") as? JsonArray ?: return@flatMap emptyList()
             data.mapNotNull { it as? JsonObject }
         }
         val related = containers.flatMap { container ->
             val relationships = container["relationships"] as? JsonObject ?: return@flatMap emptyList()
-            val data = (relationships["albums"] as? JsonObject)?.get("data") as? JsonArray ?: return@flatMap emptyList()
+            val albums = relationships["albums"] as? JsonObject
+            val data = albums?.get("data") as? JsonArray ?: return@flatMap emptyList()
             data.mapNotNull { it as? JsonObject }
         }
         for (album in featured + related) {
-            val editorial = (album["attributes"] as? JsonObject)?.get("editorialVideo") as? JsonObject
+            val albumAttributes = album["attributes"] as? JsonObject
+            val editorial = albumAttributes?.get("editorialVideo") as? JsonObject
             firstMotionUrl(editorial)?.let { return it }
         }
         return null

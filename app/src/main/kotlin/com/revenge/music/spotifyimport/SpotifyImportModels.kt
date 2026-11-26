@@ -1,21 +1,47 @@
-/*
- * Revenge (2026)
- * © Chartreux Westia — github.com/koiverse
- * GPL-3.0 License | Contributors: see git history
- * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
- */
-
 package com.revenge.music.spotifyimport
 
-import androidx.compose.runtime.Immutable
+import com.revenge.music.spotify.SpotifyMapper
+import com.revenge.music.spotify.models.SpotifyPlaylist
 
-@Immutable
-enum class SpotifyImportSourceType {
-  PLAYLIST,
-  LIKED_SONGS,
+enum class SpotifyImportSourceType { PLAYLIST, LIKED_SONGS }
+
+data class SpotifyImportSession(
+  val isAuthenticated: Boolean = false,
+  val accountName: String = "",
+  val accountAvatarUrl: String? = null,
+)
+
+sealed interface SpotifyImportSource {
+  val id: String
+  val title: String
+  val subtitle: String
+  val thumbnailUrl: String?
+  val trackCount: Int?
+  val localPlaylistId: String
+  val type: SpotifyImportSourceType
+
+  data class Playlist(val playlist: SpotifyPlaylist) : SpotifyImportSource {
+    override val id: String = "playlist:${playlist.id}"
+    override val title: String = playlist.name
+    override val subtitle: String = playlist.owner?.displayName.orEmpty()
+    override val thumbnailUrl: String? = SpotifyMapper.getPlaylistThumbnail(playlist)
+    override val trackCount: Int? = playlist.tracks?.total
+    override val localPlaylistId: String = "SPOTIFY_PLAYLIST_${playlist.id}"
+    override val type: SpotifyImportSourceType = SpotifyImportSourceType.PLAYLIST
+  }
+
+  data class LikedSongs(
+    override val title: String,
+    override val trackCount: Int,
+  ) : SpotifyImportSource {
+    override val id: String = "liked_songs"
+    override val subtitle: String = ""
+    override val thumbnailUrl: String? = null
+    override val localPlaylistId: String = "SPOTIFY_LIKED_SONGS"
+    override val type: SpotifyImportSourceType = SpotifyImportSourceType.LIKED_SONGS
+  }
 }
 
-@Immutable
 data class SpotifyImportSourceUi(
   val id: String,
   val title: String,
@@ -25,7 +51,6 @@ data class SpotifyImportSourceUi(
   val type: SpotifyImportSourceType,
 )
 
-@Immutable
 data class SpotifyImportProgressUi(
   val sourceTitle: String,
   val completedSources: Int,
@@ -35,7 +60,6 @@ data class SpotifyImportProgressUi(
   val percent: Int,
 )
 
-@Immutable
 data class SpotifyImportSourceSummaryUi(
   val title: String,
   val totalTracks: Int,
@@ -43,7 +67,6 @@ data class SpotifyImportSourceSummaryUi(
   val failedTracks: Int,
 )
 
-@Immutable
 data class SpotifyImportSummaryUi(
   val sources: List<SpotifyImportSourceSummaryUi>,
 ) {
@@ -60,7 +83,6 @@ data class SpotifyImportSummaryUi(
     get() = sources.sumOf { it.failedTracks }
 }
 
-@Immutable
 data class SpotifyImportUiState(
   val isAuthenticated: Boolean = false,
   val accountName: String = "",

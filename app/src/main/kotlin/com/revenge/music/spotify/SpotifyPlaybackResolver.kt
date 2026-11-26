@@ -1,12 +1,14 @@
 package com.revenge.music.spotify
 
 import com.revenge.innertube.YouTube
+import com.revenge.innertube.YouTube.SearchFilter
 import com.revenge.innertube.models.SongItem
 import com.revenge.music.spotify.models.SpotifyTrack
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
-import kotlin.math.abs
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -14,169 +16,171 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import timber.log.Timber
 
+/**
+ * Resolves Spotify tracks to YouTube search results. The service is process-wide, caches per
+ * Spotify id, deduplicates concurrent lookups and never throws to callers.
+ */
 @Singleton
 open class SpotifyPlaybackResolver @Inject constructor() {
-  private val trackCache =
-    object : LinkedHashMap<String, SongItem>(1000, 0.75f, true) {
-      override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, SongItem>?): Boolean =
-        size > 1000
-    }
-  private val resolutionSemaphore = Semaphore(6)
+
+  private companion object {
+    const val MAX_CONCURRENCY = 6
+    const val MAX_CACHE = 2_000
+    const val MIN_TITLE_SIMILARITY = 0.25
+    const val EARLY_EXIT = 0.85
+    const val QUERY_EXIT = 0.55
+    const val FINAL_THRESHOLD = 0.35
+  }
+
+  private val cache = ConcurrentHashMap<String, SongItem>()
+  private val inFlight = ConcurrentHashMap<String, CompletableDeferred<SongItem?>>()
+  private val semaphore = Semaphore(MAX_CONCURRENCY)
 
   fun clearCache() {
-    synchronized(trackCache) {
-      trackCache.clear()
+    cache.clear()
+  }
+
+  open fun getCached(trackId: String): SongItem? = cache[trackId]
+
+  open suspend fun resolveTrack(track: SpotifyTrack, hideExplicit: Boolean = false): SongItem? {
+    val id = track.id
+    if (id.isNotBlank()) cache[id]?.let { return it }
+    if (id.isNotBlank()) {
+      val mine = CompletableDeferred<SongItem?>()
+      val running = inFlight.putIfAbsent(id, mine)
+      if (running != null) return running.await()
+      return runResolution(track, hideExplicit, id, mine)
+    }
+    return performResolution(track, hideExplicit)
+  }
+
+  private suspend fun runResolution(
+    track: SpotifyTrack,
+    hideExplicit: Boolean,
+    id: String,
+    mine: CompletableDeferred<SongItem?>,
+  ): SongItem? {
+    try {
+      val result = performResolution(track, hideExplicit)
+      if (result != null) {
+        if (cache.size > MAX_CACHE) cache.clear()
+        cache[id] = result
+      }
+      mine.complete(result)
+      return result
+    } catch (e: CancellationException) {
+      mine.cancel(e)
+      throw e
+    } catch (e: Throwable) {
+      Timber.tag("SpotifyResolver").w(e, "Resolution failed for $id")
+      mine.complete(null)
+      return null
+    } finally {
+      inFlight.remove(id, mine)
     }
   }
 
-  open suspend fun resolveTrack(
-    track: SpotifyTrack,
-    hideExplicit: Boolean = false,
-  ): SongItem? =
+  private suspend fun performResolution(track: SpotifyTrack, hideExplicit: Boolean): SongItem? =
     try {
-      val fastCached = getCached(track.id)
-      if (fastCached != null) {
-        return fastCached
-      }
-
-      resolutionSemaphore.withPermit {
-        if (track.id.isNotBlank()) {
-          val cachedSong = synchronized(trackCache) { trackCache[track.id] }
-          if (cachedSong != null) {
-            return@withPermit cachedSong
+      semaphore.withPermit {
+        val queries = buildQueries(track)
+        var best: SongItem? = null
+        var bestScore = -1.0
+        for (query in queries) {
+          val candidates = search(query, track, hideExplicit)
+          for (candidate in candidates) {
+            val score =
+              SpotifyMapper.matchScore(
+                spotifyTitle = track.name,
+                spotifyArtist = track.artists.firstOrNull()?.name.orEmpty(),
+                spotifyDurationMs = track.durationMs,
+                candidateTitle = candidate.title,
+                candidateArtist = candidate.artists.joinToString(", ") { it.name },
+                candidateDurationSec = candidate.duration,
+              )
+            if (score > bestScore) {
+              best = candidate
+              bestScore = score
+            }
+            if (score >= EARLY_EXIT) return@withPermit candidate
           }
+          if (bestScore >= QUERY_EXIT) break
         }
-
-        val resolved = findBestMatch(track, hideExplicit)
-        if (resolved != null && track.id.isNotBlank()) {
-          synchronized(trackCache) { trackCache[track.id] = resolved }
-        }
-        resolved
+        if (bestScore >= FINAL_THRESHOLD) best else null
       }
-    } catch (e: Exception) {
-      Timber.tag("SpotifyResolver").w(e, "Error resolving track: ${track.name}")
+    } catch (e: CancellationException) {
+      throw e
+    } catch (e: Throwable) {
+      Timber.tag("SpotifyResolver").w(e, "Resolution failed for ${track.id}")
       null
     }
 
-  open fun getCached(trackId: String): SongItem? = synchronized(trackCache) { trackCache[trackId] }
-
-  private suspend fun findBestMatch(
+  private suspend fun search(
+    query: String,
     track: SpotifyTrack,
     hideExplicit: Boolean,
-  ): SongItem? {
-    val artistNames = track.artists.joinToString(" ") { it.name }.trim()
-    val firstArtist = track.artists.firstOrNull()?.name.orEmpty().trim()
-
-    // Search queries in order of preference:
-    // 1. "Artist Title" (e.g. "Sachin-Jigar Saibo")
-    // 2. "Title Artist" (e.g. "Saibo Sachin-Jigar")
-    // 3. "Title" (fallback)
-    val queries = buildList {
-      val q1 = SpotifyMapper.buildSearchQuery(track).trim()
-      if (q1.isNotBlank()) add(q1)
-      val q2 = "${track.name} $firstArtist".trim()
-      if (q2.isNotBlank() && q2 != q1) add(q2)
-      if (track.name.isNotBlank() && track.name != q1 && track.name != q2) {
-        add(track.name.trim())
-      }
-    }
-      .distinct()
-
-    var bestSong: SongItem? = null
-    var bestScore = 0.0
-
-    for (query in queries) {
-      // First try anonymous search (setLogin = false) so personal watch history/trending does not
-      // hijack the result
-      var searchResult =
-        YouTube.search(query, YouTube.SearchFilter.FILTER_SONG, setLogin = false).getOrNull()
-      var candidates =
-        searchResult
+  ): List<SongItem> {
+    val anonymous =
+      YouTube.search(query, SearchFilter.FILTER_SONG, setLogin = false)
+        .getOrNull()
+        ?.items
+        ?.filterIsInstance<SongItem>()
+        .orEmpty()
+    val items =
+      if (anonymous.isEmpty()) {
+        YouTube.search(query, SearchFilter.FILTER_SONG)
+          .getOrNull()
           ?.items
           ?.filterIsInstance<SongItem>()
-          ?.filter {
-            !hideExplicit || !it.explicit
-          }
           .orEmpty()
-
-      // If anonymous search returned nothing, fallback to default search
-      if (candidates.isEmpty()) {
-        searchResult =
-          YouTube.search(query, YouTube.SearchFilter.FILTER_SONG, setLogin = null).getOrNull()
-        candidates =
-          searchResult
-            ?.items
-            ?.filterIsInstance<SongItem>()
-            ?.filter {
-              !hideExplicit || !it.explicit
-            }
-            .orEmpty()
+      } else {
+        anonymous
       }
+    return items
+      .filter { !hideExplicit || !it.explicit }
+      .filter { SpotifyMapper.titleSimilarity(track.name, it.title) >= MIN_TITLE_SIMILARITY }
+  }
 
-      for (candidate in candidates) {
-        val titleSim = SpotifyMapper.titleSimilarity(track.name, candidate.title)
-        // Filter out candidates whose titles do not resemble the track name (e.g. "Saibo" vs
-        // "Sajna")
-        if (titleSim < 0.25) continue
-
-        val score =
-          SpotifyMapper.matchScore(
-            spotifyTitle = track.name,
-            spotifyArtist = artistNames,
-            spotifyDurationMs = track.durationMs,
-            candidateTitle = candidate.title,
-            candidateArtist = candidate.artists.joinToString(" ") { it.name },
-            candidateDurationSec = candidate.duration,
-          )
-
-        if (score > bestScore) {
-          bestScore = score
-          bestSong = candidate
-        }
-
-        // If high confidence match found (>= 0.85), return immediately
-        if (bestScore >= 0.85) {
-          return bestSong
-        }
-      }
-
-      // If good match found (>= 0.55), don't query further
-      if (bestScore >= 0.55) {
-        return bestSong
-      }
-    }
-
-    // Return best match only if confidence score is acceptable (>= 0.35)
-    return if (bestScore >= 0.35) bestSong else null
+  private fun buildQueries(track: SpotifyTrack): List<String> {
+    val artist = track.artists.firstOrNull()?.name?.trim().orEmpty()
+    val title = track.name.trim()
+    return listOf(
+        if (artist.isBlank()) title else "$artist $title",
+        if (artist.isBlank()) title else "$title $artist",
+        title,
+      )
+      .map(String::trim)
+      .filter(String::isNotBlank)
+      .distinct()
   }
 
   open suspend fun resolveTracks(
     tracks: List<SpotifyTrack>,
     hideExplicit: Boolean = false,
-  ): Map<String, SongItem> = coroutineScope {
-    val uniqueTracks = tracks.distinctBy { it.id }
-    val resultMap = ConcurrentHashMap<String, SongItem>()
-
-    uniqueTracks
-      .map { track ->
-        async {
-          val resolved = resolveTrack(track, hideExplicit)
-          if (resolved != null) {
-            resultMap[track.id] = resolved
-          }
-        }
-      }
-      .awaitAll()
-
-    resultMap
+  ): Map<String, SongItem> {
+    if (tracks.isEmpty()) return emptyMap()
+    val unique = tracks.associateBy { it.id }.filterKeys { it.isNotBlank() }
+    return coroutineScope {
+      unique.values
+        .map { track -> async { track.id to resolveTrack(track, hideExplicit) } }
+        .awaitAll()
+        .mapNotNull { (id, item) -> item?.let { id to it } }
+        .toMap()
+    }
   }
 
   open suspend fun resolveAndFilter(
     tracks: List<SpotifyTrack>,
     hideExplicit: Boolean,
   ): List<SongItem> {
-    val map = resolveTracks(tracks, hideExplicit)
-    return tracks.filter { !hideExplicit || !it.explicit }.mapNotNull { map[it.id] }
+    if (tracks.isEmpty()) return emptyList()
+    return coroutineScope {
+      val resolved = tracks.map { track -> async { resolveTrack(track, hideExplicit) } }.awaitAll()
+      tracks.indices.mapNotNull { index ->
+        val item = resolved[index] ?: return@mapNotNull null
+        if (hideExplicit && item.explicit) null else item
+      }
+    }
   }
 
   open fun findBestMatch(
@@ -184,70 +188,61 @@ open class SpotifyPlaybackResolver @Inject constructor() {
     track: SpotifyTrack,
     hideExplicit: Boolean = false,
   ): SongItem? {
-    val allowed = candidates.filter { !hideExplicit || !it.explicit }
+    val allowed = candidates.filterNot { hideExplicit && it.explicit }
     if (allowed.isEmpty()) return null
 
-    val trackNameLower = track.name.trim().lowercase()
-    val trackArtistsLower =
-      track.artists.map { it.name.trim().lowercase() }.filter { it.isNotBlank() }
-    val targetDurationSec = if (track.durationMs > 0) track.durationMs / 1000 else null
+    val sourceTitle = SpotifyMapper.normalize(track.name)
+    val sourceArtist = SpotifyMapper.normalize(track.artists.joinToString(" ") { it.name })
+    val sourceSeconds = track.durationMs / 1000
 
-    var bestCandidate: SongItem? = null
-    var highestScore = Int.MIN_VALUE
-
+    var best: SongItem? = null
+    var bestScore = Int.MIN_VALUE
     for (candidate in allowed) {
+      val candidateTitle = SpotifyMapper.normalize(candidate.title)
       var score = 0
-      val candidateTitleLower = candidate.title.trim().lowercase()
-      val candidateArtistsLower = candidate.artists.map { it.name.trim().lowercase() }
-
-      // 1. Title match
-      if (candidateTitleLower == trackNameLower) {
-        score += 30
-      } else if (
-        candidateTitleLower.contains(trackNameLower) || trackNameLower.contains(candidateTitleLower)
+      if (candidateTitle == sourceTitle) score += 30
+      else if (sourceTitle.isNotEmpty() &&
+        (candidateTitle.contains(sourceTitle) || sourceTitle.contains(candidateTitle))
       ) {
         score += 15
       }
 
-      // 2. Artist match
-      val hasArtistMatch = trackArtistsLower.any { spArtist ->
-        candidateArtistsLower.any { ytArtist ->
-          ytArtist == spArtist || ytArtist.contains(spArtist) || spArtist.contains(ytArtist)
+      val candidateArtists = candidate.artists.map { SpotifyMapper.normalize(it.name) }
+      if (candidateArtists.any { artist ->
+          artist.isNotEmpty() &&
+            (artist == sourceArtist ||
+              sourceArtist.contains(artist) ||
+              artist.contains(sourceArtist))
         }
-      }
-      if (hasArtistMatch) {
+      ) {
         score += 25
       }
 
-      // 3. Duration match (if available)
-      val candidateDuration = candidate.duration
-      if (targetDurationSec != null && candidateDuration != null && candidateDuration > 0) {
-        val diffSec = abs(candidateDuration - targetDurationSec)
-        when {
-          diffSec <= 3 -> score += 20
-          diffSec <= 8 -> score += 12
-          diffSec <= 20 -> score += 5
-          diffSec > 60 -> score -= 25 // strong penalty for extended mixes / snippets
-        }
+      val candidateSeconds = candidate.duration
+      if (candidateSeconds != null && sourceSeconds > 0) {
+        val difference = kotlin.math.abs(candidateSeconds - sourceSeconds)
+        score +=
+          when {
+            difference <= 3 -> 20
+            difference <= 8 -> 12
+            difference <= 20 -> 5
+            difference > 60 -> -25
+            else -> 0
+          }
       }
 
-      // 4. Penalties for unwanted versions if original track doesn't specify them
-      val unwantedKeywords = listOf("karaoke", "instrumental", "cover", "tribute", "parody")
-      for (keyword in unwantedKeywords) {
-        if (!trackNameLower.contains(keyword) && candidateTitleLower.contains(keyword)) {
-          score -= 30
-        }
+      listOf("karaoke", "instrumental", "cover", "tribute", "parody").forEach { keyword ->
+        if (candidateTitle.contains(keyword) && !sourceTitle.contains(keyword)) score -= 30
       }
-      if (!trackNameLower.contains("live") && candidateTitleLower.contains("live")) {
-        score -= 15
-      }
+      val candidateLive = candidateTitle.contains("live")
+      val sourceLive = sourceTitle.contains("live")
+      if (candidateLive != sourceLive) score -= 15
 
-      if (score > highestScore) {
-        highestScore = score
-        bestCandidate = candidate
+      if (score > bestScore) {
+        bestScore = score
+        best = candidate
       }
     }
-
-    return if (highestScore > 0) bestCandidate else allowed.firstOrNull()
+    return if (bestScore > 0) best else allowed.first()
   }
 }

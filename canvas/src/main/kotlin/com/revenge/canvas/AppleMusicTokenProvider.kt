@@ -82,7 +82,9 @@ object AppleMusicTokenProvider {
                 )
                 if (page.status != 200) continue
 
-                val bundlePath = BUNDLE_PATTERN.find(page.body)?.value ?: continue
+                val bundlePath = ABSOLUTE_BUNDLE_PATTERN.find(page.body)?.value
+                    ?: RELATIVE_BUNDLE_PATTERN.find(page.body)?.value
+                    ?: continue
                 val bundleUrl = if (bundlePath.startsWith("http")) bundlePath else "https://music.apple.com$bundlePath"
 
                 val bundle = transport.get(bundleUrl, emptyList(), mapOf("User-Agent" to DESKTOP_UA))
@@ -122,6 +124,7 @@ object AppleMusicTokenProvider {
     private fun stringValue(element: JsonElement?): String? =
         (element as? JsonPrimitive)?.contentOrNull
 
-    private val BUNDLE_PATTERN = Regex("""/assets/index[^"'\s>]*?\.js""")
+    private val ABSOLUTE_BUNDLE_PATTERN = Regex("""https?://[^"'\s>]*?/assets/index[^"'\s>]*?\.js""")
+    private val RELATIVE_BUNDLE_PATTERN = Regex("""/assets/index[^"'\s>]*?\.js""")
     private val TOKEN_PATTERN = Regex("""eyJ[A-Za-z0-9_\-]{20,}\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+""")
 }

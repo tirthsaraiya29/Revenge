@@ -1,116 +1,49 @@
-/*
- * Revenge (2026)
- * © Chartreux Westia — github.com/koiverse
- * GPL-3.0 License | Contributors: see git history
- * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
- */
-
 package com.revenge.music.spotify
 
+import com.revenge.music.spotify.models.SpotifyImage
 import com.revenge.music.spotify.models.SpotifyPlaylist
 import com.revenge.music.spotify.models.SpotifyTrack
+import java.util.concurrent.ConcurrentHashMap
 
-/**
- * Utility object for creating search queries from Spotify track data. The actual mapping to
- * Metrolist MediaMetadata is done in the app module where MediaMetadata class is available.
- */
+data class PrecomputedTrack(
+  val normalizedTitle: String,
+  val titleBigrams: Set<String>,
+  val normalizedArtist: String,
+  val artistBigrams: Set<String>,
+  val durationMs: Int,
+)
+
+/** Deterministic query construction and similarity scoring for Spotify to YouTube matching. */
 object SpotifyMapper {
 
-  // Pre-compiled regex patterns for title normalization (avoids re-creation on each call)
-  private val FEAT_PATTERN = Regex("\\(feat\\..*?\\)")
-  private val FT_PATTERN = Regex("\\(ft\\..*?\\)")
-  private val BRACKET_PATTERN = Regex("\\[.*?]")
-  private val REMASTER_PATTERN = Regex("\\(.*?remaster.*?\\)", RegexOption.IGNORE_CASE)
-  private val REMIX_PATTERN = Regex("\\(.*?remix.*?\\)", RegexOption.IGNORE_CASE)
-  private val NON_ALNUM_PATTERN = Regex("[^a-z0-9\\s]")
-  private val MULTI_SPACE_PATTERN = Regex("\\s+")
+  private const val MAX_CACHE = 4096
 
-  private const val NORM_CACHE_MAX_SIZE = 256
-  private const val EARLY_EXIT_THRESHOLD = 0.95
+  private val normalizedCache = ConcurrentHashMap<String, String>()
+  private val bigramCache = ConcurrentHashMap<String, Set<String>>()
 
-  /**
-   * LRU cache for normalized strings. Avoids re-running 7 regex replacements on the same Spotify
-   * title/artist across multiple candidate comparisons. Bounded to [NORM_CACHE_MAX_SIZE] entries to
-   * limit memory usage.
-   */
-  private val normalizeCache =
-    object : LinkedHashMap<String, String>(NORM_CACHE_MAX_SIZE, 0.75f, true) {
-      override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>?): Boolean =
-        size > NORM_CACHE_MAX_SIZE
-    }
-
-  /**
-   * LRU cache for pre-computed bigram sets. Avoids re-creating Set<String> on every
-   * stringSimilarity call for the same normalized string.
-   */
-  private val bigramCache =
-    object : LinkedHashMap<String, Set<String>>(NORM_CACHE_MAX_SIZE, 0.75f, true) {
-      override fun removeEldestEntry(
-        eldest: MutableMap.MutableEntry<String, Set<String>>?,
-      ): Boolean = size > NORM_CACHE_MAX_SIZE
-    }
-
-  /**
-   * Pre-computed data for one side of a match comparison. Created once per Spotify track and reused
-   * across all candidates.
-   */
-  data class PrecomputedTrack(
-    val normalizedTitle: String,
-    val titleBigrams: Set<String>,
-    val normalizedArtist: String,
-    val artistBigrams: Set<String>,
-    val durationMs: Int,
-  )
-
-  /**
-   * Builds a YouTube search query from a Spotify track. The query is optimized for finding the
-   * matching song on YouTube Music.
-   */
   fun buildSearchQuery(track: SpotifyTrack): String {
-    val artist = track.artists.firstOrNull()?.name.orEmpty()
-    val title = track.name
-    return if (artist.isEmpty()) title else "$artist $title"
+    val artist = track.artists.firstOrNull()?.name?.trim().orEmpty()
+    return if (artist.isBlank()) track.name.trim() else "$artist ${track.name.trim()}"
   }
 
-  /** Returns the best thumbnail URL from a Spotify playlist, preferring medium resolution. */
-  fun getPlaylistThumbnail(playlist: SpotifyPlaylist): String? {
-    return playlist.images.let { images ->
-      // Prefer 300x300 or similar medium size, fallback to first
-      images.firstOrNull { it.width in 200..400 }?.url ?: images.firstOrNull()?.url
-    }
-  }
+  fun getPlaylistThumbnail(playlist: SpotifyPlaylist): String? =
+    preferredImage(playlist.images)?.url
 
-  /** Returns the best thumbnail URL from a Spotify track's album art. */
-  fun getTrackThumbnail(track: SpotifyTrack): String? {
-    return track.album?.images?.let { images ->
-      images.firstOrNull { it.width in 200..400 }?.url ?: images.firstOrNull()?.url
-    }
-  }
+  fun getTrackThumbnail(track: SpotifyTrack): String? =
+    preferredImage(track.album?.images.orEmpty())?.url
 
-  /**
-   * Pre-computes normalized title/artist and their bigrams for a Spotify track. Call once before
-   * scoring against multiple candidates to avoid redundant work.
-   */
-  fun precompute(
-    title: String,
-    artist: String,
-    durationMs: Int,
-  ): PrecomputedTrack {
-    val normTitle = cachedNormalize(title)
-    val normArtist = cachedNormalize(artist)
+  fun precompute(title: String, artist: String, durationMs: Int): PrecomputedTrack {
+    val normalizedTitle = normalize(title)
+    val normalizedArtist = normalize(artist)
     return PrecomputedTrack(
-      normalizedTitle = normTitle,
-      titleBigrams = cachedBigrams(normTitle),
-      normalizedArtist = normArtist,
-      artistBigrams = cachedBigrams(normArtist),
+      normalizedTitle = normalizedTitle,
+      titleBigrams = bigrams(normalizedTitle),
+      normalizedArtist = normalizedArtist,
+      artistBigrams = bigrams(normalizedArtist),
       durationMs = durationMs,
     )
   }
 
-  /**
-   * Computes a match confidence score (0.0 - 1.0) between a Spotify track and a candidate result
-   * based on title, artist, and duration similarity.
-   */
   fun matchScore(
     spotifyTitle: String,
     spotifyArtist: String,
@@ -118,146 +51,88 @@ object SpotifyMapper {
     candidateTitle: String,
     candidateArtist: String,
     candidateDurationSec: Int?,
-  ): Double {
-    val normSpotifyTitle = cachedNormalize(spotifyTitle)
-    val normCandidateTitle = cachedNormalize(candidateTitle)
-    val normSpotifyArtist = cachedNormalize(spotifyArtist)
-    val normCandidateArtist = cachedNormalize(candidateArtist)
+  ): Double =
+    matchScorePrecomputed(
+      precompute(spotifyTitle, spotifyArtist, spotifyDurationMs),
+      candidateTitle,
+      candidateArtist,
+      candidateDurationSec,
+    )
 
-    val titleScore =
-      bigramSimilarity(
-        normSpotifyTitle,
-        cachedBigrams(normSpotifyTitle),
-        normCandidateTitle,
-        cachedBigrams(normCandidateTitle),
-      )
-    val artistScore =
-      bigramSimilarity(
-        normSpotifyArtist,
-        cachedBigrams(normSpotifyArtist),
-        normCandidateArtist,
-        cachedBigrams(normCandidateArtist),
-      )
-
-    val durationScore = durationScore(spotifyDurationMs, candidateDurationSec)
-    return titleScore * 0.45 + artistScore * 0.35 + durationScore * 0.20
-  }
-
-  /**
-   * Scores a candidate against pre-computed Spotify track data. This is the fast path:
-   * normalization and bigrams for the Spotify side are computed once and reused across all
-   * candidates.
-   */
   fun matchScorePrecomputed(
     precomputed: PrecomputedTrack,
     candidateTitle: String,
     candidateArtist: String,
     candidateDurationSec: Int?,
   ): Double {
-    val normCandidateTitle = cachedNormalize(candidateTitle)
-    val normCandidateArtist = cachedNormalize(candidateArtist)
-
-    val titleScore =
-      bigramSimilarity(
-        precomputed.normalizedTitle,
-        precomputed.titleBigrams,
-        normCandidateTitle,
-        cachedBigrams(normCandidateTitle),
-      )
-    val artistScore =
-      bigramSimilarity(
-        precomputed.normalizedArtist,
-        precomputed.artistBigrams,
-        normCandidateArtist,
-        cachedBigrams(normCandidateArtist),
-      )
-
-    val durationScore = durationScore(precomputed.durationMs, candidateDurationSec)
-    return titleScore * 0.45 + artistScore * 0.35 + durationScore * 0.20
+    val titleScore = similarity(precomputed.normalizedTitle, normalize(candidateTitle))
+    val artistScore = similarity(precomputed.normalizedArtist, normalize(candidateArtist))
+    val durationScore = durationScore(precomputed.durationMs / 1000, candidateDurationSec)
+    return 0.45 * titleScore + 0.35 * artistScore + 0.20 * durationScore
   }
 
-  /** Threshold above which we consider a match good enough to skip remaining candidates. */
-  fun earlyExitThreshold(): Double = EARLY_EXIT_THRESHOLD
+  fun earlyExitThreshold(): Double = 0.95
 
-  private fun durationScore(spotifyDurationMs: Int, candidateDurationSec: Int?): Double {
-    if (candidateDurationSec == null || spotifyDurationMs <= 0) return 0.5
-    val diff = kotlin.math.abs(spotifyDurationMs / 1000 - candidateDurationSec)
+  fun titleSimilarity(titleA: String, titleB: String): Double {
+    val a = normalize(titleA)
+    val b = normalize(titleB)
+    if (a.isEmpty() || b.isEmpty()) return if (a == b) 1.0 else 0.0
+    if (a == b) return 1.0
+    val dice = dice(bigrams(a), bigrams(b))
+    if (a.contains(b) || b.contains(a)) return maxOf(0.6, dice)
+    return dice
+  }
+
+  internal fun normalize(value: String): String {
+    normalizedCache[value]?.let { return it }
+    var text = value.lowercase()
+    text = text.replace(Regex("\\([^)]*(feat|ft)\\.?[^)]*\\)"), " ")
+    text = text.replace(Regex("\\[[^\\]]*\\]"), " ")
+    text = text.replace(Regex("\\([^)]*remaster[^)]*\\)"), " ", ignoreCase = true)
+    text = text.replace(Regex("\\([^)]*remix[^)]*\\)"), " ", ignoreCase = true)
+    text = text.replace(Regex("[^a-z0-9\\s]"), " ")
+    text = text.replace(Regex("\\s+"), " ").trim()
+    if (normalizedCache.size > MAX_CACHE) normalizedCache.clear()
+    normalizedCache[value] = text
+    return text
+  }
+
+  private fun similarity(a: String, b: String): Double {
+    if (a.isEmpty() || b.isEmpty()) return if (a == b) 1.0 else 0.0
+    if (a == b) return 1.0
+    return dice(bigrams(a), bigrams(b))
+  }
+
+  private fun bigrams(text: String): Set<String> {
+    if (text.isEmpty()) return emptySet()
+    bigramCache[text]?.let { return it }
+    val result =
+      if (text.length < 2) setOf(text)
+      else buildSet { for (i in 0 until text.length - 1) add(text.substring(i, i + 2)) }
+    if (bigramCache.size > MAX_CACHE) bigramCache.clear()
+    bigramCache[text] = result
+    return result
+  }
+
+  private fun dice(a: Set<String>, b: Set<String>): Double {
+    if (a.isEmpty() && b.isEmpty()) return 1.0
+    if (a.isEmpty() || b.isEmpty()) return 0.0
+    val intersection = a.count { it in b }
+    return 2.0 * intersection / (a.size + b.size)
+  }
+
+  private fun durationScore(spotifySeconds: Int, candidateSeconds: Int?): Double {
+    if (candidateSeconds == null || spotifySeconds <= 0) return 0.5
+    val difference = kotlin.math.abs(spotifySeconds - candidateSeconds)
     return when {
-      diff <= 2 -> 1.0
-      diff <= 5 -> 0.8
-      diff <= 10 -> 0.5
-      diff <= 30 -> 0.2
+      difference <= 2 -> 1.0
+      difference <= 5 -> 0.8
+      difference <= 10 -> 0.5
+      difference <= 30 -> 0.2
       else -> 0.0
     }
   }
 
-  /** Returns title similarity score (0.0 to 1.0) between two song titles. */
-  fun titleSimilarity(
-    titleA: String,
-    titleB: String,
-  ): Double {
-    val normA = cachedNormalize(titleA)
-    val normB = cachedNormalize(titleB)
-    if (normA.isEmpty() || normB.isEmpty()) return 0.0
-    if (normA == normB) return 1.0
-    val sim =
-      bigramSimilarity(
-        normA,
-        cachedBigrams(normA),
-        normB,
-        cachedBigrams(normB),
-      )
-    if (normA.contains(normB) || normB.contains(normA)) {
-      return maxOf(sim, 0.6)
-    }
-    return sim
-  }
-
-  /** Normalizes a title for comparison, with LRU caching. */
-  private fun cachedNormalize(title: String): String =
-    synchronized(normalizeCache) {
-      normalizeCache[title]?.let {
-        return it
-      }
-      val normalized = normalizeTitle(title)
-      normalizeCache[title] = normalized
-      return normalized
-    }
-
-  /** Returns cached bigrams for a normalized string. */
-  private fun cachedBigrams(normalized: String): Set<String> =
-    synchronized(bigramCache) {
-      bigramCache[normalized]?.let {
-        return it
-      }
-      val bigrams = if (normalized.length < 2) emptySet() else normalized.windowed(2).toSet()
-      bigramCache[normalized] = bigrams
-      return bigrams
-    }
-
-  private fun normalizeTitle(title: String): String {
-    return title
-      .lowercase()
-      .replace(FEAT_PATTERN, "")
-      .replace(FT_PATTERN, "")
-      .replace(BRACKET_PATTERN, "")
-      .replace(REMASTER_PATTERN, "")
-      .replace(REMIX_PATTERN, "")
-      .replace(NON_ALNUM_PATTERN, "")
-      .replace(MULTI_SPACE_PATTERN, " ")
-      .trim()
-  }
-
-  /** Dice coefficient using pre-computed bigram sets. */
-  private fun bigramSimilarity(
-    a: String,
-    bigramsA: Set<String>,
-    b: String,
-    bigramsB: Set<String>,
-  ): Double {
-    if (a == b) return 1.0
-    if (bigramsA.isEmpty() || bigramsB.isEmpty()) return 0.0
-    val intersection = bigramsA.count { it in bigramsB }
-    return (2.0 * intersection) / (bigramsA.size + bigramsB.size)
-  }
+  private fun preferredImage(images: List<SpotifyImage>): SpotifyImage? =
+    images.firstOrNull { it.width != null && it.width in 200..400 } ?: images.firstOrNull()
 }

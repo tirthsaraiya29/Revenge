@@ -24,16 +24,6 @@ object AppleMusicCanvasProvider {
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
     private const val LOG_PREFIX = "AppleMusicCanvas: "
 
-    private val EDITION_WORDS = listOf("deluxe", "expanded", "remastered", "remix", "version", "edit", "mix", "bonus")
-    private val BLACKLIST_TERMS = listOf(
-        "playlist", "set list", "essentials", "session", "dj mix", "mixed", "apple music", "today's hits",
-    )
-    private val EDITORIAL_KEY_ORDER = listOf(
-        "motionSquareVideo1x1", "motionDetailSquare", "motionTallVideo3x4",
-        "motionDetailTall", "motionDetailRaw", "motionDetailStatic",
-    )
-    private val EDITORIAL_URL_FIELDS = listOf("video", "videoUrl", "hlsUrl", "url")
-
     private data class Entry(val artwork: CanvasArtwork?, val expiresAt: Long)
     private data class ScoredItem(val item: JsonObject, val attributes: JsonObject, val score: Int)
 
@@ -237,6 +227,16 @@ object AppleMusicCanvasProvider {
         error.printStackTrace()
     }
 }
+
+private val EDITION_WORDS = listOf("deluxe", "expanded", "remastered", "remix", "version", "edit", "mix", "bonus")
+private val BLACKLIST_TERMS = listOf(
+    "playlist", "set list", "essentials", "session", "dj mix", "mixed", "apple music", "today's hits",
+)
+private val EDITORIAL_KEY_ORDER = listOf(
+    "motionSquareVideo1x1", "motionDetailSquare", "motionTallVideo3x4",
+    "motionDetailTall", "motionDetailRaw", "motionDetailStatic",
+)
+private val EDITORIAL_URL_FIELDS = listOf("video", "videoUrl", "hlsUrl", "url")
 
 /** Free-text query: never duplicate the artist, append the album hint only when absent. */
 internal fun buildQuery(term: String, artist: String, album: String?): String {

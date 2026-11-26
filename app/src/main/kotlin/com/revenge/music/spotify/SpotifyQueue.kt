@@ -1,102 +1,84 @@
 package com.revenge.music.spotify
 
 import androidx.media3.common.MediaItem
+import com.revenge.innertube.models.SongItem
 import com.revenge.music.extensions.toMediaItem
 import com.revenge.music.models.MediaMetadata
 import com.revenge.music.playback.queues.Queue
 import com.revenge.music.spotify.models.SpotifyTrack
-import kotlinx.coroutines.Dispatchers.IO
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * Queue for Spotify playlist and collection playback.
- *
- * Resolves Spotify tracks into playable YouTube MediaItems while preserving the playlist's exact
- * track ordering, duplicate tracks, and starting position.
+ * A queue over Spotify tracks. Only a window around the selected occurrence is resolved eagerly;
+ * the tail is paged in on demand so a large playlist does not stall playback start.
  */
 class SpotifyQueue(
   private val title: String? = null,
-  val tracks: List<SpotifyTrack>,
-  val startIndex: Int = 0,
+  private val tracks: List<SpotifyTrack>,
+  startIndex: Int = 0,
   override val preloadItem: MediaMetadata? = null,
   private val resolver: SpotifyPlaybackResolver,
 ) : Queue {
 
-  private var pendingTracks: List<SpotifyTrack> = emptyList()
-  private var isInitialized = false
-
-  override suspend fun getInitialStatus(): Queue.Status {
-    return withContext(IO) {
-      if (tracks.isEmpty()) {
-        isInitialized = true
-        return@withContext Queue.Status(title = title, items = emptyList(), mediaItemIndex = 0)
-      }
-
-      val safeStartIndex = startIndex.coerceIn(0, tracks.lastIndex)
-      val from = (safeStartIndex - WINDOW_BEFORE).coerceAtLeast(0)
-      val to = (safeStartIndex + WINDOW_AFTER).coerceAtMost(tracks.size)
-
-      val initialWindow = tracks.subList(from, to)
-      pendingTracks = tracks.subList(to, tracks.size)
-
-      // Resolve initial window tracks concurrently
-      val resolvedMap = resolver.resolveTracks(initialWindow)
-
-      val resolvedItems = mutableListOf<MediaItem>()
-      var targetMediaItemIndex = 0
-
-      for ((indexInWindow, track) in initialWindow.withIndex()) {
-        val absoluteIndex = from + indexInWindow
-        if (absoluteIndex == safeStartIndex) {
-          // Guarantee that the selected track is placed at targetMediaItemIndex
-          targetMediaItemIndex = resolvedItems.size
-          val item = resolvedMap[track.id]?.toMediaItem() ?: preloadItem?.toMediaItem()
-          if (item != null) {
-            resolvedItems.add(item)
-          }
-        } else {
-          val songItem = resolvedMap[track.id]
-          if (songItem != null) {
-            resolvedItems.add(songItem.toMediaItem())
-          }
-        }
-      }
-
-      val safeIndex =
-        if (resolvedItems.isNotEmpty()) {
-          targetMediaItemIndex.coerceIn(0, resolvedItems.lastIndex)
-        } else {
-          0
-        }
-
-      isInitialized = true
-
-      Queue.Status(
-        title = title,
-        items = resolvedItems,
-        mediaItemIndex = safeIndex,
-      )
-    }
-  }
-
-  fun hasPendingSongs(): Boolean = !isInitialized || pendingTracks.isNotEmpty()
-
-  override fun hasNextPage(): Boolean = !isInitialized || pendingTracks.isNotEmpty()
-
-  override suspend fun nextPage(): List<MediaItem> {
-    if (pendingTracks.isEmpty()) return emptyList()
-    return withContext(IO) {
-      val chunk = pendingTracks.take(PAGE_SIZE)
-      pendingTracks = pendingTracks.drop(PAGE_SIZE)
-
-      val resolvedMap = resolver.resolveTracks(chunk)
-      chunk.mapNotNull { track -> resolvedMap[track.id]?.toMediaItem() }
-    }
-  }
-
-  companion object {
+  private companion object {
     const val WINDOW_BEFORE = 10
     const val WINDOW_AFTER = 20
     const val PAGE_SIZE = 25
   }
+
+  private val safeStartIndex: Int =
+    if (tracks.isEmpty()) 0 else startIndex.coerceIn(0, tracks.lastIndex)
+
+  private val windowStart = (safeStartIndex - WINDOW_BEFORE).coerceAtLeast(0)
+  private val windowEnd = (safeStartIndex + WINDOW_AFTER).coerceAtMost(tracks.size)
+
+  private val pending: ArrayDeque<SpotifyTrack> =
+    ArrayDeque(tracks.drop(windowEnd).map { it })
+
+  private var initialized = false
+
+  override suspend fun getInitialStatus(): Status =
+    withContext(Dispatchers.IO) {
+      if (tracks.isEmpty()) {
+        initialized = true
+        return@withContext Status(title = title, items = emptyList(), mediaItemIndex = 0)
+      }
+
+      val items = mutableListOf<MediaItem>()
+      var selected = -1
+      for (index in windowStart until windowEnd) {
+        val track = tracks[index]
+        val resolved = resolver.resolveTrack(track)
+        if (index == safeStartIndex) {
+          val selectedItem = resolved?.toMediaItem() ?: preloadItem?.toMediaItem()
+          if (selectedItem != null) {
+            items += selectedItem
+            selected = items.lastIndex
+          }
+        } else if (resolved != null) {
+          items += resolved.toMediaItem()
+        }
+      }
+      initialized = true
+      Status(
+        title = title,
+        items = items,
+        mediaItemIndex = if (items.isEmpty()) 0 else selected.coerceIn(0, items.lastIndex),
+      )
+    }
+
+  override fun hasNextPage(): Boolean = !initialized || pending.isNotEmpty()
+
+  fun hasPendingSongs(): Boolean = !initialized || pending.isNotEmpty()
+
+  override suspend fun nextPage(): List<MediaItem> =
+    withContext(Dispatchers.IO) {
+      if (pending.isEmpty()) return@withContext emptyList()
+      val page = mutableListOf<SpotifyTrack>()
+      while (page.size < PAGE_SIZE && pending.isNotEmpty()) {
+        page += pending.removeFirst()
+      }
+      page.mapNotNull { track: SpotifyTrack -> resolver.resolveTrack(track)?.toMediaItem() }
+    }
 }

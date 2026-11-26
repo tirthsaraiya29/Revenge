@@ -11,105 +11,79 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import timber.log.Timber
 
-fun trackKeyOf(title: String, artist: String): String =
-  "${title.trim()}|${artist.trim()}".lowercase()
-
 @Singleton
-class SongPlayStatsRepository
-@Inject
-constructor(
-  private val songPlayStatsDao: SongPlayStatsDao,
+class SongPlayStatsRepository @Inject constructor(
+    private val dao: SongPlayStatsDao,
 ) {
-  private val mutex = Mutex()
+    private val mutex = Mutex()
 
-  suspend fun recordListenedMs(
-    title: String,
-    artist: String,
-    videoId: String?,
-    artworkUrl: String?,
-    listenedMs: Long,
-    completed: Boolean,
-  ) =
-    withContext(Dispatchers.IO) {
-      if (title.isBlank()) return@withContext
-      val key = trackKeyOf(title, artist)
-      try {
-        mutex.withLock {
-          val existing = songPlayStatsDao.find(key)
-          val now = System.currentTimeMillis()
-          val updated =
-            if (existing != null) {
-              existing.copy(
-                videoId = videoId ?: existing.videoId,
-                artworkUrl = artworkUrl ?: existing.artworkUrl,
-                totalPlayTimeMs = existing.totalPlayTimeMs + listenedMs,
-                playCount = if (completed) existing.playCount + 1 else existing.playCount,
-                lastPlayedAtMillis = now,
-              )
-            } else {
-              SongPlayStatsEntity(
-                trackKey = key,
-                title = title,
-                artist = artist,
-                videoId = videoId,
-                artworkUrl = artworkUrl,
-                totalPlayTimeMs = listenedMs,
-                playCount = if (completed) 1 else 0,
-                skipCount = 0,
-                lastPlayedAtMillis = now,
-              )
-            }
-          songPlayStatsDao.upsert(updated)
-        }
-      } catch (e: CancellationException) {
-        throw e
-      } catch (e: Exception) {
-        Timber.e(e, "Failed to record listened ms for $key")
-      }
+    suspend fun recordListenedMs(
+        title: String,
+        artist: String,
+        videoId: String?,
+        artworkUrl: String?,
+        listenedMs: Long,
+        completed: Boolean,
+    ) {
+        if (title.isBlank()) return
+        record(title, artist, videoId, artworkUrl, listenedMs, completed, skip = false)
     }
 
-  suspend fun recordSkip(
-    title: String,
-    artist: String,
-    videoId: String?,
-    artworkUrl: String?,
-    listenedMs: Long,
-  ) =
-    withContext(Dispatchers.IO) {
-      if (title.isBlank()) return@withContext
-      val key = trackKeyOf(title, artist)
-      try {
-        mutex.withLock {
-          val existing = songPlayStatsDao.find(key)
-          val now = System.currentTimeMillis()
-          val updated =
-            if (existing != null) {
-              existing.copy(
-                videoId = videoId ?: existing.videoId,
-                artworkUrl = artworkUrl ?: existing.artworkUrl,
-                totalPlayTimeMs = existing.totalPlayTimeMs + listenedMs,
-                skipCount = existing.skipCount + 1,
-                lastPlayedAtMillis = now,
-              )
-            } else {
-              SongPlayStatsEntity(
-                trackKey = key,
-                title = title,
-                artist = artist,
-                videoId = videoId,
-                artworkUrl = artworkUrl,
-                totalPlayTimeMs = listenedMs,
-                playCount = 0,
-                skipCount = 1,
-                lastPlayedAtMillis = now,
-              )
+    suspend fun recordSkip(
+        title: String,
+        artist: String,
+        videoId: String?,
+        artworkUrl: String?,
+        listenedMs: Long,
+    ) {
+        if (title.isBlank()) return
+        record(title, artist, videoId, artworkUrl, listenedMs, completed = false, skip = true)
+    }
+
+    private suspend fun record(
+        title: String,
+        artist: String,
+        videoId: String?,
+        artworkUrl: String?,
+        listenedMs: Long,
+        completed: Boolean,
+        skip: Boolean,
+    ) {
+        withContext(Dispatchers.IO) {
+            mutex.withLock {
+                try {
+                    val key = trackKeyOf(title, artist)
+                    val now = System.currentTimeMillis()
+                    val existing = dao.find(key)
+                    val updated = if (existing == null) {
+                        SongPlayStatsEntity(
+                            trackKey = key,
+                            title = title,
+                            artist = artist,
+                            videoId = videoId,
+                            artworkUrl = artworkUrl,
+                            totalPlayTimeMs = listenedMs.coerceAtLeast(0),
+                            playCount = if (completed && !skip) 1 else 0,
+                            skipCount = if (skip) 1 else 0,
+                            lastPlayedAtMillis = now,
+                        )
+                    } else {
+                        existing.copy(
+                            totalPlayTimeMs = existing.totalPlayTimeMs + listenedMs.coerceAtLeast(0),
+                            playCount = existing.playCount + if (completed && !skip) 1 else 0,
+                            skipCount = existing.skipCount + if (skip) 1 else 0,
+                            videoId = videoId ?: existing.videoId,
+                            artworkUrl = artworkUrl ?: existing.artworkUrl,
+                            lastPlayedAtMillis = now,
+                        )
+                    }
+                    dao.upsert(updated)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (t: Throwable) {
+                    Timber.e(t, "Failed to record play stats")
+                }
             }
-          songPlayStatsDao.upsert(updated)
         }
-      } catch (e: CancellationException) {
-        throw e
-      } catch (e: Exception) {
-        Timber.e(e, "Failed to record skip for $key")
-      }
     }
 }

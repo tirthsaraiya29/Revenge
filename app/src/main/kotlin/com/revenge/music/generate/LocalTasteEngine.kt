@@ -4,215 +4,211 @@ import com.revenge.innertube.YouTube
 import com.revenge.innertube.models.SongItem
 import com.revenge.innertube.models.WatchEndpoint
 import com.revenge.music.db.MusicDatabase
-import com.revenge.music.db.daos.RecommendationExclusionDao
-import com.revenge.music.db.daos.SongPlayStatsDao
 import com.revenge.music.db.entities.PlaylistEntity
 import com.revenge.music.db.entities.PlaylistSongMap
 import com.revenge.music.db.entities.SongPlayStatsEntity
-import com.revenge.music.models.toMediaMetadata
-import java.time.LocalTime
+import com.revenge.music.models.MediaMetadata
+import java.util.Calendar
 import javax.inject.Inject
-import javax.inject.Singleton
+import kotlin.math.ln
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import timber.log.Timber
 
-internal const val MAX_SUGGESTIONS = 25
-internal const val PLAY_WEIGHT = 2.0f
-internal const val SKIP_PENALTY = 3.0f
-internal const val LIKED_BONUS = 5.0f
-internal const val RECENCY_BONUS = 1.5f
-internal const val TIME_OF_DAY_BONUS = 1.3f
+const val MAX_SUGGESTIONS = 25
+const val PLAY_WEIGHT = 2.0
+const val SKIP_PENALTY = 3.0
+const val LIKED_BONUS = 5.0
+const val RECENCY_BONUS = 1.5
+const val TIME_OF_DAY_BONUS = 1.3
+const val SIMILAR_TRACK_BONUS = 2.0
+const val SIMILAR_ARTIST_BONUS = 1.0
+const val TAG_MATCH_BONUS = 1.5
+const val GENRE_MATCH_BONUS = 1.0
 
-private val MORNING = 6..11
-private val AFTERNOON = 12..17
-private val EVENING = 18..21
+private const val WEEK_MS = 7L * 24 * 60 * 60 * 1000
+private const val MONTH_MS = 30L * 24 * 60 * 60 * 1000
 
-internal fun currentTimeOfDay(hour: Int = LocalTime.now().hour): String =
-  when (hour) {
-    in MORNING -> "morning"
-    in AFTERNOON -> "afternoon"
-    in EVENING -> "evening"
+fun trackKeyOf(title: String, artist: String): String =
+    "${title.trim()}|${artist.trim()}".lowercase()
+
+fun currentTimeOfDay(hour: Int): String = when (hour) {
+    in 6..11 -> "morning"
+    in 12..17 -> "afternoon"
+    in 18..21 -> "evening"
     else -> "night"
-  }
-
-internal fun scoreStats(
-  stats: SongPlayStatsEntity,
-  likedKeys: Set<String>,
-  timeOfDay: String,
-): Float {
-  val isLiked = stats.trackKey in likedKeys
-  val isRecent = System.currentTimeMillis() - stats.lastPlayedAtMillis < 7L * 86_400_000L
-
-  val playMinutes = (stats.totalPlayTimeMs.coerceAtLeast(0L) / 60_000.0)
-  val normalizedPlayTime = kotlin.math.ln(1.0 + playMinutes).toFloat()
-  var score = normalizedPlayTime * PLAY_WEIGHT
-  score -= stats.skipCount.toFloat() * SKIP_PENALTY
-  if (isLiked) score += LIKED_BONUS
-  if (isRecent) score += RECENCY_BONUS
-
-  val hourBonus =
-    when (timeOfDay) {
-      "morning" -> if (isRecent) TIME_OF_DAY_BONUS else 1.0f
-      "night" -> if (isLiked) TIME_OF_DAY_BONUS else 1.0f
-      else -> 1.0f
-    }
-  score *= hourBonus
-  return score.coerceAtLeast(0f)
 }
 
-internal fun applyCandidateFilter(stats: SongPlayStatsEntity): Boolean =
-  stats.skipCount < 2 || stats.totalPlayTimeMs > 45_000L
+fun applyCandidateFilter(stats: SongPlayStatsEntity): Boolean =
+    stats.skipCount < 2 || stats.totalPlayTimeMs > 45_000L
 
-@Singleton
-open class LocalTasteEngine
-@Inject
-constructor(
-  private val songPlayStatsDao: SongPlayStatsDao,
-  private val recommendationExclusionDao: RecommendationExclusionDao,
-  private val database: MusicDatabase? = null,
+fun scoreStats(
+    stats: SongPlayStatsEntity,
+    likedKeys: Set<String>,
+    timeOfDay: String,
+    now: Long = System.currentTimeMillis(),
+): Double {
+    val recent = stats.lastPlayedAtMillis > 0L && now - stats.lastPlayedAtMillis <= WEEK_MS
+    val liked = stats.trackKey in likedKeys
+    var score = ln(1.0 + stats.totalPlayTimeMs.coerceAtLeast(0L) / 60_000.0) * PLAY_WEIGHT -
+        stats.skipCount * SKIP_PENALTY +
+        if (liked) LIKED_BONUS else 0.0 +
+        if (recent) RECENCY_BONUS else 0.0
+    if ((timeOfDay == "morning" && recent) || (timeOfDay == "night" && liked)) {
+        score *= TIME_OF_DAY_BONUS
+    }
+    return score.coerceAtLeast(0.0)
+}
+
+fun scoreCandidateWithExternals(
+    baseScore: Double,
+    similarTrack: Boolean = false,
+    similarArtist: Boolean = false,
+    tagMatch: Boolean = false,
+    genreMatch: Boolean = false,
+): Double {
+    var score = baseScore
+    if (similarTrack) score += SIMILAR_TRACK_BONUS
+    if (similarArtist) score += SIMILAR_ARTIST_BONUS
+    if (tagMatch) score += TAG_MATCH_BONUS
+    if (genreMatch) score += GENRE_MATCH_BONUS
+    return score.coerceAtLeast(0.0)
+}
+
+open class LocalTasteEngine @Inject constructor(
+    protected val database: MusicDatabase,
 ) {
-  open suspend fun generate(count: Int = MAX_SUGGESTIONS): Result<String> =
-    withContext(Dispatchers.IO) {
-      try {
-        val exclusions = recommendationExclusionDao.getAll().map { it.trackKey }.toSet()
-        val timeOfDay = currentTimeOfDay()
+    open suspend fun generate(count: Int = MAX_SUGGESTIONS): Result<String> =
+        withContext(Dispatchers.IO) {
+            try {
+                val exclusions = database.recommendationExclusionDao.getAll()
+                    .map { it.trackKey }
+                    .toSet()
+                val timeOfDay = currentTimeOfDay(Calendar.getInstance().get(Calendar.HOUR_OF_DAY))
+                val now = System.currentTimeMillis()
 
-        val now = System.currentTimeMillis()
-        val thirtyDaysAgo = now - 30L * 86_400_000L
-
-        val recentStats =
-          songPlayStatsDao.mostPlayedSince(thirtyDaysAgo, limit = 100).ifEmpty {
-            songPlayStatsDao.recentlyPlayed(limit = 20)
-          }
-
-        if (recentStats.isEmpty()) {
-          return@withContext Result.failure(
-            IllegalStateException("No listening history available yet"),
-          )
-        }
-
-        val likedSongs = database?.likedSongsByRowIdAsc()?.firstOrNull().orEmpty()
-        val likedKeys =
-          likedSongs
-            .map { song ->
-              trackKeyOf(song.song.title, song.artists.joinToString(", ") { it.name })
-            }
-            .toSet()
-
-        val eligibleSeeds =
-          recentStats
-            .filter { it.trackKey !in exclusions && applyCandidateFilter(it) }
-            .sortedByDescending { scoreStats(it, likedKeys, timeOfDay) }
-
-        if (eligibleSeeds.isEmpty()) {
-          return@withContext Result.failure(
-            IllegalStateException("All candidate tracks have been excluded"),
-          )
-        }
-
-        val seedVideoIds = eligibleSeeds.mapNotNull { it.videoId }.distinct().take(5)
-
-        val expandedSongs = mutableListOf<SongItem>()
-        val seenKeys = mutableSetOf<String>()
-        seenKeys.addAll(exclusions)
-
-        for (videoId in seedVideoIds) {
-          val nextResult = runCatching {
-            YouTube.next(WatchEndpoint(videoId = videoId)).getOrNull()
-          }
-            .getOrNull()
-
-          val candidateSongs = mutableListOf<SongItem>()
-          nextResult?.items?.filterIsInstance<SongItem>()?.let { candidateSongs.addAll(it) }
-
-          nextResult?.relatedEndpoint?.let { endpoint ->
-            runCatching {
-              YouTube.related(endpoint).getOrNull()?.songs
-            }
-              .getOrNull()
-              ?.let { candidateSongs.addAll(it) }
-          }
-
-          for (songItem in candidateSongs) {
-            val key = trackKeyOf(songItem.title, songItem.artists.joinToString(", ") { it.name })
-            if (key !in seenKeys) {
-              seenKeys.add(key)
-              expandedSongs.add(songItem)
-            }
-          }
-          if (expandedSongs.size >= count) break
-        }
-
-        val finalSongs =
-          if (expandedSongs.size >= 5) {
-            expandedSongs.take(count)
-          } else {
-            val localFallbackItems =
-              eligibleSeeds
-                .filter { it.videoId != null }
-                .take(count)
-                .map { stats ->
-                  SongItem(
-                    id = stats.videoId!!,
-                    title = stats.title,
-                    artists =
-                      listOf(com.revenge.innertube.models.Artist(name = stats.artist, id = null)),
-                    album = null,
-                    duration = null,
-                    thumbnail = stats.artworkUrl.orEmpty(),
-                  )
+                val seeds = loadSeeds(now) ?: return@withContext Result.failure(
+                    IllegalStateException("No listening history available yet"),
+                )
+                val likedKeys = likedTrackKeys()
+                val eligible = seeds
+                    .filter { it.trackKey !in exclusions && applyCandidateFilter(it) }
+                    .sortedByDescending { scoreStats(it, likedKeys, timeOfDay, now) }
+                if (eligible.isEmpty()) {
+                    return@withContext Result.failure(
+                        IllegalStateException("All candidate tracks have been excluded"),
+                    )
                 }
-            (expandedSongs + localFallbackItems).distinctBy { it.id }.take(count)
-          }
 
-        if (finalSongs.isEmpty()) {
-          return@withContext Result.failure(
-            IllegalStateException("Could not generate playlist from seeds"),
-          )
+                val expanded = expandSeeds(eligible.take(5), exclusions)
+                val songs = if (expanded.size >= 5) {
+                    expanded.take(count)
+                } else {
+                    val merged = (expanded + eligible.map { it.toLocalSong() })
+                        .distinctBy { it.id }
+                    merged.take(count)
+                }
+                if (songs.isEmpty()) {
+                    return@withContext Result.failure(
+                        IllegalStateException("Could not generate playlist from seeds"),
+                    )
+                }
+
+                persistPlaylist(DAILY_MIX_ID, "My Taste Mix", songs.map { it.toMediaMetadata() })
+                Result.success(DAILY_MIX_ID)
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (t: Throwable) {
+                Timber.e(t, "Local taste generation failed")
+                Result.failure(t)
+            }
         }
 
-        val playlistId = "local_taste_daily_mix"
-        val playlistName = "My Taste Mix"
-
-        persistPlaylist(playlistId, playlistName, finalSongs)
-
-        Result.success(playlistId)
-      } catch (e: Exception) {
-        Timber.e(e, "LocalTasteEngine generation failed")
-        Result.failure(e)
-      }
+    protected suspend fun loadSeeds(now: Long): List<SongPlayStatsEntity>? {
+        val recent = database.songPlayStatsDao.mostPlayedSince(now - MONTH_MS, 100)
+        if (recent.isNotEmpty()) return recent
+        val played = database.songPlayStatsDao.recentlyPlayed(20)
+        return played.ifEmpty { null }
     }
 
-  protected suspend fun persistPlaylist(
-    playlistId: String,
-    playlistName: String,
-    songs: List<SongItem>,
-  ) {
-    database?.withTransaction {
-      clearPlaylist(playlistId)
-      insert(
-        PlaylistEntity(
-          id = playlistId,
-          name = playlistName,
-          browseId = null,
-          bookmarkedAt = java.time.LocalDateTime.now(),
-          isLocal = true,
-          isEditable = true,
-        ),
-      )
-
-      songs.forEachIndexed { index, songItem ->
-        insert(songItem.toMediaMetadata())
-        insert(
-          PlaylistSongMap(
-            playlistId = playlistId,
-            songId = songItem.id,
-            position = index,
-          ),
-        )
-      }
+    protected suspend fun likedTrackKeys(): Set<String> {
+        val liked = database.likedSongsByRowIdAsc().first()
+        return liked.map { song ->
+            trackKeyOf(song.song.title, song.artists.firstOrNull()?.name.orEmpty())
+        }.toSet()
     }
-  }
+
+    protected suspend fun expandSeeds(
+        seeds: List<SongPlayStatsEntity>,
+        exclusions: Set<String>,
+    ): List<SongItem> {
+        val result = LinkedHashMap<String, SongItem>()
+        for (seed in seeds) {
+            val videoId = seed.videoId?.takeIf { it.isNotBlank() } ?: continue
+            val endpoint = WatchEndpoint(videoId = videoId)
+            val next = YouTube.next(endpoint).getOrNull() ?: continue
+            collect(next.items, exclusions, result)
+            next.relatedEndpoint?.let { related ->
+                YouTube.related(related).getOrNull()?.songs?.let {
+                    collect(it, exclusions, result)
+                }
+            }
+        }
+        return result.values.toList()
+    }
+
+    protected fun collect(
+        items: List<SongItem>,
+        exclusions: Set<String>,
+        into: MutableMap<String, SongItem>,
+    ) {
+        for (item in items) {
+            val key = trackKeyOf(item.title, item.artists.joinToString(", ") { it.name })
+            if (key in exclusions) continue
+            if (into.containsKey(key)) continue
+            into[key] = item
+        }
+    }
+
+    protected suspend fun persistPlaylist(
+        id: String,
+        name: String,
+        songs: List<MediaMetadata>,
+    ) {
+        database.withTransaction {
+            database.clearPlaylist(id)
+            database.insert(PlaylistEntity(id = id, name = name, isLocal = true, isEditable = true))
+            songs.forEachIndexed { index, metadata ->
+                database.insert(metadata)
+                database.insert(
+                    PlaylistSongMap(playlistId = id, songId = metadata.id, position = index),
+                )
+            }
+        }
+    }
+
+    protected fun SongPlayStatsEntity.toLocalSong(): SongItem = SongItem(
+        id = videoId?.takeIf { it.isNotBlank() } ?: "local_${trackKey.hashCode()}",
+        title = title.ifBlank { "Unknown" },
+        artists = listOf(com.revenge.innertube.models.Artist(artist.ifBlank { "Unknown" }, null)),
+        duration = null,
+        thumbnail = artworkUrl.orEmpty(),
+    )
+
+    companion object {
+        const val DAILY_MIX_ID = "local_taste_daily_mix"
+        const val DAILY_MIX_NAME = "My Taste Mix"
+    }
 }
+
+internal fun SongItem.toMediaMetadata(): MediaMetadata = MediaMetadata(
+    id = id,
+    title = title,
+    artists = artists.map { MediaMetadata.Artist(it.id, it.name) },
+    duration = duration ?: -1,
+    thumbnailUrl = thumbnail,
+    album = album?.let { MediaMetadata.Album(it.id, it.name) },
+    musicVideoType = musicVideoType,
+    explicit = explicit,
+)
