@@ -1,10 +1,10 @@
 syntax = "proto3";
 
-package com.revenge.music.listentogether.proto;
+package listentogether;
 
-option java_package = "com.revenge.music.listentogether.proto";
 option java_multiple_files = false;
 option java_outer_classname = "Listentogether";
+option java_package = "com.revenge.music.listentogether.proto";
 
 message TrackInfo {
   string id = 1;

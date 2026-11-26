@@ -1,9 +1,10 @@
 package com.revenge.music.cloud
 
-enum class NavidromeAuthMethod {
-  TOKEN,
-  PASSWORD,
-}
+import dagger.hilt.EntryPoint
+import dagger.hilt.InstallIn
+import dagger.hilt.components.SingletonComponent
+
+enum class NavidromeAuthMethod { TOKEN, PASSWORD }
 
 data class NavidromeCredentials(
   val serverUrl: String,
@@ -67,10 +68,9 @@ data class JellyfinPlaylist(
   val hasCover: Boolean = false,
 )
 
-@dagger.hilt.EntryPoint
-@dagger.hilt.InstallIn(dagger.hilt.components.SingletonComponent::class)
+@EntryPoint
+@InstallIn(SingletonComponent::class)
 interface CloudEntryPoint {
   fun navidromeRepository(): NavidromeRepository
-
   fun jellyfinRepository(): JellyfinRepository
 }
