@@ -1,224 +1,230 @@
 package com.revenge.music.api
 
+import io.ktor.client.HttpClient
 import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
+import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.put
 
-private val openRouterJson = Json {
-  isLenient = true
-  ignoreUnknownKeys = true
-}
-
-private fun JsonObject.string(key: String): String? =
-  (this[key] as? JsonPrimitive)?.contentOrNull
-
 object OpenRouterService {
-  private const val DEFAULT_URL = "https://openrouter.ai/api/v1/chat/completions"
-  private const val ANTHROPIC_VERSION = "2023-06-01"
 
-  fun isUrlSafe(url: String): Boolean {
-    if (url.isBlank()) return true
-    val uri = runCatching { java.net.URI(url.trim()) }.getOrNull() ?: return false
-    val scheme = uri.scheme?.lowercase() ?: return false
-    if (scheme != "https" && scheme != "http") return false
-    val host = uri.host?.lowercase() ?: return false
-    return !(
-      host == "169.254.169.254" ||
-        host.startsWith("169.254.") ||
-        host == "metadata.google.internal" ||
-        host == "instance-data"
-    )
-  }
+    internal var clientOverride: HttpClient? = null
 
-  private fun isAnthropic(url: String): Boolean =
-    url.contains("api.anthropic.com", ignoreCase = true) &&
-      url.contains("/messages", ignoreCase = true)
+    private val client: HttpClient
+        get() = clientOverride ?: aiHttpClient
 
-  private suspend fun requestChat(
-    url: String,
-    apiKey: String,
-    model: String,
-    system: String?,
-    user: String,
-    maxTokens: Int,
-    temperature: Double?,
-  ): ChatHttpResponse {
-    val anthropic = isAnthropic(url)
-    val payload =
-      buildJsonObject {
-        if (model.isNotBlank()) put("model", model)
-        if (anthropic) {
-          if (!system.isNullOrBlank()) put("system", system)
-          put(
-            "messages",
-            buildJsonArray {
-              add(
-                buildJsonObject {
-                  put("role", "user")
-                  put("content", user)
-                },
-              )
-            },
-          )
-        } else {
-          put(
-            "messages",
-            buildJsonArray {
-              if (!system.isNullOrBlank()) {
-                add(
-                  buildJsonObject {
-                    put("role", "system")
-                    put("content", system)
-                  },
+    private const val DEFAULT_URL = "https://openrouter.ai/api/v1/chat/completions"
+
+    fun isUrlSafe(url: String): Boolean {
+        if (url.isBlank()) return true
+        val uri = try {
+            java.net.URI(url)
+        } catch (_: Exception) {
+            return false
+        }
+        val scheme = uri.scheme?.lowercase() ?: return false
+        if (scheme != "http" && scheme != "https") return false
+        val host = uri.host?.lowercase() ?: return false
+        if (host == "169.254.169.254") return false
+        if (host.startsWith("169.254.")) return false
+        if (host == "metadata.google.internal") return false
+        if (host == "instance-data") return false
+        return true
+    }
+
+    internal fun isAnthropic(url: String): Boolean {
+        val lower = url.lowercase()
+        return "api.anthropic.com" in lower && "/messages" in lower
+    }
+
+    suspend fun translate(
+        text: String,
+        targetLanguage: String,
+        apiKey: String,
+        baseUrl: String,
+        model: String,
+        mode: String,
+        maxRetries: Int = 3,
+        sourceLanguage: String? = null,
+        onLog: ((String) -> Unit)? = null,
+    ): Result<List<String>> {
+        val url = baseUrl.ifBlank { DEFAULT_URL }
+        if (!isUrlSafe(url)) {
+            return Result.failure(SecurityException("Invalid or restricted endpoint destination"))
+        }
+        if (text.isBlank()) return Result.failure(Exception("Input text is empty"))
+
+        val expected = text.lines().size
+        val system = AiPrompts.system(expected)
+        val user = AiPrompts.user(mode, text, expected, targetLanguage)
+
+        var attempt = 1
+        while (attempt <= maxRetries) {
+            onLog?.invoke("OpenRouter request attempt $attempt")
+            try {
+                val response = sendChat(
+                    url = url,
+                    apiKey = apiKey,
+                    model = model,
+                    system = system,
+                    user = user,
+                    maxTokens = expected * 100,
+                    temperature = 0.3,
                 )
-              }
-              add(
-                buildJsonObject {
-                  put("role", "user")
-                  put("content", user)
-                },
-              )
-            },
-          )
+                val code = response.status.value
+                if (code in 500..599) {
+                    delay(1_000L * attempt)
+                    attempt++
+                    continue
+                }
+                val body = response.bodyAsText()
+                if (!response.status.isSuccess()) {
+                    return Result.failure(
+                        Exception("Translation failed: ${errorMessage(body, code)}")
+                    )
+                }
+                val content = extractContent(body)
+                if (content == null) {
+                    delay(1_000L * attempt)
+                    attempt++
+                    continue
+                }
+                val lines = parseLines(content, expected)
+                if (lines == null) {
+                    attempt++
+                    continue
+                }
+                onLog?.invoke("OpenRouter returned ${lines.size} line(s)")
+                return Result.success(lines)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (error: Exception) {
+                if (attempt >= maxRetries) return Result.failure(error)
+                delay(1_000L * attempt)
+                attempt++
+            }
         }
-        if (temperature != null) put("temperature", temperature)
-        put("max_tokens", maxTokens)
-      }
-
-    val response =
-      aiHttpClient.post(url) {
-        if (apiKey.isNotBlank()) {
-          if (anthropic) header("x-api-key", apiKey.trim())
-          else header("Authorization", "Bearer ${apiKey.trim()}")
-        }
-        if (anthropic) header("anthropic-version", ANTHROPIC_VERSION) else header("X-Title", "revenge")
-        contentType(ContentType.Application.Json)
-        setBody(payload.toString())
-      }
-    return ChatHttpResponse(response.status.isSuccess(), response.status.value, response.bodyAsText())
-  }
-
-  private fun errorMessage(body: String, code: Int): String =
-    runCatching {
-        val json = openRouterJson.parseToJsonElement(body) as? JsonObject
-        (json?.get("error") as? JsonObject)?.string("message")?.takeIf { it.isNotBlank() }
-          ?: json?.string("message")?.takeIf { it.isNotBlank() }
-      }
-      .getOrNull() ?: "HTTP $code"
-
-  suspend fun translate(
-    text: String,
-    targetLanguage: String,
-    apiKey: String,
-    baseUrl: String,
-    model: String,
-    mode: String,
-    maxRetries: Int = 3,
-    sourceLanguage: String? = null,
-    onLog: ((String) -> Unit)? = null,
-  ): Result<List<String>> {
-    val url = baseUrl.ifBlank { DEFAULT_URL }
-    if (!isUrlSafe(url)) {
-      return Result.failure(SecurityException("Invalid or restricted endpoint destination"))
+        return Result.failure(Exception("Max retries exceeded"))
     }
-    if (text.isBlank()) return Result.failure(Exception("Input text is empty"))
 
-    val lines = text.lines()
-    val expected = lines.size
-    val userPrompt = AiPrompts.user(mode, text, expected, targetLanguage)
-
-    onLog?.invoke("Starting translation...")
-    var attempt = 0
-    while (attempt < maxRetries) {
-      attempt++
-      try {
-        onLog?.invoke("Calling OpenRouter API (Attempt $attempt)...")
-        val response =
-          requestChat(
-            url = url,
-            apiKey = apiKey,
-            model = model,
-            system = AiPrompts.system(expected),
-            user = userPrompt,
-            maxTokens = expected * 100,
-            temperature = 0.3,
-          )
-
-        if (!response.success) {
-          if (response.code >= 500) {
-            delay(1000L * attempt)
-            continue
-          }
-          return Result.failure(
-            Exception("Translation failed: ${errorMessage(response.body, response.code)}"),
-          )
+    suspend fun testConnection(
+        baseUrl: String,
+        apiKey: String,
+        model: String,
+    ): Result<String> {
+        val url = baseUrl.ifBlank { DEFAULT_URL }
+        if (!isUrlSafe(url)) {
+            return Result.failure(SecurityException("Invalid or restricted endpoint destination"))
         }
-
-        val content = AiTranslationParsing.extractContent(response.body) ?: run {
-          delay(1000L * attempt)
-          continue
+        return try {
+            val response = sendChat(
+                url = url,
+                apiKey = apiKey,
+                model = model,
+                system = null,
+                user = "ping",
+                maxTokens = 10,
+                temperature = null,
+            )
+            val code = response.status.value
+            val body = response.bodyAsText()
+            if (!response.status.isSuccess()) {
+                Result.failure(Exception(errorMessage(body, code)))
+            } else {
+                Result.success(extractContent(body) ?: "Connection OK")
+            }
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (error: Exception) {
+            Result.failure(error)
         }
-        val parsed = AiTranslationParsing.parseLines(content, expected)
-        if (parsed != null) {
-          onLog?.invoke("Successfully parsed ${parsed.size} lines")
-          return Result.success(parsed)
+    }
+
+    internal suspend fun sendChat(
+        url: String,
+        apiKey: String,
+        model: String,
+        system: String?,
+        user: String,
+        maxTokens: Int,
+        temperature: Double?,
+    ): HttpResponse {
+        val anthropic = isAnthropic(url)
+        val payload = buildJsonObject {
+            if (model.isNotBlank()) put("model", model)
+            if (anthropic) {
+                if (!system.isNullOrBlank()) put("system", system)
+                put(
+                    "messages",
+                    buildJsonArray {
+                        add(
+                            buildJsonObject {
+                                put("role", "user")
+                                put("content", user)
+                            }
+                        )
+                    }
+                )
+            } else {
+                put(
+                    "messages",
+                    buildJsonArray {
+                        if (!system.isNullOrBlank()) {
+                            add(
+                                buildJsonObject {
+                                    put("role", "system")
+                                    put("content", system)
+                                }
+                            )
+                        }
+                        add(
+                            buildJsonObject {
+                                put("role", "user")
+                                put("content", user)
+                            }
+                        )
+                    }
+                )
+            }
+            temperature?.let { put("temperature", it) }
+            put("max_tokens", maxTokens)
+        }.toString()
+
+        return client.post(url) {
+            contentType(ContentType.Application.Json)
+            if (anthropic) {
+                header("x-api-key", apiKey.trim())
+                header("anthropic-version", "2023-06-01")
+            } else {
+                header("X-Title", "revenge")
+            }
+            if (apiKey.isNotBlank()) {
+                header(HttpHeaders.Authorization, "Bearer ${apiKey.trim()}")
+            }
+            setBody(payload)
         }
-      } catch (e: CancellationException) {
-        throw e
-      } catch (e: Exception) {
-        if (attempt >= maxRetries) return Result.failure(e)
-        delay(1000L * attempt)
-      }
     }
-    return Result.failure(Exception("Max retries exceeded"))
-  }
 
-  suspend fun testConnection(
-    baseUrl: String,
-    apiKey: String,
-    model: String,
-  ): Result<String> {
-    val url = baseUrl.ifBlank { DEFAULT_URL }
-    if (!isUrlSafe(url)) {
-      return Result.failure(SecurityException("Invalid or restricted endpoint destination"))
+    private fun errorMessage(body: String, code: Int): String {
+        val root = parseObject(body)
+        val nested = ((root?.get("error") as? JsonObject)?.get("message") as? kotlinx.serialization.json.JsonPrimitive)
+            ?.let { if (it.isString) it.content else null }
+            ?.takeIf { it.isNotBlank() }
+        if (nested != null) return nested
+        val top = (root?.get("message") as? kotlinx.serialization.json.JsonPrimitive)
+            ?.let { if (it.isString) it.content else null }
+            ?.takeIf { it.isNotBlank() }
+        return top ?: "HTTP $code"
     }
-    return try {
-      val response =
-        requestChat(
-          url = url,
-          apiKey = apiKey,
-          model = model,
-          system = null,
-          user = "ping",
-          maxTokens = 10,
-          temperature = null,
-        )
-      if (!response.success) {
-        Result.failure(Exception(errorMessage(response.body, response.code)))
-      } else {
-        Result.success(AiTranslationParsing.extractContent(response.body) ?: "Connection OK")
-      }
-    } catch (e: CancellationException) {
-      throw e
-    } catch (e: Exception) {
-      Result.failure(e)
-    }
-  }
-
-  private data class ChatHttpResponse(val success: Boolean, val code: Int, val body: String)
 }

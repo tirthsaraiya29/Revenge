@@ -2,1479 +2,882 @@ package com.revenge.music.lyrics
 
 import com.atilika.kuromoji.ipadic.Tokenizer
 import com.github.promeg.pinyinhelper.Pinyin
+import com.mocharealm.accompanist.lyrics.core.model.ISyncedLine
 import com.mocharealm.accompanist.lyrics.core.model.karaoke.KaraokeLine
 import com.mocharealm.accompanist.lyrics.core.model.synced.SyncedLine
 import com.mocharealm.accompanist.lyrics.core.parser.AutoParser
 import java.util.Locale
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
-@Suppress("RegExpRedundantEscape")
 object LyricsUtils {
-  val LINE_REGEX = "((\\[\\d\\d:\\d\\d\\.\\d{2,3}\\] ?)+)(.+)".toRegex()
-  val TIME_REGEX = "\\[(\\d\\d):(\\d\\d)\\.(\\d{2,3})\\]".toRegex()
 
-  private const val MINUTE_MS = 60_000L
-  private const val SECOND_MS = 1_000L
+    private const val MAX_INPUT_LENGTH = 4_194_304
+    private const val MAX_XML_DEPTH = 128
+    private const val MAX_ENTRIES = 20_000
+    private const val LOOKAHEAD_MS = 300L
 
-  private val RICH_SYNC_LINE_REGEX = "\\[(\\d{1,2}):(\\d{2})\\.(\\d{2,3})\\](.+)".toRegex()
-  private val RICH_SYNC_WORD_REGEX = "<(\\d{1,2}):(\\d{2})\\.(\\d{2,3})>\\s*([^<]+)".toRegex()
-  private val AGENT_REGEX = "\\{agent:([^}]+)\\}".toRegex()
-  private val BACKGROUND_REGEX = "^\\{bg\\}".toRegex()
-  private val WORD_SPLIT_REGEX = "((?<=\\s|[.,!?;])|(?=\\s|[.,!?;]))".toRegex()
-  private const val PUNCTUATION = ".,!?;"
+    val TIME_REGEX: Regex = Regex("""\[(\d{2}):(\d{2})\.(\d{2,3})]""")
 
-  /** Parses `key=value` lines into a lookup table; keys never contain the separator. */
-  private fun table(encoded: String): Map<String, String> =
-    encoded
-      .trimIndent()
-      .lines()
-      .mapNotNull { line ->
-        val trimmed = line.trim()
-        if (trimmed.isEmpty() || trimmed.startsWith("#")) return@mapNotNull null
-        val separator = trimmed.indexOf('=')
-        if (separator <= 0) return@mapNotNull null
-        trimmed.substring(0, separator) to trimmed.substring(separator + 1)
-      }
-      .toMap()
+    val LINE_REGEX: Regex = Regex("""^(?:\[(\d{2}):(\d{2})\.(\d{2,3})]\s?)+.+$""")
 
-  // ---------------------------------------------------------------------------------------------
-  // Japanese kana
-  // ---------------------------------------------------------------------------------------------
-  private val KANA_ROMAJI_MAP =
-    table(
-      """
-      キャ=kya
-      キュ=kyu
-      キョ=kyo
-      シャ=sha
-      シュ=shu
-      ショ=sho
-      チャ=cha
-      チュ=chu
-      チョ=cho
-      ニャ=nya
-      ニュ=nyu
-      ニョ=nyo
-      ヒャ=hya
-      ヒュ=hyu
-      ヒョ=hyo
-      ミャ=mya
-      ミュ=myu
-      ミョ=myo
-      リャ=rya
-      リュ=ryu
-      リョ=ryo
-      ギャ=gya
-      ギュ=gyu
-      ギョ=gyo
-      ジャ=ja
-      ジュ=ju
-      ジョ=jo
-      ヂャ=ja
-      ヂュ=ju
-      ヂョ=jo
-      ビャ=bya
-      ビュ=byu
-      ビョ=byo
-      ピャ=pya
-      ピュ=pyu
-      ピョ=pyo
-      ア=a
-      イ=i
-      ウ=u
-      エ=e
-      オ=o
-      カ=ka
-      キ=ki
-      ク=ku
-      ケ=ke
-      コ=ko
-      サ=sa
-      シ=shi
-      ス=su
-      セ=se
-      ソ=so
-      タ=ta
-      チ=chi
-      ツ=tsu
-      テ=te
-      ト=to
-      ナ=na
-      ニ=ni
-      ヌ=nu
-      ネ=ne
-      ノ=no
-      ハ=ha
-      ヒ=hi
-      フ=fu
-      ヘ=he
-      ホ=ho
-      マ=ma
-      ミ=mi
-      ム=mu
-      メ=me
-      モ=mo
-      ヤ=ya
-      ユ=yu
-      ヨ=yo
-      ラ=ra
-      リ=ri
-      ル=ru
-      レ=re
-      ロ=ro
-      ワ=wa
-      ヲ=o
-      ン=n
-      ガ=ga
-      ギ=gi
-      グ=gu
-      ゲ=ge
-      ゴ=go
-      ザ=za
-      ジ=ji
-      ズ=zu
-      ゼ=ze
-      ゾ=zo
-      ダ=da
-      ヂ=ji
-      ヅ=zu
-      デ=de
-      ド=do
-      バ=ba
-      ビ=bi
-      ブ=bu
-      ベ=be
-      ボ=bo
-      パ=pa
-      ピ=pi
-      プ=pu
-      ペ=pe
-      ポ=po
-      ー=
-      """
+    private val richLineRegex = Regex("""^\[(\d{1,2}):(\d{2})\.(\d{2,3})](.*)$""")
+    private val wordTagRegex = Regex("""<(\d{1,2}):(\d{2})\.(\d{2,3})>""")
+    private val agentRegex = Regex("""\{agent:([^}]*)}""")
+    private val backgroundPrefixRegex = Regex("""^\{bg}""")
+    private val numericHexRegex = Regex("""&#x([0-9a-fA-F]+);""")
+    private val numericDecRegex = Regex("""&#([0-9]+);""")
+    private val whitespaceBeforePunctuation = Regex(
+        """\s+([,.!?;:，。！？；：、（）《》〈〉【】『』「」])"""
     )
 
-  // ---------------------------------------------------------------------------------------------
-  // Korean jamo
-  // ---------------------------------------------------------------------------------------------
-  private val HANGUL_CHO =
-    table(
-      """
-      ᄀ=g
-      ᄁ=kk
-      ᄂ=n
-      ᄃ=d
-      ᄄ=tt
-      ᄅ=r
-      ᄆ=m
-      ᄇ=b
-      ᄈ=pp
-      ᄉ=s
-      ᄊ=ss
-      ᄋ=
-      ᄌ=j
-      ᄍ=jj
-      ᄎ=ch
-      ᄏ=k
-      ᄐ=t
-      ᄑ=p
-      ᄒ=h
-      """
-    )
+    private val autoParser: AutoParser by lazy { AutoParser() }
+    private val japaneseTokenizer: Tokenizer by lazy { Tokenizer() }
 
-  private val HANGUL_JUNG =
-    table(
-      """
-      ᅡ=a
-      ᅢ=ae
-      ᅣ=ya
-      ᅤ=yae
-      ᅥ=eo
-      ᅦ=e
-      ᅧ=yeo
-      ᅨ=ye
-      ᅩ=o
-      ᅪ=wa
-      ᅫ=wae
-      ᅬ=oe
-      ᅭ=yo
-      ᅮ=u
-      ᅯ=wo
-      ᅰ=we
-      ᅱ=wi
-      ᅲ=yu
-      ᅳ=eu
-      ᅴ=eui
-      ᅵ=i
-      """
-    )
+    // ------------------------------------------------------------------ parsing
 
-  private val HANGUL_JONG =
-    table(
-      """
-      ᆨ=k
-      ᆨᄋ=g
-      ᆨᄂ=ngn
-      ᆨᄅ=ngn
-      ᆨᄆ=ngm
-      ᆨᄒ=kh
-      ᆩ=kk
-      ᆩᄋ=kg
-      ᆩᄂ=ngn
-      ᆩᄅ=ngn
-      ᆩᄆ=ngm
-      ᆩᄒ=kh
-      ᆪ=k
-      ᆪᄋ=ks
-      ᆪᄂ=ngn
-      ᆪᄅ=ngn
-      ᆪᄆ=ngm
-      ᆪᄒ=kch
-      ᆫ=n
-      ᆫᄅ=ll
-      ᆬ=n
-      ᆬᄋ=nj
-      ᆬᄂ=nn
-      ᆬᄅ=nn
-      ᆬᄆ=nm
-      ᆬㅎ=nch
-      ᆭ=n
-      ᆭᄋ=nh
-      ᆭᄅ=nn
-      ᆮ=t
-      ᆮᄋ=d
-      ᆮᄂ=nn
-      ᆮᄅ=nn
-      ᆮᄆ=nm
-      ᆮᄒ=th
-      ᆯ=l
-      ᆯᄋ=r
-      ᆯᄂ=ll
-      ᆯᄅ=ll
-      ᆰ=k
-      ᆰᄋ=lg
-      ᆰᄂ=ngn
-      ᆰᄅ=ngn
-      ᆰᄆ=ngm
-      ᆰᄒ=lkh
-      ᆱ=m
-      ᆱᄋ=lm
-      ᆱᄂ=mn
-      ᆱᄅ=mn
-      ᆱᄆ=mm
-      ᆱᄒ=lmh
-      ᆲ=p
-      ᆲᄋ=lb
-      ᆲᄂ=mn
-      ᆲᄅ=mn
-      ᆲᄆ=mm
-      ᆲᄒ=lph
-      ᆳ=t
-      ᆳᄋ=ls
-      ᆳᄂ=nn
-      ᆳᄅ=nn
-      ᆳᄆ=nm
-      ᆳᄒ=lsh
-      ᆴ=t
-      ᆴᄋ=lt
-      ᆴᄂ=nn
-      ᆴᄅ=nn
-      ᆴᄆ=nm
-      ᆴᄒ=lth
-      ᆵ=p
-      ᆵᄋ=lp
-      ᆵᄂ=mn
-      ᆵᄅ=mn
-      ᆵᄆ=mm
-      ᆵᄒ=lph
-      ᆶ=l
-      ᆶᄋ=lh
-      ᆶᄂ=ll
-      ᆶᄅ=ll
-      ᆶᄆ=lm
-      ᆶᄒ=lh
-      ᆷ=m
-      ᆷᄅ=mn
-      ᆸ=p
-      ᆸᄋ=b
-      ᆸᄂ=mn
-      ᆸᄅ=mn
-      ᆸᄆ=mm
-      ᆸᄒ=ph
-      ᆹ=p
-      ᆹᄋ=ps
-      ᆹᄂ=mn
-      ᆹᄅ=mn
-      ᆹᄆ=mm
-      ᆹᄒ=psh
-      ᆺ=t
-      ᆺᄋ=s
-      ᆺᄂ=nn
-      ᆺᄅ=nn
-      ᆺᄆ=nm
-      ᆺᄒ=sh
-      ᆻ=t
-      ᆻᄋ=ss
-      ᆻᄂ=tn
-      ᆻᄅ=tn
-      ᆻᄆ=nm
-      ᆻᄒ=th
-      ᆼ=ng
-      ᆽ=t
-      ᆽᄋ=j
-      ᆽᄂ=nn
-      ᆽᄅ=nn
-      ᆽᄆ=nm
-      ᆽᄒ=ch
-      ᆾ=t
-      ᆾᄋ=ch
-      ᆾᄂ=nn
-      ᆾᄅ=nn
-      ᆾᄆ=nm
-      ᆾᄒ=ch
-      ᆿ=k
-      ᆿᄋ=k
-      ᆿᄂ=ngn
-      ᆿᄅ=ngn
-      ᆿᄆ=ngm
-      ᆿᄒ=kh
-      ᇀ=t
-      ᇀᄋ=t
-      ᇀᄂ=nn
-      ᇀᄅ=nn
-      ᇀᄆ=nm
-      ᇀᄒ=th
-      ᇁ=p
-      ᇁᄋ=p
-      ᇁᄂ=mn
-      ᇁᄅ=mn
-      ᇁᄆ=mm
-      ᇁᄒ=ph
-      ᇂ=t
-      ᇂᄋ=h
-      ᇂᄂ=nn
-      ᇂᄅ=nn
-      ᇂᄆ=mm
-      ᇂᄒ=t
-      ᇂᄀ=k
-      """
-    )
+    fun hasSyncedLyrics(lyrics: String): Boolean = parseLyrics(lyrics).any { it.time > 0L }
 
-  // ---------------------------------------------------------------------------------------------
-  // Devanagari (Hindi)
-  // ---------------------------------------------------------------------------------------------
-  private val DEVANAGARI_ROMAJI_MAP =
-    table(
-      """
-      अ=a
-      आ=aa
-      इ=i
-      ई=ee
-      उ=u
-      ऊ=oo
-      ऋ=ri
-      ए=e
-      ऐ=ai
-      ओ=o
-      औ=au
-      क=k
-      ख=kh
-      ग=g
-      घ=gh
-      ङ=ng
-      च=ch
-      छ=chh
-      ज=j
-      झ=jh
-      ञ=ny
-      ट=t
-      ठ=th
-      ड=d
-      ढ=dh
-      ण=n
-      त=t
-      थ=th
-      द=d
-      ध=dh
-      न=n
-      प=p
-      फ=ph
-      ब=b
-      भ=bh
-      म=m
-      य=y
-      र=r
-      ल=l
-      व=v
-      श=sh
-      ष=sh
-      स=s
-      ह=h
-      क्ष=ksh
-      त्र=tr
-      ज्ञ=gy
-      श्र=shr
-      ा=aa
-      ि=i
-      ी=ee
-      ु=u
-      ू=oo
-      ृ=ri
-      े=e
-      ै=ai
-      ो=o
-      ौ=au
-      ं=n
-      ः=h
-      ँ=n
-      ़=
-      ्=
-      ०=0
-      १=1
-      २=2
-      ३=3
-      ४=4
-      ५=5
-      ६=6
-      ७=7
-      ८=8
-      ९=9
-      ॐ=Om
-      ऽ=
-      क़=q
-      ख़=kh
-      ग़=g
-      ज़=z
-      ड़=r
-      ढ़=rh
-      फ़=f
-      य़=y
-      """
-    ) +
-      mapOf(
-        "\u0915\u093C" to "q",
-        "\u0916\u093C" to "kh",
-        "\u0917\u093C" to "g",
-        "\u091C\u093C" to "z",
-        "\u0921\u093C" to "r",
-        "\u0922\u093C" to "rh",
-        "\u092B\u093C" to "f",
-        "\u092F\u093C" to "y",
-      )
-
-  // ---------------------------------------------------------------------------------------------
-  // Gurmukhi (Punjabi)
-  // ---------------------------------------------------------------------------------------------
-  private val GURMUKHI_ROMAJI_MAP =
-    table(
-      """
-      ੳ=o
-      ਅ=a
-      ੲ=e
-      ਸ=s
-      ਹ=h
-      ਕ=k
-      ਖ=kh
-      ਗ=g
-      ਘ=gh
-      ਙ=ng
-      ਚ=ch
-      ਛ=chh
-      ਜ=j
-      ਝ=jh
-      ਞ=ny
-      ਟ=t
-      ਠ=th
-      ਡ=d
-      ਢ=dh
-      ਣ=n
-      ਤ=t
-      ਥ=th
-      ਦ=d
-      ਧ=dh
-      ਨ=n
-      ਪ=p
-      ਫ=ph
-      ਬ=b
-      ਭ=bh
-      ਮ=m
-      ਯ=y
-      ਰ=r
-      ਲ=l
-      ਵ=v
-      ੜ=r
-      ਸ਼=sh
-      ਖ਼=kh
-      ਗ਼=g
-      ਜ਼=z
-      ਫ਼=f
-      ਲ਼=l
-      ਾ=aa
-      ਿ=i
-      ੀ=ee
-      ੁ=u
-      ੂ=oo
-      ੇ=e
-      ੈ=ai
-      ੋ=o
-      ੌ=au
-      ੰ=n
-      ਂ=n
-      ੱ=
-      ੍=
-      ਼=
-      ੴ=Ek Onkar
-      ੦=0
-      ੧=1
-      ੨=2
-      ੩=3
-      ੪=4
-      ੫=5
-      ੬=6
-      ੭=7
-      ੮=8
-      ੯=9
-      """
-    )
-
-  // ---------------------------------------------------------------------------------------------
-  // Cyrillic
-  // ---------------------------------------------------------------------------------------------
-  private val GENERAL_CYRILLIC_ROMAJI_MAP =
-    table(
-      """
-      А=A
-      Б=B
-      В=V
-      Г=G
-      Ґ=G
-      Д=D
-      Ѓ=Ǵ
-      Ђ=Đ
-      Е=E
-      Ё=Yo
-      Є=Ye
-      Ж=Zh
-      З=Z
-      Ѕ=Dz
-      И=I
-      І=I
-      Ї=Yi
-      Й=Y
-      Ј=Y
-      К=K
-      Л=L
-      Љ=Ly
-      М=M
-      Н=N
-      Њ=Ny
-      О=O
-      П=P
-      Р=R
-      С=S
-      Т=T
-      Ћ=Ć
-      У=U
-      Ў=Ŭ
-      Ф=F
-      Х=Kh
-      Ц=Ts
-      Ч=Ch
-      Џ=Dž
-      Ш=Sh
-      Щ=Shch
-      Ъ=ʺ
-      Ы=Y
-      Ь=ʹ
-      Э=E
-      Ю=Yu
-      Я=Ya
-      Ѡ=O
-      Ѣ=Ya
-      Ѥ=Ye
-      Ѧ=Ya
-      Ѩ=Ya
-      Ѫ=U
-      Ѭ=Yu
-      Ѯ=Ks
-      Ѱ=Ps
-      Ѳ=F
-      Ѵ=I
-      Ѷ=I
-      Ғ=Gh
-      Ҕ=G
-      Җ=Zh
-      Ҙ=Dz
-      Қ=Q
-      Ҝ=K
-      Ҟ=K
-      Ҡ=K
-      Ң=Ng
-      Ҥ=Ng
-      Ҧ=P
-      Ҩ=O
-      Ҫ=S
-      Ҭ=T
-      Ү=U
-      Ұ=U
-      Ҳ=Kh
-      Ҵ=Ts
-      Ҷ=Ch
-      Ҹ=Ch
-      Һ=H
-      Ҽ=Ch
-      Ҿ=Ch
-      Ќ=Ḱ
-      Ө=Ö
-      а=a
-      б=b
-      в=v
-      г=g
-      ґ=g
-      д=d
-      ѓ=ǵ
-      ђ=đ
-      е=e
-      ё=yo
-      є=ye
-      ж=zh
-      з=z
-      ѕ=dz
-      и=i
-      і=i
-      ї=yi
-      й=y
-      ј=y
-      к=k
-      л=l
-      љ=ly
-      м=m
-      н=n
-      њ=ny
-      о=o
-      п=p
-      р=r
-      с=s
-      т=t
-      ћ=ć
-      у=u
-      ў=ŭ
-      ф=f
-      х=kh
-      ц=ts
-      ч=ch
-      џ=dž
-      ш=sh
-      щ=shch
-      ъ=ʺ
-      ы=y
-      ь=ʹ
-      э=e
-      ю=yu
-      я=ya
-      ѡ=o
-      ѣ=ya
-      ѥ=ye
-      ѧ=ya
-      ѩ=ya
-      ѫ=u
-      ѭ=yu
-      ѯ=ks
-      ѱ=ps
-      ѳ=f
-      ѵ=i
-      ѷ=i
-      ғ=gh
-      ҕ=g
-      җ=zh
-      ҙ=dz
-      қ=q
-      ҝ=k
-      ҟ=k
-      ҡ=k
-      ң=ng
-      ҥ=ng
-      ҧ=p
-      ҩ=o
-      ҫ=s
-      ҭ=t
-      ү=u
-      ұ=u
-      ҳ=kh
-      ҵ=ts
-      ҷ=ch
-      ҹ=ch
-      һ=h
-      ҽ=ch
-      ҿ=ch
-      ќ=ḱ
-      ө=ö
-      """
-    )
-
-  private val RUSSIAN_ROMAJI_MAP =
-    mapOf("ого" to "ovo", "Ого" to "Ovo", "его" to "evo", "Его" to "Evo")
-
-  private val UKRAINIAN_ROMAJI_MAP =
-    mapOf(
-      "Г" to "H",
-      "г" to "h",
-      "Ґ" to "G",
-      "ґ" to "g",
-      "Є" to "Ye",
-      "є" to "ye",
-      "І" to "I",
-      "і" to "i",
-      "Ї" to "Yi",
-      "ї" to "yi",
-    )
-
-  private val SERBIAN_ROMAJI_MAP =
-    mapOf(
-      "Ж" to "Ž",
-      "Љ" to "Lj",
-      "Њ" to "Nj",
-      "Ц" to "C",
-      "Ч" to "Č",
-      "Џ" to "Dž",
-      "Ш" to "Š",
-      "Х" to "H",
-      "ж" to "ž",
-      "љ" to "lj",
-      "њ" to "nj",
-      "ц" to "c",
-      "ч" to "č",
-      "џ" to "dž",
-      "ш" to "š",
-      "х" to "h",
-    )
-
-  private val BULGARIAN_ROMAJI_MAP =
-    mapOf(
-      "Ж" to "Zh",
-      "Ц" to "Ts",
-      "Ч" to "Ch",
-      "Ш" to "Sh",
-      "Щ" to "Sht",
-      "Ъ" to "A",
-      "Ь" to "Y",
-      "Ю" to "Yu",
-      "Я" to "Ya",
-      "ж" to "zh",
-      "ц" to "ts",
-      "ч" to "ch",
-      "ш" to "sh",
-      "щ" to "sht",
-      "ъ" to "a",
-      "ь" to "y",
-      "ю" to "yu",
-      "я" to "ya",
-    )
-
-  private val BELARUSIAN_ROMAJI_MAP = mapOf("Г" to "H", "г" to "h", "Ў" to "W", "ў" to "w")
-
-  private val KYRGYZ_ROMAJI_MAP = mapOf("Ү" to "Ü", "ү" to "ü", "Ы" to "Y", "ы" to "y")
-
-  private val MACEDONIAN_ROMAJI_MAP =
-    mapOf(
-      "Ѓ" to "Gj",
-      "Ѕ" to "Dz",
-      "И" to "I",
-      "Ј" to "J",
-      "Љ" to "Lj",
-      "Њ" to "Nj",
-      "Ќ" to "Kj",
-      "Џ" to "Dž",
-      "Ч" to "Č",
-      "Ш" to "Sh",
-      "Ж" to "Zh",
-      "Ц" to "C",
-      "Х" to "H",
-      "ѓ" to "gj",
-      "ѕ" to "dz",
-      "и" to "i",
-      "ј" to "j",
-      "љ" to "lj",
-      "њ" to "nj",
-      "ќ" to "kj",
-      "џ" to "dž",
-      "ч" to "č",
-      "ш" to "sh",
-      "ж" to "zh",
-      "ц" to "c",
-      "х" to "h",
-    )
-
-  // Letter inventories are used to tell closely related Cyrillic alphabets apart.
-  private val RUSSIAN_LETTERS =
-    "АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯабвгдеёжзийклмнопрстуфхцчшщъыьэюя".toSet()
-  private val UKRAINIAN_LETTERS =
-    "АБВГҐДЕЄЖЗИІЇЙКЛМНОПРСТУФХЦЧШЩЬЮЯабвгґдеєжзиіїйклмнопрстуфхцчшщьюя".toSet()
-  private val UKRAINIAN_SPECIFIC = "ҐґЄєІіЇї".toSet()
-  private val SERBIAN_LETTERS =
-    "АБВГДЂЕЖЗИЈКЛЉМНЊОПРСТЋУФХЦЧЏШабвгдђежзијклљмнњопрстћуфхцчџш".toSet()
-  private val SERBIAN_SPECIFIC = "ЂђЈјЉљЊњЋћЏџ".toSet()
-  private val BULGARIAN_LETTERS =
-    "АБВГДЕЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЬЮЯабвгдежзийклмнопрстуфхцчшщъьюя".toSet()
-  private val BELARUSIAN_LETTERS =
-    "АБВГДЕЁЖЗІЙКЛМНОПРСТУЎФХЦЧШЬЮЯЫЭабвгдеёжзійклмнопрстуўфхцчшь юяыэ".replace(" ", "").toSet()
-  private val BELARUSIAN_SPECIFIC = "ЎўІі".toSet()
-  private val KYRGYZ_LETTERS =
-    "АБВГДЕЁЖЗИЙКЛМНҢОӨПРСТУҮФХЦЧШЩЪЫЬЭЮЯабвгдеёжзийклмнңоөпрстуүфхцчшщъыьэюя".toSet()
-  private val KYRGYZ_SPECIFIC = "ҢңӨөҮү".toSet()
-  private val MACEDONIAN_LETTERS =
-    "АБВГДЃЕЖЗЅИЈКЛЉМНЊОПРСТЌУФХЦЧЏШабвгдѓежзѕијклљмнњопрстќуфхцчџш".toSet()
-  private val MACEDONIAN_SPECIFIC = "ЃѓЅѕЌќ".toSet()
-  private val CYRILLIC_RANGE = '\u0400'..'\u04FF'
-
-  private val kuromojiTokenizer: Tokenizer by lazy { Tokenizer() }
-  private val autoParser by lazy { AutoParser() }
-
-  private val HEX_ENTITY_REGEX = "&#x([0-9a-fA-F]+);".toRegex()
-  private val DEC_ENTITY_REGEX = "&#(\\d+);".toRegex()
-
-  private fun decodeHtmlEntities(text: String): String =
-    text
-      .replace(HEX_ENTITY_REGEX) { match ->
-        match.groupValues[1]
-          .toIntOrNull(16)
-          ?.takeIf { it in 0..0x10FFFF }
-          ?.let { String(Character.toChars(it)) } ?: match.value
-      }
-      .replace(DEC_ENTITY_REGEX) { match ->
-        match.groupValues[1]
-          .toIntOrNull()
-          ?.takeIf { it in 0..0x10FFFF }
-          ?.let { String(Character.toChars(it)) } ?: match.value
-      }
-      .replace("&apos;", "'")
-      .replace("&quot;", "\"")
-      .replace("&lt;", "<")
-      .replace("&gt;", ">")
-      .replace("&nbsp;", " ")
-      .replace("&amp;", "&")
-
-  fun hasSyncedLyrics(lyrics: String): Boolean = parseLyrics(lyrics).any { it.time > 0L }
-
-  fun parseLyrics(lyrics: String): List<LyricsEntry> {
-    val unescaped =
-      lyrics
-        .trim()
-        .removePrefix("\"")
-        .removeSuffix("\"")
-        .replace("\\\\", "\\")
-        .replace("\\n", "\n")
-        .replace("\\r", "\r")
-        .replace("\\t", "\t")
-
-    val decoded = decodeHtmlEntities(unescaped)
-    val trimmed = decoded.trim()
-
-    val looksStructured =
-      trimmed.startsWith("<") || trimmed.contains("<tt", ignoreCase = true) ||
-        trimmed.contains("<p begin", ignoreCase = true)
-    val hasEnhancedTags =
-      trimmed.contains("<") && trimmed.contains(">") &&
-        RICH_SYNC_WORD_REGEX.containsMatchIn(trimmed)
-
-    if (looksStructured || hasEnhancedTags || autoParser.canParse(decoded)) {
-      parseWithAccompanist(decoded, looksStructured)?.let { return it }
-    }
-
-    val lines = decoded.lines().filter { it.isNotBlank() && !it.trim().startsWith("[offset:") }
-    val isRichSync =
-      lines.any { line ->
-        RICH_SYNC_LINE_REGEX.matches(line.trim()) && RICH_SYNC_WORD_REGEX.containsMatchIn(line)
-      }
-    return if (isRichSync) parseRichSyncLyrics(lines) else parseStandardLyrics(lines)
-  }
-
-  private fun parseWithAccompanist(decoded: String, isStructured: Boolean): List<LyricsEntry>? {
-    val parsed =
-      try {
-        autoParser.parse(decoded)
-      } catch (e: Exception) {
-        return null
-      }
-    if (parsed.lines.isEmpty()) return null
-
-    val entries =
-      parsed.lines.mapNotNull { line ->
-        when (line) {
-          is KaraokeLine -> {
-            val words =
-              line.syllables
-                .map { syllable ->
-                  WordTimestamp(
-                    text = syllable.content.trim(),
-                    startTime = syllable.start / 1000.0,
-                    endTime = syllable.end / 1000.0,
-                  )
-                }
-                .filter { it.text.isNotEmpty() }
-            val text = line.syllables.joinToString("") { it.content }.trim()
-            if (text.isBlank()) {
-              null
-            } else {
-              LyricsEntry(
-                  time = line.start.toLong(),
-                  text = text,
-                  words = words.ifEmpty { null },
-                  isBackground = line is KaraokeLine.AccompanimentKaraokeLine,
-                )
-                .also { entry ->
-                  if (!line.translation.isNullOrBlank()) {
-                    entry.translatedTextFlow.value = line.translation
-                  }
-                }
-            }
-          }
-          is SyncedLine -> {
-            val text = line.content.trim()
-            if (text.isBlank()) {
-              null
-            } else {
-              LyricsEntry(time = line.start.toLong(), text = text).also { entry ->
-                if (!line.translation.isNullOrBlank()) {
-                  entry.translatedTextFlow.value = line.translation
-                }
-              }
-            }
-          }
-          else -> null
+    fun parseLyrics(lyrics: String): List<LyricsEntry> {
+        if (lyrics.length > MAX_INPUT_LENGTH) return emptyList()
+        val decoded = decode(lyrics)
+        val looksStructured = decoded.startsWith("<") ||
+            decoded.contains("<tt", ignoreCase = true) ||
+            decoded.contains("<p begin", ignoreCase = true)
+        if ((looksStructured || decoded.contains('<')) && exceedsXmlDepth(decoded)) {
+            return emptyList()
         }
-      }
+        if (decoded.isEmpty()) return emptyList()
 
-    if (entries.isEmpty()) return null
-
-    val rawLines =
-      decoded.lines().filter {
-        it.isNotBlank() &&
-          !it.trim().startsWith("[offset:") &&
-          !it.trim().startsWith("[ar:") &&
-          !it.trim().startsWith("[ti:") &&
-          !it.trim().startsWith("[al:") &&
-          !it.trim().startsWith("[by:")
-      }
-    val hasWordTimings = entries.any { it.words?.isNotEmpty() == true }
-    return if (isStructured || hasWordTimings || entries.size >= rawLines.size) {
-      entries.sorted()
-    } else {
-      null
-    }
-  }
-
-  private fun parseRichSyncLyrics(lines: List<String>): List<LyricsEntry> {
-    val result = mutableListOf<LyricsEntry>()
-
-    lines.forEachIndexed { index, line ->
-      val match = RICH_SYNC_LINE_REGEX.matchEntire(line.trim()) ?: return@forEachIndexed
-      val minutes = match.groupValues[1].toLongOrNull() ?: 0L
-      val seconds = match.groupValues[2].toLongOrNull() ?: 0L
-      val fraction = match.groupValues[3].toLongOrNull() ?: 0L
-      val millisPart = if (match.groupValues[3].length == 3) fraction else fraction * 10
-      val lineTime = minutes * MINUTE_MS + seconds * SECOND_MS + millisPart
-
-      var content = match.groupValues[4].trimStart()
-      val agentMatch = AGENT_REGEX.find(content)
-      val agent = agentMatch?.groupValues?.get(1)
-      if (agentMatch != null) content = content.replaceFirst(AGENT_REGEX, "")
-
-      val isBackground = BACKGROUND_REGEX.containsMatchIn(content)
-      if (isBackground) content = content.replaceFirst(BACKGROUND_REGEX, "")
-
-      val words = parseRichSyncWords(content, index, lines)
-      val plain = content.replace(Regex("<\\d{1,2}:\\d{2}\\.\\d{2,3}>\\s*"), "").trim()
-      if (plain.isNotBlank()) {
-        result.add(
-          LyricsEntry(lineTime, plain, words, agent = agent, isBackground = isBackground),
-        )
-      }
-    }
-    return result.sorted()
-  }
-
-  private fun parseRichSyncWords(
-    content: String,
-    lineIndex: Int,
-    allLines: List<String>,
-  ): List<WordTimestamp>? {
-    val matches = RICH_SYNC_WORD_REGEX.findAll(content).toList()
-    if (matches.isEmpty()) return null
-
-    fun secondsAt(match: MatchResult): Double {
-      val minutes = match.groupValues[1].toLongOrNull() ?: 0L
-      val seconds = match.groupValues[2].toLongOrNull() ?: 0L
-      val fraction = match.groupValues[3].toLongOrNull() ?: 0L
-      val fractionSeconds =
-        if (match.groupValues[3].length == 3) fraction / 1000.0 else fraction / 100.0
-      return minutes * 60.0 + seconds + fractionSeconds
-    }
-
-    val words = mutableListOf<WordTimestamp>()
-    matches.forEachIndexed { index, match ->
-      val start = secondsAt(match)
-      val end =
-        if (index < matches.lastIndex) {
-          secondsAt(matches[index + 1])
-        } else {
-          nextLineStartSeconds(lineIndex, allLines) ?: (start + 0.5)
+        val rawLines = decoded.lines().filter { line ->
+            line.isNotBlank() && !line.trimStart().startsWith("[offset:")
         }
-      val text = match.groupValues[4].trim()
-      if (text.isNotBlank()) words.add(WordTimestamp(text, start, end))
+        val rich = rawLines.any { line ->
+            richLineRegex.matchEntire(line) != null && wordTagRegex.containsMatchIn(line)
+        }
+        if (rich) {
+            return parseRich(rawLines).sorted().take(MAX_ENTRIES)
+        }
+
+        if (looksStructured || safeCanParse(decoded)) {
+            parseWithAccompanist(decoded, looksStructured)?.let { return it.sorted().take(MAX_ENTRIES) }
+        }
+
+        return parseStandard(rawLines).sorted().take(MAX_ENTRIES)
     }
-    return words.ifEmpty { null }
-  }
 
-  private fun nextLineStartSeconds(lineIndex: Int, allLines: List<String>): Double? {
-    if (lineIndex + 1 >= allLines.size) return null
-    val match = RICH_SYNC_LINE_REGEX.matchEntire(allLines[lineIndex + 1].trim()) ?: return null
-    val minutes = match.groupValues[1].toLongOrNull() ?: return null
-    val seconds = match.groupValues[2].toLongOrNull() ?: return null
-    val fraction = match.groupValues[3].toLongOrNull() ?: 0L
-    val fractionSeconds =
-      if (match.groupValues[3].length == 3) fraction / 1000.0 else fraction / 100.0
-    return minutes * 60.0 + seconds + fractionSeconds
-  }
+    fun findCurrentLineIndex(lines: List<LyricsEntry>, position: Long): Int {
+        val boundary = position + LOOKAHEAD_MS
+        for (index in lines.indices) {
+            if (lines[index].time >= boundary) return index - 1
+        }
+        return lines.lastIndex
+    }
 
-  private fun parseStandardLyrics(lines: List<String>): List<LyricsEntry> {
-    val result = mutableListOf<LyricsEntry>()
-    var i = 0
-    while (i < lines.size) {
-      val line = lines[i]
-      val isWordTagLine = line.trim().startsWith("<") && line.trim().endsWith(">")
-      if (!isWordTagLine) {
-        val entries = parseLine(line)
-        if (entries != null) {
-          val words =
-            if (i + 1 < lines.size) {
-              val next = lines[i + 1]
-              if (next.trim().startsWith("<") && next.trim().endsWith(">")) {
-                parseWordTimestamps(next.trim().removeSurrounding("<", ">"))
-              } else {
-                null
-              }
-            } else {
-              null
+    private fun safeCanParse(content: String): Boolean = try {
+        autoParser.canParse(content)
+    } catch (_: Exception) {
+        false
+    }
+
+    private fun decode(input: String): String {
+        var text = input.trim()
+        if (text.startsWith('"')) text = text.removePrefix("\"")
+        if (text.endsWith('"')) text = text.removeSuffix("\"")
+        text = text
+            .replace("\\\\", "\\")
+            .replace("\\n", "\n")
+            .replace("\\r", "\r")
+            .replace("\\t", "\t")
+        text = decodeEntities(text)
+        return text.trim()
+    }
+
+    private fun decodeEntities(input: String): String {
+        var text = input
+        text = numericHexRegex.replace(text) { match ->
+            val code = match.groupValues[1].toIntOrNull(16)
+            if (code != null && code in 0..0x10FFFF) String(Character.toChars(code)) else match.value
+        }
+        text = numericDecRegex.replace(text) { match ->
+            val code = match.groupValues[1].toIntOrNull()
+            if (code != null && code in 0..0x10FFFF) String(Character.toChars(code)) else match.value
+        }
+        text = text
+            .replace("&apos;", "'")
+            .replace("&quot;", "\"")
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("&nbsp;", " ")
+            .replace("&amp;", "&")
+        return text
+    }
+
+    private fun exceedsXmlDepth(text: String): Boolean {
+        var depth = 0
+        var cursor = 0
+        while (cursor < text.length) {
+            val open = text.indexOf('<', cursor)
+            if (open < 0) break
+            if (text.startsWith("<!--", open)) {
+                val close = text.indexOf("-->", open + 4)
+                if (close < 0) break
+                cursor = close + 3
+                continue
             }
-          if (words != null) {
-            result.addAll(
-              entries.map {
-                LyricsEntry(
-                  it.time,
-                  it.text,
-                  words,
-                  agent = it.agent,
-                  isBackground = it.isBackground,
+            val close = text.indexOf('>', open + 1)
+            if (close < 0) break
+            val tag = text.substring(open + 1, close)
+            cursor = close + 1
+            when {
+                tag.startsWith("?") || tag.startsWith("!") -> Unit
+                tag.startsWith("/") -> if (depth > 0) depth--
+                tag.endsWith("/") -> Unit
+                tag.isNotEmpty() && (tag[0].isLetter() || tag[0] == '_') -> {
+                    depth++
+                    if (depth > MAX_XML_DEPTH) return true
+                }
+            }
+        }
+        return false
+    }
+
+    private fun parseStandard(rawLines: List<String>): List<LyricsEntry> {
+        val entries = ArrayList<LyricsEntry>()
+        var lastGroup: IntRange? = null
+
+        for (line in rawLines) {
+            if (entries.size >= MAX_ENTRIES) break
+            if (line.startsWith("<") && line.trimEnd().endsWith(">")) {
+                val words = parseCompanionWords(line)
+                val group = lastGroup
+                if (group != null && words != null) {
+                    for (index in group) entries[index] = entries[index].copy(words = words)
+                }
+                lastGroup = null
+                continue
+            }
+
+            val stamps = TIME_REGEX.findAll(line).toList()
+            if (stamps.isEmpty() || stamps.first().range.first != 0) {
+                lastGroup = null
+                continue
+            }
+            val prefixEnd = stamps.last().range.last + 1
+            val prefix = line.substring(0, prefixEnd)
+            if (TIME_REGEX.replace(prefix, "").any { !it.isWhitespace() }) {
+                lastGroup = null
+                continue
+            }
+
+            var text = line.substring(prefixEnd)
+            if (text.startsWith(" ")) text = text.removePrefix(" ")
+            if (text.isEmpty()) {
+                lastGroup = null
+                continue
+            }
+
+            val original = text
+            var isBackground = false
+            if (backgroundPrefixRegex.containsMatchIn(text)) {
+                isBackground = true
+                text = backgroundPrefixRegex.replaceFirst(text, "")
+            }
+            val agentMatch = agentRegex.find(text)
+            val agent = agentMatch?.groupValues?.getOrNull(1)
+            if (agentMatch != null) text = text.removeRange(agentMatch.range)
+
+            if (text.isBlank()) {
+                if (stamps.size > 1 && original.isNotBlank()) {
+                    text = original
+                } else {
+                    lastGroup = null
+                    continue
+                }
+            }
+
+            val firstNew = entries.size
+            for (stamp in stamps) {
+                entries.add(
+                    LyricsEntry(
+                        time = millisOf(stamp.groupValues[1], stamp.groupValues[2], stamp.groupValues[3]),
+                        text = text,
+                        agent = agent,
+                        isBackground = isBackground,
+                    )
                 )
-              },
+            }
+            lastGroup = firstNew until entries.size
+        }
+        return entries
+    }
+
+    private fun parseCompanionWords(line: String): List<WordTimestamp>? {
+        val inner = line.trim().removePrefix("<").removeSuffix(">")
+        val words = inner.split("|").mapNotNull { part ->
+            val segments = part.split(":")
+            if (segments.size != 3) return@mapNotNull null
+            val text = segments[0].trim()
+            if (text.isEmpty()) return@mapNotNull null
+            WordTimestamp(
+                text = text,
+                startTime = segments[1].trim().toDoubleOrNull() ?: 0.0,
+                endTime = segments[2].trim().toDoubleOrNull() ?: 0.0,
             )
-          } else {
-            result.addAll(entries)
-          }
         }
-      }
-      i++
+        return words.takeIf { it.isNotEmpty() }
     }
-    return result.sorted()
-  }
 
-  private fun parseWordTimestamps(data: String): List<WordTimestamp>? {
-    if (data.isBlank()) return null
-    return data.split("|").mapNotNull { wordData ->
-      val parts = wordData.split(":")
-      if (parts.size == 3) {
-        WordTimestamp(
-          text = parts[0],
-          startTime = parts[1].toDoubleOrNull() ?: 0.0,
-          endTime = parts[2].toDoubleOrNull() ?: 0.0,
-        )
-      } else {
-        null
-      }
-    }
-  }
+    private fun parseRich(rawLines: List<String>): List<LyricsEntry> {
+        val entries = ArrayList<LyricsEntry>()
+        for ((index, line) in rawLines.withIndex()) {
+            if (entries.size >= MAX_ENTRIES) break
+            val match = richLineRegex.matchEntire(line) ?: continue
+            val lineStart = secondsOf(match.groupValues[1], match.groupValues[2], match.groupValues[3])
+            var content = match.groupValues[4]
 
-  private fun parseLine(line: String): List<LyricsEntry>? {
-    if (line.isEmpty()) return null
-    val match = LINE_REGEX.matchEntire(line.trim()) ?: return null
-    var text = match.groupValues[3]
-
-    val agentMatch = AGENT_REGEX.find(text)
-    val agent = agentMatch?.groupValues?.get(1)
-    if (agentMatch != null) text = text.replaceFirst(AGENT_REGEX, "")
-
-    val isBackground = BACKGROUND_REGEX.containsMatchIn(text)
-    if (isBackground) text = text.replaceFirst(BACKGROUND_REGEX, "")
-
-    return TIME_REGEX.findAll(match.groupValues[1])
-      .map { time ->
-        val minutes = time.groupValues[1].toLongOrNull() ?: 0L
-        val seconds = time.groupValues[2].toLongOrNull() ?: 0L
-        val fractionText = time.groupValues[3]
-        var millis = fractionText.toLongOrNull() ?: 0L
-        if (fractionText.length == 2) millis *= 10
-        LyricsEntry(
-          minutes * MINUTE_MS + seconds * SECOND_MS + millis,
-          text,
-          agent = agent,
-          isBackground = isBackground,
-        )
-      }
-      .toList()
-  }
-
-  fun findCurrentLineIndex(
-    lines: List<LyricsEntry>,
-    position: Long,
-  ): Int {
-    for (index in lines.indices) {
-      if (lines[index].time >= position + 300L) return index - 1
-    }
-    return lines.lastIndex
-  }
-
-  fun katakanaToRomaji(katakana: String?): String = romajiFromKana(katakana, null)
-
-  fun katakanaToRomaji(katakana: String?, nextKatakana: String? = null): String =
-    romajiFromKana(katakana, nextKatakana)
-
-  private fun romajiFromKana(katakana: String?, nextKatakana: String?): String {
-    if (katakana.isNullOrEmpty()) return ""
-
-    val out = StringBuilder(katakana.length)
-    var i = 0
-    while (i < katakana.length) {
-      var consumed = false
-
-      if (i + 1 < katakana.length) {
-        val pair = KANA_ROMAJI_MAP[katakana.substring(i, i + 2)]
-        if (pair != null) {
-          out.append(pair)
-          i += 2
-          consumed = true
-        }
-      }
-
-      if (!consumed && katakana[i] == 'ッ') {
-        val nextChar = nextKatakana?.getOrNull(0)
-        if (nextChar != null) {
-          val first = KANA_ROMAJI_MAP[nextChar.toString()]?.getOrNull(0)?.toString()
-          out.append((first ?: nextChar.toString()).lowercase().trim())
-        }
-        i += 1
-        consumed = true
-      }
-
-      if (!consumed) {
-        val single = katakana[i].toString()
-        out.append(KANA_ROMAJI_MAP[single] ?: single)
-        i += 1
-      }
-    }
-    return out.toString().lowercase()
-  }
-
-  suspend fun romanizeJapanese(text: String): String =
-    withContext(Dispatchers.Default) {
-      val tokens = kuromojiTokenizer.tokenize(text)
-      tokens
-        .mapIndexed { index, token ->
-          val reading =
-            token.reading?.takeIf { it.isNotEmpty() && it != "*" } ?: token.surface
-          val nextReading =
-            if (index + 1 < tokens.size) {
-              tokens[index + 1].reading?.takeIf { it.isNotEmpty() && it != "*" }
-                ?: tokens[index + 1].surface
-            } else {
-              null
+            var isBackground = false
+            if (backgroundPrefixRegex.containsMatchIn(content)) {
+                isBackground = true
+                content = backgroundPrefixRegex.replaceFirst(content, "")
             }
-          katakanaToRomaji(reading, nextReading)
-        }
-        .joinToString(" ")
-    }
+            val agentMatch = agentRegex.find(content)
+            val agent = agentMatch?.groupValues?.getOrNull(1)
+            if (agentMatch != null) content = content.removeRange(agentMatch.range)
 
-  suspend fun romanizeKorean(text: String): String =
-    withContext(Dispatchers.Default) {
-      val out = StringBuilder()
-      var pendingFinal: String? = null
-
-      fun flush(jongKey: String) {
-        out.append(HANGUL_JONG[jongKey] ?: jongKey)
-      }
-
-      for (char in text) {
-        if (char in '\uAC00'..'\uD7A3') {
-          val syllableIndex = char.code - 0xAC00
-          val choIndex = syllableIndex / (21 * 28)
-          val jungIndex = (syllableIndex % (21 * 28)) / 28
-          val jongIndex = syllableIndex % 28
-
-          val choChar = (0x1100 + choIndex).toChar().toString()
-          val jungChar = (0x1161 + jungIndex).toChar().toString()
-          val jongChar = if (jongIndex == 0) null else (0x11A7 + jongIndex).toChar().toString()
-
-          pendingFinal?.let { previous ->
-            flush(HANGUL_JONG[previous + choChar] ?: HANGUL_JONG[previous] ?: previous)
-          }
-          out.append(HANGUL_CHO[choChar] ?: choChar)
-          out.append(HANGUL_JUNG[jungChar] ?: jungChar)
-          pendingFinal = jongChar
-        } else {
-          pendingFinal?.let { previous ->
-            flush(HANGUL_JONG[previous] ?: previous)
-            pendingFinal = null
-          }
-          out.append(char)
-        }
-      }
-
-      pendingFinal?.let { previous -> flush(HANGUL_JONG[previous] ?: previous) }
-      out.toString()
-    }
-
-  suspend fun romanizeChinese(text: String): String =
-    withContext(Dispatchers.Default) {
-      if (text.isEmpty()) return@withContext ""
-      val out = StringBuilder(text.length * 2)
-      for (char in text) {
-        if (char in '\u4E00'..'\u9FFF') {
-          out.append(Pinyin.toPinyin(char).lowercase(Locale.getDefault())).append(' ')
-        } else {
-          out.append(char)
-        }
-      }
-      out
-        .toString()
-        .replace(Regex("\\s+([,.!?;:])"), "$1")
-        .replace(Regex("\\s+([，。！？；：、（）《》〈〉【】『』「」])"), "$1")
-        .trim()
-    }
-
-  suspend fun romanizeCyrillic(text: String): String? =
-    withContext(Dispatchers.Default) {
-      if (text.isEmpty()) return@withContext null
-      val cyrillic = text.filter { it in CYRILLIC_RANGE }
-      if (cyrillic.isEmpty() || (cyrillic.length == 1 && cyrillic[0] in "еЕ")) {
-        return@withContext null
-      }
-
-      when {
-        isRussian(text) -> romanizeRussian(text)
-        isUkrainian(text) -> romanizeUkrainian(text)
-        isSerbian(text) -> romanizeCharByChar(text, SERBIAN_ROMAJI_MAP)
-        isBulgarian(text) -> romanizeCharByChar(text, BULGARIAN_ROMAJI_MAP)
-        isBelarusian(text) -> romanizeBelarusian(text)
-        isKyrgyz(text) -> romanizeCharByChar(text, KYRGYZ_ROMAJI_MAP)
-        isMacedonian(text) -> romanizeCharByChar(text, MACEDONIAN_ROMAJI_MAP)
-        else -> null
-      }
-    }
-
-  /** Splits into words, whitespace and punctuation so the caller only maps letter runs. */
-  private fun forEachToken(text: String, block: (String) -> Unit) {
-    WORD_SPLIT_REGEX.split(text).forEach { token ->
-      if (token.isNotEmpty()) block(token)
-    }
-  }
-
-  private fun isPlainToken(token: String): Boolean =
-    token.isBlank() || (token.length == 1 && token[0] in PUNCTUATION)
-
-  private fun romanizeCharByChar(text: String, table: Map<String, String>): String {
-    val out = StringBuilder(text.length)
-    forEachToken(text) { token ->
-      if (isPlainToken(token)) {
-        out.append(token)
-      } else {
-        for (char in token) {
-          val key = char.toString()
-          out.append(table[key] ?: GENERAL_CYRILLIC_ROMAJI_MAP[key] ?: key)
-        }
-      }
-    }
-    return out.toString()
-  }
-
-  private fun romanizeRussian(text: String): String {
-    val out = StringBuilder(text.length)
-    forEachToken(text) { token ->
-      if (isPlainToken(token)) {
-        out.append(token)
-      } else {
-        var i = 0
-        while (i < token.length) {
-          val triple = if (i + 2 < token.length) token.substring(i, i + 3) else null
-          val special = triple?.let(RUSSIAN_ROMAJI_MAP::get)
-          if (special != null) {
-            out.append(special)
-            i += 3
-            continue
-          }
-          val char = token[i].toString()
-          out.append(
-            if ((char == "е" || char == "Е") && i == 0) {
-              if (char == "е") "ye" else "Ye"
+            val tags = wordTagRegex.findAll(content).toList()
+            val words = if (tags.isEmpty()) {
+                null
             } else {
-              GENERAL_CYRILLIC_ROMAJI_MAP[char] ?: char
-            },
-          )
-          i++
+                val starts = tags.mapNotNull { tag ->
+                    val wordEnd = content.indexOf('<', tag.range.last + 1)
+                        .let { if (it < 0) content.length else it }
+                    val wordText = content.substring(tag.range.last + 1, wordEnd).trim()
+                    if (wordText.isEmpty()) {
+                        null
+                    } else {
+                        wordText to secondsOf(tag.groupValues[1], tag.groupValues[2], tag.groupValues[3])
+                    }
+                }
+                if (starts.isEmpty()) {
+                    null
+                } else {
+                    val nextLineStart = rawLines.getOrNull(index + 1)?.let { next ->
+                        richLineRegex.matchEntire(next)?.let {
+                            secondsOf(it.groupValues[1], it.groupValues[2], it.groupValues[3])
+                        }
+                    }
+                    starts.mapIndexed { wordIndex, (wordText, start) ->
+                        val end = when {
+                            wordIndex + 1 < starts.size -> starts[wordIndex + 1].second
+                            nextLineStart != null -> nextLineStart
+                            else -> lineStart + 0.5
+                        }
+                        WordTimestamp(wordText, start, end)
+                    }
+                }
+            }
+
+            val text = wordTagRegex.replace(content, "").trim()
+            if (text.isEmpty()) continue
+            entries.add(
+                LyricsEntry(
+                    time = (lineStart * 1000.0).toLong(),
+                    text = text,
+                    words = words,
+                    agent = agent,
+                    isBackground = isBackground,
+                )
+            )
         }
-      }
+        return entries
     }
-    return out.toString()
-  }
 
-  private fun romanizeUkrainian(text: String): String {
-    val out = StringBuilder(text.length)
-    forEachToken(text) { token ->
-      if (isPlainToken(token)) {
-        out.append(token)
-      } else {
-        var i = 0
-        while (i < token.length) {
-          val char = token[i]
-          val key = char.toString()
-          val previous = token.getOrNull(i - 1)
-          val afterConsonant = previous != null && previous.isLetter() && !isCyrillicVowel(previous)
-          val override = if (afterConsonant) ukrainianAfterConsonant(char) else null
-          out.append(
-            override ?: UKRAINIAN_ROMAJI_MAP[key] ?: GENERAL_CYRILLIC_ROMAJI_MAP[key] ?: key,
-          )
-          i++
+    private fun parseWithAccompanist(decoded: String, isStructured: Boolean): List<LyricsEntry>? {
+        val synced = try {
+            autoParser.parse(decoded)
+        } catch (_: Exception) {
+            return null
         }
-      }
-    }
-    return out.toString()
-  }
+        if (synced.lines.isEmpty()) return null
 
-  private fun ukrainianAfterConsonant(char: Char): String? =
-    when (char) {
-      'Ю' -> "Iu"
-      'ю' -> "iu"
-      'Я' -> "Ia"
-      'я' -> "ia"
-      else -> null
+        val entries = ArrayList<LyricsEntry>()
+        for (line in synced.lines) {
+            when (line) {
+                is KaraokeLine -> {
+                    val text = line.syllables.joinToString("") { it.content }.trim()
+                    if (text.isEmpty()) continue
+                    val words = line.syllables.mapNotNull { syllable ->
+                        val syllableText = syllable.content.trim()
+                        if (syllableText.isEmpty()) {
+                            null
+                        } else {
+                            WordTimestamp(
+                                syllableText,
+                                syllable.start / 1000.0,
+                                syllable.end / 1000.0,
+                            )
+                        }
+                    }.takeIf { it.isNotEmpty() }
+                    val entry = LyricsEntry(
+                        time = line.start.toLong(),
+                        text = text,
+                        words = words,
+                        isBackground = line is KaraokeLine.AccompanimentKaraokeLine,
+                    )
+                    line.translation?.takeIf { it.isNotBlank() }?.let { entry.translatedTextFlow.value = it }
+                    entries.add(entry)
+                }
+
+                is SyncedLine -> {
+                    val text = line.content.trim()
+                    if (text.isEmpty()) continue
+                    val entry = LyricsEntry(time = line.start.toLong(), text = text)
+                    line.translation?.takeIf { it.isNotBlank() }?.let { entry.translatedTextFlow.value = it }
+                    entries.add(entry)
+                }
+
+                else -> Unit
+            }
+        }
+
+        val rawLineCount = decoded.lines().count { line ->
+            line.isNotBlank() && METADATA_PREFIXES.none { line.trimStart().startsWith(it) }
+        }
+        val hasWordTimings = entries.any { !it.words.isNullOrEmpty() }
+        if (!isStructured && !hasWordTimings && entries.size < rawLineCount) return null
+        return entries
     }
 
-  private fun romanizeBelarusian(text: String): String {
-    val out = StringBuilder(text.length)
-    forEachToken(text) { token ->
-      if (isPlainToken(token)) {
-        out.append(token)
-      } else {
-        var i = 0
-        while (i < token.length) {
-          val char = token[i].toString()
-          out.append(
-            if ((char == "е" || char == "Е") && i == 0) {
-              if (char == "е") "ye" else "Ye"
+    private val METADATA_PREFIXES = listOf("[offset:", "[ar:", "[ti:", "[al:", "[by:")
+
+    private fun millisOf(minutes: String, seconds: String, fraction: String): Long {
+        val fractionValue = fraction.toLongOrNull() ?: 0L
+        val fractionMs = if (fraction.length == 2) fractionValue * 10 else fractionValue
+        return minutes.toLong() * 60_000 + seconds.toLong() * 1_000 + fractionMs
+    }
+
+    private fun secondsOf(minutes: String, seconds: String, fraction: String): Double {
+        val fractionValue = fraction.toDoubleOrNull() ?: 0.0
+        val fractionSeconds = if (fraction.length == 2) fractionValue / 100.0 else fractionValue / 1000.0
+        return minutes.toLong() * 60.0 + seconds.toLong() + fractionSeconds
+    }
+
+    // ------------------------------------------------------------- romanisation
+
+    fun katakanaToRomaji(katakana: String?): String = katakanaToRomaji(katakana, null)
+
+    fun katakanaToRomaji(katakana: String?, nextKatakana: String? = null): String {
+        if (katakana.isNullOrEmpty()) return ""
+        val out = StringBuilder()
+        var index = 0
+        while (index < katakana.length) {
+            val char = katakana[index]
+            if (char == 'ッ') {
+                if (!nextKatakana.isNullOrEmpty()) {
+                    val mapped = matchKana(nextKatakana, 0)
+                    if (mapped != null) {
+                        if (mapped.first.isNotEmpty()) out.append(mapped.first[0].lowercaseChar())
+                    } else {
+                        out.append(nextKatakana[0].lowercaseChar())
+                    }
+                }
+                index++
+                continue
+            }
+            val matched = matchKana(katakana, index)
+            if (matched != null) {
+                out.append(matched.first)
+                index += matched.second
             } else {
-              BELARUSIAN_ROMAJI_MAP[char] ?: GENERAL_CYRILLIC_ROMAJI_MAP[char] ?: char
-            },
-          )
-          i++
+                out.append(char)
+                index++
+            }
         }
-      }
-    }
-    return out.toString()
-  }
-
-  fun isRussian(text: String): Boolean =
-    text.any { it in RUSSIAN_LETTERS } &&
-      text.all { it in RUSSIAN_LETTERS || it !in CYRILLIC_RANGE }
-
-  fun isUkrainian(text: String): Boolean =
-    text.any { it in UKRAINIAN_LETTERS || it in UKRAINIAN_SPECIFIC } &&
-      text.all { it in UKRAINIAN_LETTERS || it in UKRAINIAN_SPECIFIC || it !in CYRILLIC_RANGE }
-
-  fun isSerbian(text: String): Boolean =
-    text.any { it in SERBIAN_LETTERS || it in SERBIAN_SPECIFIC } &&
-      text.all { it in SERBIAN_LETTERS || it in SERBIAN_SPECIFIC || it !in CYRILLIC_RANGE }
-
-  fun isBulgarian(text: String): Boolean =
-    text.any { it in BULGARIAN_LETTERS } &&
-      text.all { it in BULGARIAN_LETTERS || it !in CYRILLIC_RANGE }
-
-  fun isBelarusian(text: String): Boolean =
-    text.any { it in BELARUSIAN_LETTERS || it in BELARUSIAN_SPECIFIC } &&
-      text.all { it in BELARUSIAN_LETTERS || it in BELARUSIAN_SPECIFIC || it !in CYRILLIC_RANGE }
-
-  fun isKyrgyz(text: String): Boolean =
-    text.any { it in KYRGYZ_LETTERS || it in KYRGYZ_SPECIFIC } &&
-      text.all { it in KYRGYZ_LETTERS || it in KYRGYZ_SPECIFIC || it !in CYRILLIC_RANGE }
-
-  fun isMacedonian(text: String): Boolean =
-    text.any { it in MACEDONIAN_LETTERS || it in MACEDONIAN_SPECIFIC } &&
-      text.all { it in MACEDONIAN_LETTERS || it in MACEDONIAN_SPECIFIC || it !in CYRILLIC_RANGE }
-
-  fun isJapanese(text: String): Boolean =
-    text.any { it in '\u3040'..'\u309F' || it in '\u30A0'..'\u30FF' || it in '\u4E00'..'\u9FFF' }
-
-  fun isKorean(text: String): Boolean = text.any { it in '\uAC00'..'\uD7A3' }
-
-  fun isChinese(text: String): Boolean {
-    if (text.isEmpty()) return false
-    val cjk = text.count { it in '\u4E00'..'\u9FFF' }
-    if (cjk == 0) return false
-    val kana = text.count { it in '\u3040'..'\u309F' || it in '\u30A0'..'\u30FF' }
-    return kana.toDouble() / text.length < 0.1
-  }
-
-  fun isHindi(text: String): Boolean = text.any { it in '\u0900'..'\u097F' }
-
-  suspend fun romanizeHindi(text: String): String =
-    withContext(Dispatchers.Default) {
-      val out = StringBuilder(text.length)
-      var i = 0
-      while (i < text.length) {
-        val pair = if (i + 1 < text.length) text.substring(i, i + 2) else null
-        val mappedPair = pair?.let(DEVANAGARI_ROMAJI_MAP::get)
-        if (mappedPair != null) {
-          out.append(mappedPair)
-          i += 2
-        } else {
-          val key = text[i].toString()
-          out.append(DEVANAGARI_ROMAJI_MAP[key] ?: key)
-          i += 1
-        }
-      }
-      out.toString()
+        return out.toString().lowercase()
     }
 
-  fun isPunjabi(text: String): Boolean = text.any { it in '\u0A00'..'\u0A7F' }
-
-  suspend fun romanizePunjabi(text: String): String =
-    withContext(Dispatchers.Default) {
-      val out = StringBuilder(text.length)
-      var i = 0
-      while (i < text.length) {
-        val char = text[i]
-
-        // Addak doubles the following consonant; emit its first roman letter instead.
-        if (char == '\u0A71') {
-          val next = text.getOrNull(i + 1)?.toString()
-          next?.let(GURMUKHI_ROMAJI_MAP::get)?.firstOrNull()?.let { out.append(it) }
-          i++
-          continue
+    private fun matchKana(source: String, index: Int): Pair<String, Int>? {
+        if (index + 1 < source.length) {
+            val pair = source.substring(index, index + 2)
+            KATAKANA[pair]?.let { return it to 2 }
         }
-
-        val pair = if (i + 1 < text.length) text.substring(i, i + 2) else null
-        val mappedPair = pair?.let(GURMUKHI_ROMAJI_MAP::get)
-        if (mappedPair != null) {
-          out.append(mappedPair)
-          i += 2
-        } else {
-          val key = char.toString()
-          out.append(GURMUKHI_ROMAJI_MAP[key] ?: key)
-          i += 1
-        }
-      }
-      out.toString()
+        KATAKANA[source[index].toString()]?.let { return it to 1 }
+        return null
     }
 
-  private fun isCyrillicVowel(char: Char): Boolean =
-    "АаЕеЄєИиІіЇїОоУуЮюЯяЫыЭэ".contains(char)
+    suspend fun romanizeJapanese(text: String): String {
+        if (text.isEmpty()) return ""
+        val tokens = japaneseTokenizer.tokenize(text)
+        val readings = tokens.map { token ->
+            val reading = token.reading
+            if (reading.isNullOrEmpty() || reading == "*") null else reading
+        }
+        return tokens.mapIndexed { index, token ->
+            val base = readings[index] ?: token.surfaceForm
+            katakanaToRomaji(base, readings.getOrNull(index + 1))
+        }.joinToString(" ").lowercase()
+    }
+
+    suspend fun romanizeKorean(text: String): String {
+        if (text.isEmpty()) return ""
+        val out = StringBuilder()
+        var pendingFinal = 0
+        var index = 0
+        while (index < text.length) {
+            val char = text[index]
+            if (char in '가'..'힣') {
+                val offset = char.code - 0xAC00
+                val cho = offset / (21 * 28)
+                val jung = (offset % (21 * 28)) / 28
+                val jong = offset % 28
+                if (pendingFinal != 0) {
+                    val liaison = KOREAN_LIAISON[pendingFinal to cho]
+                    if (liaison != null) {
+                        out.append(liaison)
+                        out.append(KOREAN_JUNG[jung])
+                        pendingFinal = jong
+                        index++
+                        continue
+                    }
+                    out.append(KOREAN_JONG[pendingFinal])
+                    pendingFinal = 0
+                }
+                out.append(KOREAN_CHO[cho])
+                out.append(KOREAN_JUNG[jung])
+                pendingFinal = jong
+            } else {
+                if (pendingFinal != 0) {
+                    out.append(KOREAN_JONG[pendingFinal])
+                    pendingFinal = 0
+                }
+                out.append(char)
+            }
+            index++
+        }
+        if (pendingFinal != 0) out.append(KOREAN_JONG[pendingFinal])
+        return out.toString()
+    }
+
+    suspend fun romanizeChinese(text: String): String {
+        if (text.isEmpty()) return ""
+        val out = StringBuilder()
+        for (char in text) {
+            if (char in '一'..'鿿') {
+                out.append(Pinyin.toPinyin(char).lowercase(Locale.getDefault()))
+                out.append(' ')
+            } else {
+                out.append(char)
+            }
+        }
+        return whitespaceBeforePunctuation.replace(out.toString(), "$1").trim()
+    }
+
+    suspend fun romanizeCyrillic(text: String): String? {
+        if (text.isEmpty()) return null
+        val cyrillic = text.filter { it in 'Ѐ'..'ӿ' }
+        if (cyrillic.isEmpty()) return null
+        if (cyrillic.length == 1 && (cyrillic[0] == 'е' || cyrillic[0] == 'Е')) return null
+        val alphabet = when {
+            isRussian(text) -> CyrillicAlphabet.RUSSIAN
+            isUkrainian(text) -> CyrillicAlphabet.UKRAINIAN
+            isSerbian(text) -> CyrillicAlphabet.SERBIAN
+            isBulgarian(text) -> CyrillicAlphabet.BULGARIAN
+            isBelarusian(text) -> CyrillicAlphabet.BELARUSIAN
+            isKyrgyz(text) -> CyrillicAlphabet.KYRGYZ
+            isMacedonian(text) -> CyrillicAlphabet.MACEDONIAN
+            else -> return null
+        }
+        return transliterateCyrillic(text, alphabet)
+    }
+
+    suspend fun romanizeHindi(text: String): String =
+        transliterateIndic(text, HINDI_PAIRS, HINDI_SINGLES, handleAddak = false)
+
+    suspend fun romanizePunjabi(text: String): String =
+        transliterateIndic(text, PUNJABI_PAIRS, PUNJABI_SINGLES, handleAddak = true)
+
+    fun isRussian(text: String): Boolean = cyrillicMatches(text, RUSSIAN_SET)
+
+    fun isUkrainian(text: String): Boolean = cyrillicMatches(text, UKRAINIAN_SET)
+
+    fun isSerbian(text: String): Boolean = cyrillicMatches(text, SERBIAN_SET)
+
+    fun isBulgarian(text: String): Boolean = cyrillicMatches(text, BULGARIAN_SET)
+
+    fun isBelarusian(text: String): Boolean = cyrillicMatches(text, BELARUSIAN_SET)
+
+    fun isKyrgyz(text: String): Boolean = cyrillicMatches(text, KYRGYZ_SET)
+
+    fun isMacedonian(text: String): Boolean = cyrillicMatches(text, MACEDONIAN_SET)
+
+    fun isJapanese(text: String): Boolean =
+        text.any { it in '぀'..'ゟ' || it in '゠'..'ヿ' || it in '一'..'鿿' }
+
+    fun isKorean(text: String): Boolean = text.any { it in '가'..'힣' }
+
+    fun isChinese(text: String): Boolean {
+        if (text.isEmpty()) return false
+        var ideographs = 0
+        var kana = 0
+        for (char in text) {
+            when {
+                char in '一'..'鿿' -> ideographs++
+                char in '぀'..'ゟ' || char in '゠'..'ヿ' -> kana++
+            }
+        }
+        if (ideographs == 0) return false
+        return kana.toDouble() / text.length < 0.1
+    }
+
+    fun isHindi(text: String): Boolean = text.any { it in 'ऀ'..'ॿ' }
+
+    fun isPunjabi(text: String): Boolean = text.any { it in '਀'..'੿' }
+
+    private fun cyrillicMatches(text: String, allowed: Set<Char>): Boolean {
+        var found = false
+        for (char in text) {
+            if (char in 'Ѐ'..'ӿ') {
+                if (char !in allowed) return false
+                found = true
+            }
+        }
+        return found
+    }
+
+    private fun transliterateIndic(
+        text: String,
+        pairs: Map<String, String>,
+        singles: Map<Char, String>,
+        handleAddak: Boolean,
+    ): String {
+        val out = StringBuilder()
+        var index = 0
+        while (index < text.length) {
+            val char = text[index]
+            if (handleAddak && char == 'ੱ') {
+                if (index + 1 < text.length) {
+                    val mapped = indicMatch(text, index + 1, pairs, singles)
+                    if (mapped != null && mapped.first.isNotEmpty()) {
+                        out.append(mapped.first[0].lowercaseChar())
+                    }
+                }
+                index++
+                continue
+            }
+            val mapped = indicMatch(text, index, pairs, singles)
+            if (mapped != null) {
+                out.append(mapped.first)
+                index += mapped.second
+            } else {
+                out.append(char)
+                index++
+            }
+        }
+        return out.toString()
+    }
+
+    private fun indicMatch(
+        text: String,
+        index: Int,
+        pairs: Map<String, String>,
+        singles: Map<Char, String>,
+    ): Pair<String, Int>? {
+        if (index + 1 < text.length) {
+            pairs[text.substring(index, index + 2)]?.let { return it to 2 }
+        }
+        singles[text[index]]?.let { return it to 1 }
+        return null
+    }
+
+    // ------------------------------------------------------------- cyrillic core
+
+    private enum class CyrillicAlphabet { RUSSIAN, UKRAINIAN, SERBIAN, BULGARIAN, BELARUSIAN, KYRGYZ, MACEDONIAN }
+
+    private val CYRILLIC_VOWELS = "АаЕеЄєИиІіЇїОоУуЮюЯяЫыЭэ".toSet()
+
+    private val GENERAL_CYRILLIC: Map<Char, String> = mapOf(
+        'А' to "A", 'Б' to "B", 'В' to "V", 'Г' to "G", 'Д' to "D", 'Е' to "E",
+        'Ё' to "Yo", 'Ж' to "Zh", 'З' to "Z", 'И' to "I", 'Й' to "Y", 'К' to "K",
+        'Л' to "L", 'М' to "M", 'Н' to "N", 'О' to "O", 'П' to "P", 'Р' to "R",
+        'С' to "S", 'Т' to "T", 'У' to "U", 'Ф' to "F", 'Х' to "Kh", 'Ц' to "Ts",
+        'Ч' to "Ch", 'Ш' to "Sh", 'Щ' to "Shch", 'Ъ' to "ʺ", 'Ы' to "Y", 'Ь' to "ʹ",
+        'Э' to "E", 'Ю' to "Yu", 'Я' to "Ya", 'І' to "I", 'Ї' to "Yi", 'Є' to "Ye",
+        'Ґ' to "G", 'Ў' to "W", 'Ү' to "Ü", 'Ң' to "N", 'Ө' to "O",
+        'Ђ' to "Đ", 'Ј' to "J", 'Љ' to "Lj", 'Њ' to "Nj", 'Ћ' to "Ć", 'Џ' to "Dž",
+        'Ѓ' to "Gj", 'Ѕ' to "Dz", 'Ќ' to "Kj",
+    )
+
+    private fun generalChar(char: Char): String? {
+        val upper = char.uppercaseChar()
+        val base = GENERAL_CYRILLIC[upper] ?: return null
+        return if (char.isUpperCase()) base else base.lowercase()
+    }
+
+    private fun transliterateCyrillic(text: String, alphabet: CyrillicAlphabet): String {
+        val out = StringBuilder()
+        var index = 0
+        while (index < text.length) {
+            if (text[index].isLetter()) {
+                var end = index
+                while (end < text.length && text[end].isLetter()) end++
+                out.append(transliterateWord(text.substring(index, end), alphabet))
+                index = end
+            } else {
+                out.append(text[index])
+                index++
+            }
+        }
+        return out.toString()
+    }
+
+    private fun transliterateWord(word: String, alphabet: CyrillicAlphabet): String = when (alphabet) {
+        CyrillicAlphabet.RUSSIAN -> russianWord(word)
+        CyrillicAlphabet.UKRAINIAN -> ukrainianWord(word)
+        CyrillicAlphabet.SERBIAN -> mappedWord(word, SERBIAN_OVERRIDES)
+        CyrillicAlphabet.BULGARIAN -> mappedWord(word, BULGARIAN_OVERRIDES)
+        CyrillicAlphabet.BELARUSIAN -> belarusianWord(word)
+        CyrillicAlphabet.KYRGYZ -> mappedWord(word, KYRGYZ_OVERRIDES)
+        CyrillicAlphabet.MACEDONIAN -> mappedWord(word, MACEDONIAN_OVERRIDES)
+    }
+
+    private fun russianWord(word: String): String {
+        var text = word
+            .replace("ого", "ovo")
+            .replace("Ого", "Ovo")
+            .replace("его", "evo")
+            .replace("Его", "Evo")
+        text = when {
+            text.startsWith("Е") -> "Ye" + text.substring(1)
+            text.startsWith("е") -> "ye" + text.substring(1)
+            else -> text
+        }
+        return generalWord(text)
+    }
+
+    private fun ukrainianWord(word: String): String {
+        val out = StringBuilder()
+        for (index in word.indices) {
+            val char = word[index]
+            when (char) {
+                'Г' -> out.append("H")
+                'г' -> out.append("h")
+                'Ґ' -> out.append("G")
+                'ґ' -> out.append("g")
+                'Є' -> out.append("Ye")
+                'є' -> out.append("ye")
+                'І' -> out.append("I")
+                'і' -> out.append("i")
+                'Ї' -> out.append("Yi")
+                'ї' -> out.append("yi")
+                'Ю', 'ю', 'Я', 'я' -> {
+                    val previous = word.getOrNull(index - 1)
+                    val afterConsonant = previous != null && previous.isLetter() && previous !in CYRILLIC_VOWELS
+                    val isYu = char == 'Ю' || char == 'ю'
+                    if (afterConsonant) {
+                        out.append(
+                            when {
+                                isYu && char.isUpperCase() -> "Iu"
+                                isYu -> "iu"
+                                char.isUpperCase() -> "Ia"
+                                else -> "ia"
+                            }
+                        )
+                    } else {
+                        out.append(generalChar(char) ?: char.toString())
+                    }
+                }
+                else -> out.append(generalChar(char) ?: char.toString())
+            }
+        }
+        return out.toString()
+    }
+
+    private fun belarusianWord(word: String): String {
+        var text = word
+        text = when {
+            text.startsWith("Е") -> "Ye" + text.substring(1)
+            text.startsWith("е") -> "ye" + text.substring(1)
+            else -> text
+        }
+        return mappedWord(text, mapOf('Г' to "H", 'Ў' to "W"))
+    }
+
+    private fun generalWord(word: String): String {
+        val out = StringBuilder()
+        for (char in word) out.append(generalChar(char) ?: char.toString())
+        return out.toString()
+    }
+
+    private fun mappedWord(word: String, overrides: Map<Char, String>): String {
+        val out = StringBuilder()
+        for (char in word) {
+            val override = overrides[char.uppercaseChar()]
+            if (override != null) {
+                out.append(if (char.isUpperCase()) override else override.lowercase())
+            } else {
+                out.append(generalChar(char) ?: char.toString())
+            }
+        }
+        return out.toString()
+    }
+
+    private val SERBIAN_OVERRIDES = mapOf(
+        'Ж' to "Ž", 'Љ' to "Lj", 'Њ' to "Nj", 'Ц' to "C", 'Ч' to "Č", 'Џ' to "Dž",
+        'Ш' to "Š", 'Х' to "H",
+    )
+
+    private val BULGARIAN_OVERRIDES = mapOf(
+        'Ж' to "Zh", 'Ц' to "Ts", 'Ч' to "Ch", 'Ш' to "Sh", 'Щ' to "Sht", 'Ъ' to "A",
+        'Ь' to "Y", 'Ю' to "Yu", 'Я' to "Ya",
+    )
+
+    private val KYRGYZ_OVERRIDES = mapOf('Ү' to "Ü", 'Ы' to "Y")
+
+    private val MACEDONIAN_OVERRIDES = mapOf(
+        'Ѓ' to "Gj", 'Ѕ' to "Dz", 'И' to "I", 'Ј' to "J", 'Љ' to "Lj", 'Њ' to "Nj",
+        'Ќ' to "Kj", 'Џ' to "Dž", 'Ч' to "Č", 'Ш' to "Sh", 'Ж' to "Zh", 'Ц' to "C",
+        'Х' to "H",
+    )
+
+    private fun alphabetString(value: String): Set<Char> = value.toSet()
+
+    private val RUSSIAN_SET = alphabetString(
+        "АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯабвгдеёжзийклмнопрстуфхцчшщъыьэюя"
+    )
+    private val UKRAINIAN_SET = alphabetString(
+        "АБВГҐДЕЄЖЗИІЇЙКЛМНОПРСТУФХЦЧШЩЬЮЯабвгґдеєжзиіїйклмнопрстуфхцчшщьюя"
+    )
+    private val SERBIAN_SET = alphabetString(
+        "АБВГДЂЕЖЗИЈКЛЉМНЊОПРСТЋУФХЦЧЏШабвгдђежзијклљмнњопрстћуфхцчџш"
+    )
+    private val BULGARIAN_SET = alphabetString(
+        "АБВГДЕЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЬЮЯабвгдежзийклмнопрстуфхцчшщъьюя"
+    )
+    private val BELARUSIAN_SET = alphabetString(
+        "АБВГДЕЁЖЗІЙКЛМНОПРСТУЎФХЦЧШЫЬЭЮЯабвгдеёжзійклмнопрстуўфхцчшыьэюя"
+    )
+    private val KYRGYZ_SET = alphabetString(
+        "АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯҢңӨөҮүабвгдеёжзийклмнопрстуфхцчшщъыьэюя"
+    )
+    private val MACEDONIAN_SET = alphabetString(
+        "АБВГДЃЕЖЗЅИЈКЛЉМНЊОПРСТЌУФХЦЧЏШабвгдѓежзѕијклљмнњопрстќуфхцчџш"
+    )
+
+    // -------------------------------------------------------------- kana tables
+
+    private val KATAKANA: Map<String, String> = buildMap {
+        fun add(kana: String, romaji: String) { put(kana, romaji) }
+
+        // youon
+        add("キャ", "kya"); add("キュ", "kyu"); add("キョ", "kyo")
+        add("シャ", "sha"); add("シュ", "shu"); add("ショ", "sho")
+        add("チャ", "cha"); add("チュ", "chu"); add("チョ", "cho")
+        add("ニャ", "nya"); add("ニュ", "nyu"); add("ニョ", "nyo")
+        add("ヒャ", "hya"); add("ヒュ", "hyu"); add("ヒョ", "hyo")
+        add("ミャ", "mya"); add("ミュ", "myu"); add("ミョ", "myo")
+        add("リャ", "rya"); add("リュ", "ryu"); add("リョ", "ryo")
+        add("ギャ", "gya"); add("ギュ", "gyu"); add("ギョ", "gyo")
+        add("ジャ", "ja"); add("ジュ", "ju"); add("ジョ", "jo")
+        add("ヂャ", "ja"); add("ヂュ", "ju"); add("ヂョ", "jo")
+        add("ビャ", "bya"); add("ビュ", "byu"); add("ビョ", "byo")
+        add("ピャ", "pya"); add("ピュ", "pyu"); add("ピョ", "pyo")
+
+        // base and voiced kana
+        add("ア", "a"); add("イ", "i"); add("ウ", "u"); add("エ", "e"); add("オ", "o")
+        add("カ", "ka"); add("キ", "ki"); add("ク", "ku"); add("ケ", "ke"); add("コ", "ko")
+        add("ガ", "ga"); add("ギ", "gi"); add("グ", "gu"); add("ゲ", "ge"); add("ゴ", "go")
+        add("サ", "sa"); add("シ", "shi"); add("ス", "su"); add("セ", "se"); add("ソ", "so")
+        add("ザ", "za"); add("ジ", "ji"); add("ズ", "zu"); add("ゼ", "ze"); add("ゾ", "zo")
+        add("タ", "ta"); add("チ", "chi"); add("ツ", "tsu"); add("テ", "te"); add("ト", "to")
+        add("ダ", "da"); add("ヂ", "ji"); add("ヅ", "zu"); add("デ", "de"); add("ド", "do")
+        add("ナ", "na"); add("ニ", "ni"); add("ヌ", "nu"); add("ネ", "ne"); add("ノ", "no")
+        add("ハ", "ha"); add("ヒ", "hi"); add("フ", "fu"); add("ヘ", "he"); add("ホ", "ho")
+        add("バ", "ba"); add("ビ", "bi"); add("ブ", "bu"); add("ベ", "be"); add("ボ", "bo")
+        add("パ", "pa"); add("ピ", "pi"); add("プ", "pu"); add("ペ", "pe"); add("ポ", "po")
+        add("マ", "ma"); add("ミ", "mi"); add("ム", "mu"); add("メ", "me"); add("モ", "mo")
+        add("ヤ", "ya"); add("ユ", "yu"); add("ヨ", "yo")
+        add("ラ", "ra"); add("リ", "ri"); add("ル", "ru"); add("レ", "re"); add("ロ", "ro")
+        add("ワ", "wa"); add("ヰ", "wi"); add("ヱ", "we"); add("ヲ", "o"); add("ン", "n")
+        add("ヴ", "vu")
+
+        // small kana and marks
+        add("ァ", "a"); add("ィ", "i"); add("ゥ", "u"); add("ェ", "e"); add("ォ", "o")
+        add("ャ", "ya"); add("ュ", "yu"); add("ョ", "yo"); add("ヮ", "wa"); add("ヵ", "ka"); add("ヶ", "ke")
+        add("ー", "")
+    }
+
+    // ------------------------------------------------------------- hangul tables
+
+    private val KOREAN_CHO = listOf(
+        "g", "kk", "n", "d", "tt", "r", "m", "b", "pp", "s", "ss", "", "j", "jj",
+        "ch", "k", "t", "p", "h",
+    )
+    private val KOREAN_JUNG = listOf(
+        "a", "ae", "ya", "yae", "eo", "e", "yeo", "ye", "o", "wa", "wae", "oe",
+        "yo", "u", "wo", "we", "wi", "yu", "eu", "ui", "i",
+    )
+    private val KOREAN_JONG = listOf(
+        "", "k", "k", "ks", "n", "nj", "nh", "t", "l", "lk", "lm", "lb", "ls",
+        "lt", "lp", "lh", "m", "p", "ps", "t", "t", "ng", "t", "t", "k", "t", "p", "h",
+    )
+    private val KOREAN_LIAISON: Map<Pair<Int, Int>, String> = buildMap {
+        val released = mapOf(
+            1 to "g", 2 to "kk", 4 to "n", 7 to "d", 8 to "r", 16 to "m", 17 to "b",
+            19 to "s", 20 to "ss", 21 to "ng", 22 to "j", 23 to "ch", 24 to "k",
+            25 to "t", 26 to "p", 27 to "h",
+        )
+        for ((jong, sound) in released) put(jong to 11, sound)
+        put(4 to 5, "ll")
+        put(8 to 4, "ll")
+    }
+
+    // -------------------------------------------------------------- indic tables
+
+    private val HINDI_PAIRS = mapOf(
+        "क्ष" to "ksh", "त्र" to "tr", "ज्ञ" to "gy", "श्र" to "shr",
+        "क़" to "q", "ख़" to "kh", "ग़" to "g", "ज़" to "z", "ड़" to "r",
+        "ढ़" to "rh", "फ़" to "f", "य़" to "y",
+    )
+
+    private val HINDI_SINGLES: Map<Char, String> = buildMap {
+        fun add(char: Char, value: String) { put(char, value) }
+        add('अ', "a"); add('आ', "aa"); add('इ', "i"); add('ई', "ee"); add('उ', "u")
+        add('ऊ', "oo"); add('ऋ', "ri"); add('ए', "e"); add('ऐ', "ai"); add('ओ', "o")
+        add('औ', "au"); add('ऍ', "e"); add('ऑ', "o")
+        add('क', "k"); add('ख', "kh"); add('ग', "g"); add('घ', "gh"); add('ङ', "ng")
+        add('च', "ch"); add('छ', "chh"); add('ज', "j"); add('झ', "jh"); add('ञ', "n")
+        add('ट', "t"); add('ठ', "th"); add('ड', "d"); add('ढ', "dh"); add('ण', "n")
+        add('त', "t"); add('थ', "th"); add('द', "d"); add('ध', "dh"); add('न', "n")
+        add('प', "p"); add('फ', "ph"); add('ब', "b"); add('भ', "bh"); add('म', "m")
+        add('य', "y"); add('र', "r"); add('ल', "l"); add('व', "v"); add('श', "sh")
+        add('ष', "sh"); add('स', "s"); add('ह', "h"); add('ळ', "l")
+        add('ा', "aa"); add('ि', "i"); add('ी', "ee"); add('ु', "u"); add('ू', "oo")
+        add('ृ', "ri"); add('े', "e"); add('ै', "ai"); add('ो', "o"); add('ौ', "au")
+        add('ं', "n"); add('ँ', "n"); add('ः', "h"); add('्', ""); add('़', "")
+        add('ॐ', "Om")
+        add('०', "0"); add('१', "1"); add('२', "2"); add('३', "3"); add('४', "4")
+        add('५', "5"); add('६', "6"); add('७', "7"); add('८', "8"); add('९', "9")
+    }
+
+    private val PUNJABI_PAIRS = mapOf(
+        "ਖ਼" to "kh", "ਗ਼" to "g", "ਜ਼" to "z", "ਫ਼" to "f",
+    )
+
+    private val PUNJABI_SINGLES: Map<Char, String> = buildMap {
+        fun add(char: Char, value: String) { put(char, value) }
+        add('ਅ', "a"); add('ਆ', "aa"); add('ਇ', "i"); add('ਈ', "ee"); add('ਉ', "u")
+        add('ਊ', "oo"); add('ਏ', "e"); add('ਐ', "ai"); add('ਓ', "o"); add('ਔ', "au")
+        add('ਕ', "k"); add('ਖ', "kh"); add('ਗ', "g"); add('ਘ', "gh"); add('ਙ', "ng")
+        add('ਚ', "ch"); add('ਛ', "chh"); add('ਜ', "j"); add('ਝ', "jh"); add('ਞ', "n")
+        add('ਟ', "t"); add('ਠ', "th"); add('ਡ', "d"); add('ਢ', "dh"); add('ਣ', "n")
+        add('ਤ', "t"); add('ਥ', "th"); add('ਦ', "d"); add('ਧ', "dh"); add('ਨ', "n")
+        add('ਪ', "p"); add('ਫ', "ph"); add('ਬ', "b"); add('ਭ', "bh"); add('ਮ', "m")
+        add('ਯ', "y"); add('ਰ', "r"); add('ਲ', "l"); add('ਵ', "v"); add('ੜ', "r")
+        add('ਸ਼', "sh"); add('ਸ', "s"); add('ਹ', "h"); add('ਲ਼', "l")
+        add('ਾ', "aa"); add('ਿ', "i"); add('ੀ', "ee"); add('ੁ', "u"); add('ੂ', "oo")
+        add('ੇ', "e"); add('ੈ', "ai"); add('ੋ', "o"); add('ੌ', "au")
+        add('ੰ', "n"); add('ਂ', "n"); add('ਃ', "h"); add('੍', ""); add('਼', "")
+        add('ੴ', "Ek Onkar")
+        add('੦', "0"); add('੧', "1"); add('੨', "2"); add('੩', "3"); add('੪', "4")
+        add('੫', "5"); add('੬', "6"); add('੭', "7"); add('੮', "8"); add('੯', "9")
+    }
 }

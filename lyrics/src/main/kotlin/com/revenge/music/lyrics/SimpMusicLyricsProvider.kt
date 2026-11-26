@@ -7,26 +7,28 @@ import com.revenge.music.utils.get
 import com.revenge.simpmusic.SimpMusicLyrics
 
 object SimpMusicLyricsProvider : LyricsProvider {
-  override val name = "SimpMusic"
 
-  override fun isEnabled(context: Context): Boolean = context.dataStore[EnableSimpMusicKey] ?: true
+    override val name: String = "SimpMusic"
 
-  override suspend fun getLyrics(
-    id: String,
-    title: String,
-    artist: String,
-    duration: Int,
-    album: String?,
-  ): Result<String> = SimpMusicLyrics.getLyrics(id, duration)
+    override fun isEnabled(context: Context): Boolean =
+        context.dataStore[EnableSimpMusicKey] ?: true
 
-  override suspend fun getAllLyrics(
-    id: String,
-    title: String,
-    artist: String,
-    duration: Int,
-    album: String?,
-    callback: (String) -> Unit,
-  ) {
-    SimpMusicLyrics.getAllLyrics(id, duration, callback)
-  }
+    override suspend fun getLyrics(
+        id: String,
+        title: String,
+        artist: String,
+        duration: Int,
+        album: String?,
+    ): Result<String> = SimpMusicLyrics.getLyrics(id, duration)
+
+    override suspend fun getAllLyrics(
+        id: String,
+        title: String,
+        artist: String,
+        duration: Int,
+        album: String?,
+        callback: (String) -> Unit,
+    ) {
+        SimpMusicLyrics.getAllLyrics(id, duration, callback)
+    }
 }
