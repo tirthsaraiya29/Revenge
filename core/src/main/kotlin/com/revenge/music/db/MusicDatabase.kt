@@ -675,6 +675,7 @@ val MIGRATION_45_46 = object : Migration(45, 46) {
 // Auto-migration specs
 // ----------------------------------------------------------------------
 
+@DeleteColumn(tableName = "song", columnName = "isTrash")
 @RenameColumn(tableName = "song", fromColumnName = "download_state", toColumnName = "downloadState")
 @RenameColumn(tableName = "song", fromColumnName = "create_date", toColumnName = "createDate")
 @RenameColumn(tableName = "song", fromColumnName = "modify_date", toColumnName = "modifyDate")

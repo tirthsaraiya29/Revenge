@@ -69,7 +69,7 @@ constructor(
         return deferred.await()
     }
 
-    override suspend fun getAllLyrics(
+    suspend fun getAllLyrics(
         mediaId: String,
         songTitle: String,
         songArtists: String,
@@ -165,8 +165,9 @@ constructor(
         }
 
         val result = completion.await()
-        if (result.providerName != UNKNOWN && result.lyrics != null) {
-            cache.put(mediaMetadata.id, listOf(LyricsResult(result.providerName, result.lyrics)))
+        val lyricsText = result.lyrics
+        if (result.providerName != UNKNOWN && lyricsText != null) {
+            cache.put(mediaMetadata.id, listOf(LyricsResult(result.providerName, lyricsText)))
         }
         return result
     }

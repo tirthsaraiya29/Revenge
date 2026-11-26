@@ -320,7 +320,9 @@ dependencies {
   implementation(libs.apache.lang3)
 
   implementation(libs.hilt)
+  implementation(libs.hilt.work)
   ksp(libs.hilt.compiler)
+  ksp(libs.hilt.work.compiler)
 
   implementation(project(":innertube"))
   implementation("com.github.MetrolistGroup.innertubex:innertubex-android:v0.7.0")

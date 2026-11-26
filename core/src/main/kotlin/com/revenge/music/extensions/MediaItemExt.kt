@@ -7,6 +7,7 @@ import androidx.media3.common.MediaMetadata as Media3Metadata
 import com.revenge.innertube.models.SongItem
 import com.revenge.music.db.entities.Song
 import com.revenge.music.models.MediaMetadata
+import com.revenge.music.models.toMediaMetadata
 import com.revenge.music.ui.utils.resize
 import java.util.Locale
 

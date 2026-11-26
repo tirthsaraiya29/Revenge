@@ -381,7 +381,8 @@ interface DatabaseDao {
     @Query(
         "SELECT artist.*, COUNT(DISTINCT song.id) AS songCount, " +
             "CAST(SUM(event.playTime) AS INTEGER) AS timeListened " +
-            "FROM event JOIN song_artist_map ON song_artist_map.songId = event.songId " +
+            "FROM event JOIN song ON song.id = event.songId " +
+            "JOIN song_artist_map ON song_artist_map.songId = event.songId " +
             "JOIN artist ON artist.id = song_artist_map.artistId " +
             "WHERE event.timestamp > :fromTimeStamp AND event.timestamp <= :toTimeStamp " +
             "GROUP BY artist.id ORDER BY SUM(event.playTime) DESC LIMIT :limit OFFSET :offset",
@@ -1405,8 +1406,7 @@ interface DatabaseDao {
     @RawQuery
     fun raw(query: SupportSQLiteQuery): Int
 
-    @Query("PRAGMA wal_checkpoint(FULL)")
-    fun checkpoint()
+    fun checkpoint() = raw(androidx.sqlite.db.SimpleSQLiteQuery("PRAGMA wal_checkpoint(FULL)"))
 
     @Transaction
     @Query("SELECT * FROM song WHERE isLocal = 1 ORDER BY title COLLATE NOCASE ASC, id ASC")

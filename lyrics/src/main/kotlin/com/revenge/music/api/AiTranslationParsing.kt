@@ -26,13 +26,13 @@ internal fun extractContent(body: String): String? {
     val content = root["content"]
     if (content is JsonArray) {
         val joined = content.joinToString("") { block ->
-            (block as? JsonObject)?.get("text").stringOrNull() ?: ""
+            (block as? JsonObject)?.get("text")?.stringOrNull() ?: ""
         }.trim()
         if (joined.isNotEmpty()) return joined
     }
     val choices = root["choices"] as? JsonArray ?: return null
     val message = (choices.firstOrNull() as? JsonObject)?.get("message") as? JsonObject ?: return null
-    val text = message["content"].stringOrNull()?.trim() ?: return null
+    val text = message["content"]?.stringOrNull()?.trim() ?: return null
     return text.ifEmpty { null }
 }
 
