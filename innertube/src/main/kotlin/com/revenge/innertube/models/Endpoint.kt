@@ -46,16 +46,18 @@ data class BrowseEndpoint(
             ?.pageType
 
     val isArtistEndpoint: Boolean
-        get() = pageType == MUSIC_PAGE_TYPE_ARTIST
+        get() = pageType == BrowseEndpointContextSupportedConfigs.BrowseEndpointContextMusicConfig.MUSIC_PAGE_TYPE_ARTIST
 
     val isAlbumEndpoint: Boolean
-        get() = pageType == MUSIC_PAGE_TYPE_ALBUM || pageType == MUSIC_PAGE_TYPE_AUDIOBOOK
+        get() = pageType == BrowseEndpointContextSupportedConfigs.BrowseEndpointContextMusicConfig.MUSIC_PAGE_TYPE_ALBUM ||
+            pageType == BrowseEndpointContextSupportedConfigs.BrowseEndpointContextMusicConfig.MUSIC_PAGE_TYPE_AUDIOBOOK
 
     val isPlaylistEndpoint: Boolean
-        get() = pageType == MUSIC_PAGE_TYPE_PLAYLIST
+        get() = pageType == BrowseEndpointContextSupportedConfigs.BrowseEndpointContextMusicConfig.MUSIC_PAGE_TYPE_PLAYLIST
 
     val isPodcastEndpoint: Boolean
-        get() = pageType == MUSIC_PAGE_TYPE_PODCAST_SHOW_DETAIL_PAGE || browseId.startsWith(PODCAST_BROWSE_PREFIX)
+        get() = pageType == BrowseEndpointContextSupportedConfigs.BrowseEndpointContextMusicConfig.MUSIC_PAGE_TYPE_PODCAST_SHOW_DETAIL_PAGE ||
+            browseId.startsWith(PODCAST_BROWSE_PREFIX)
 
     @Serializable
     data class BrowseEndpointContextSupportedConfigs(

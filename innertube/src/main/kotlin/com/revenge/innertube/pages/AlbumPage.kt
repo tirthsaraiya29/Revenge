@@ -4,6 +4,7 @@ import com.revenge.innertube.models.Album
 import com.revenge.innertube.models.AlbumItem
 import com.revenge.innertube.models.Artist
 import com.revenge.innertube.models.response.BrowseResponse
+import com.revenge.innertube.models.MusicResponsiveHeaderRenderer
 import com.revenge.innertube.models.MusicResponsiveListItemRenderer
 import com.revenge.innertube.models.MusicShelfRenderer
 import com.revenge.innertube.models.Run
@@ -29,9 +30,28 @@ data class AlbumPage(
             return firstTopLevelPlaylistId(response)
         }
 
+        private fun responsiveHeader(response: BrowseResponse): MusicResponsiveHeaderRenderer? {
+            val contents = response.contents
+            val tabContents = sequence {
+                contents?.singleColumnBrowseResultsRenderer?.tabs.orEmpty().forEach {
+                    yield(it.tabRenderer.content?.sectionListRenderer?.contents)
+                }
+                contents?.twoColumnBrowseResultsRenderer?.tabs.orEmpty().forEach {
+                    yield(it.tabRenderer.content?.sectionListRenderer?.contents)
+                }
+            }
+            for (tabContent in tabContents) {
+                tabContent?.firstNotNullOfOrNull { it.musicResponsiveHeaderRenderer }?.let { return it }
+            }
+            return response.header
+                ?.musicEditablePlaylistDetailHeaderRenderer
+                ?.header
+                ?.musicResponsiveHeaderRenderer
+        }
+
         private fun firstTopLevelPlaylistId(response: BrowseResponse): String? {
             val header = response.header ?: return null
-            header.musicResponsiveHeaderRenderer
+            responsiveHeader(response)
                 ?.buttons
                 ?.firstOrNull()
                 ?.musicPlayButtonRenderer
@@ -70,26 +90,17 @@ data class AlbumPage(
         }
 
         fun getTitle(response: BrowseResponse): String? {
-            val header = response.header ?: return null
-            header.musicResponsiveHeaderRenderer
-                ?.title
-                ?.runs
-                ?.firstOrNull()
-                ?.text
-                ?.let { return ApiText.clean(it) }
-            return header.musicDetailHeaderRenderer
-                ?.title
-                ?.runs
-                ?.firstOrNull()
-                ?.text
-                ?.let { ApiText.clean(it) }
+            val detailTitle = response.header?.musicDetailHeaderRenderer?.title
+            val responsiveTitle = responsiveHeader(response)?.title
+            val titleRuns = responsiveTitle?.runs ?: detailTitle?.runs ?: return null
+            return titleRuns.firstOrNull()?.text?.let(ApiText::clean)
         }
 
         fun getYear(response: BrowseResponse): Int? {
-            val header = response.header ?: return null
-            val subtitle = header.musicResponsiveHeaderRenderer?.subtitle
-                ?: header.musicDetailHeaderRenderer?.subtitle
-            return subtitle?.runs?.lastOrNull()?.text?.trim()?.toIntOrNull()
+            val responsiveSubtitle = responsiveHeader(response)?.subtitle
+            val detailSubtitle = response.header?.musicDetailHeaderRenderer?.subtitle
+            val subtitle = responsiveSubtitle ?: detailSubtitle ?: return null
+            return subtitle.runs?.lastOrNull()?.text?.trim()?.toIntOrNull()
         }
 
         fun getThumbnail(response: BrowseResponse): String? =
@@ -101,11 +112,10 @@ data class AlbumPage(
                     ?.getThumbnailUrl()
 
         fun getArtists(response: BrowseResponse): List<Artist> {
-            val header = response.header ?: return emptyList()
-            header.musicResponsiveHeaderRenderer?.straplineTextOne?.runs?.let { runs ->
+            responsiveHeader(response)?.straplineTextOne?.runs?.let { runs ->
                 return runs.oddElements().map { Artist(ApiText.clean(it.text), it.navigationEndpoint?.browseEndpoint?.browseId) }
             }
-            val detailSubtitle = header.musicDetailHeaderRenderer?.subtitle?.runs ?: return emptyList()
+            val detailSubtitle = response.header?.musicDetailHeaderRenderer?.subtitle?.runs ?: return emptyList()
             val secondGroup = detailSubtitle.splitBySeparator().getOrNull(1) ?: return emptyList()
             return secondGroup.oddElements()
                 .map { Artist(ApiText.clean(it.text), it.navigationEndpoint?.browseEndpoint?.browseId) }
