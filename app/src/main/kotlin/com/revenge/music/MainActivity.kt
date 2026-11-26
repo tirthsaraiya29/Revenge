@@ -13,15 +13,14 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
-import android.os.SystemClock
 import android.provider.MediaStore
+import android.view.Display
 import android.view.View
 import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.Animatable
@@ -36,21 +35,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.add
-import androidx.compose.foundation.layout.displayCutout
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.systemBars
-import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -88,8 +73,9 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Offset
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.hapticfeedback.HapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
@@ -107,7 +93,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.view.WindowCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.datastore.preferences.core.edit
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -156,6 +142,7 @@ import com.revenge.core.db.entities.SearchHistory
 import com.revenge.core.models.MediaMetadata
 import com.revenge.core.models.toMediaMetadata
 import com.revenge.core.utils.dataStore
+import com.revenge.core.utils.get
 import com.revenge.core.utils.reportException
 import com.revenge.innertube.YouTube
 import com.revenge.innertube.models.WatchEndpoint
@@ -168,7 +155,6 @@ import com.revenge.music.playback.MusicService
 import com.revenge.music.playback.PlayerConnection
 import com.revenge.music.ui.component.AppNavigationBar
 import com.revenge.music.ui.component.AppNavigationRail
-import com.revenge.music.ui.component.BottomSheetState
 import com.revenge.music.ui.component.GlassEffectConfig
 import com.revenge.music.ui.component.LocalAppBackdrop
 import com.revenge.music.ui.component.LocalGlassEffectConfig
@@ -176,7 +162,7 @@ import com.revenge.music.ui.component.RingtoneProgressDialog
 import com.revenge.music.ui.component.RingtoneTrimmerDialog
 import com.revenge.music.ui.component.rememberBottomSheetState
 import com.revenge.music.ui.component.backdrop.backdrops.emptyBackdrop
-import com.revenge.music.ui.component.getShimmerTheme
+import com.revenge.music.ui.component.shimmer.getShimmerTheme
 import com.revenge.music.ui.player.BottomSheetPlayer
 import com.revenge.music.ui.screens.Screens
 import com.revenge.music.ui.screens.WelcomeDialog
@@ -269,12 +255,13 @@ class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     installSplashScreen()
     super.onCreate(savedInstanceState)
-    enableEdgeToEdge()
-    WindowCompat.setDecorFitsSystemWindows(window, false)
-    window.decorView.layoutDirection = View.LAYOUT_DIRECTION_LTR
 
     runCatching { startService(Intent(this, MusicService::class.java)) }
       .onFailure { Timber.w(it, "Could not pre-start MusicService") }
+
+    enableEdgeToEdge()
+    WindowCompat.setDecorFitsSystemWindows(window, false)
+    window.decorView.layoutDirection = View.LAYOUT_DIRECTION_LTR
 
     listenTogetherManager.initialize()
 
@@ -359,21 +346,18 @@ class MainActivity : ComponentActivity() {
       return
     }
 
-    when (val current = intent) {
-      null -> Unit
-      else ->
-        when (current.action) {
-          Intent.ACTION_VIEW, Intent.ACTION_SEND -> handleDeepLinkIntent(current)
-          ACTION_RECOGNITION -> handleRecognitionIntent(current)
-          MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH -> handleAssistantSearchIntent(current)
-        }
+    val current = intent
+    when (current.action) {
+      Intent.ACTION_VIEW, Intent.ACTION_SEND -> handleDeepLinkIntent(current)
+      ACTION_RECOGNITION -> handleRecognitionIntent(current)
+      MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH -> handleAssistantSearchIntent(current)
     }
   }
 
-  internal fun awaitPlayerConnection(): PlayerConnection? {
+  internal suspend fun awaitPlayerConnection(): PlayerConnection? {
     repeat(PLAYER_CONNECTION_RETRIES) {
       playerConnection?.let { return it }
-      Thread.sleep(PLAYER_CONNECTION_RETRY_DELAY_MS)
+      delay(PLAYER_CONNECTION_RETRY_DELAY_MS)
     }
     return playerConnection
   }
@@ -388,7 +372,7 @@ class MainActivity : ComponentActivity() {
       playerConnection = null
       if (allowRetry) {
         lifecycleScope.launch {
-          delay(PLAYER_CONNECTION_RETRY_DELAY_MS.toLong())
+          delay(SERVICE_CONNECTION_RETRY_DELAY_MS)
           connectPlayer(binder, allowRetry = false)
         }
       }
@@ -707,8 +691,8 @@ class MainActivity : ComponentActivity() {
 
   private fun encode(value: String): String = URLEncoder.encode(value, "UTF-8")
 
-  private companion object {
-    const val EXTRA_VOICE_REQUEST_HANDLED = "com.revenge.music.voice_request_handled"
+  companion object {
+    private const val EXTRA_VOICE_REQUEST_HANDLED = "com.revenge.music.voice_request_handled"
 
     const val ACTION_SEARCH = "com.revenge.music.action.SEARCH"
     const val ACTION_LIBRARY = "com.revenge.music.action.LIBRARY"
@@ -725,6 +709,7 @@ class MainActivity : ComponentActivity() {
     private const val NOTIFICATION_PERMISSION_REQUEST_CODE = 1000
     private const val PLAYER_CONNECTION_RETRIES = 20
     private const val PLAYER_CONNECTION_RETRY_DELAY_MS = 100L
+    private const val SERVICE_CONNECTION_RETRY_DELAY_MS = 500L
     private const val GUEST_USERNAME = "Guest"
     private const val AI_RECOMMENDATION_WORK_NAME = "AiRecommendationWorker"
     private const val CLEAR_EXPORT_STATE_MARKER = "clear_export_state"
@@ -791,10 +776,7 @@ internal fun revengeApp(activity: MainActivity, initialRoute: String) {
   val (pureBlackPreference) = rememberPreference(PureBlackKey, false)
   val pureBlack = pureBlackPreference && darkTheme
   val (monochrome) = rememberPreference(IsMonochromeThemeKey, false)
-  val (selectedThemeColor) = rememberPreference(
-    SelectedThemeColorKey,
-    BrandThemeColor.value.toInt(),
-  )
+  val (selectedThemeColor) = rememberPreference(SelectedThemeColorKey, BrandThemeColor.toArgb())
   var themeColor by rememberSaveable(stateSaver = ColorSaver) {
     mutableStateOf(Color(selectedThemeColor))
   }
@@ -882,8 +864,11 @@ internal fun revengeApp(activity: MainActivity, initialRoute: String) {
     var searchQuery by rememberSaveable(stateSaver = TextFieldValue.Saver) {
       mutableStateOf(TextFieldValue(""))
     }
-    var searchActive by remember { mutableStateOf(false) }
     val (pauseSearchHistory) = rememberPreference(PauseSearchHistoryKey, false)
+    val (pauseListenHistory) = rememberPreference(PauseListenHistoryKey, false)
+    val eventCount by remember { activity.database.eventCount() }.collectAsState(initial = 0)
+    val showHistory = !pauseListenHistory || eventCount > 0
+    val (lastOpenedVersionCode) = rememberPreference(LastOpenedVersionCodeKey, -1)
 
     fun submitSearch(rawQuery: String) {
       val query = rawQuery.trim()
@@ -898,7 +883,6 @@ internal fun revengeApp(activity: MainActivity, initialRoute: String) {
 
     fun onTabClick(screen: Screens, alreadySelected: Boolean) {
       searchQuery = TextFieldValue("")
-      searchActive = false
       if (alreadySelected) {
         navController.currentBackStackEntry?.savedStateHandle?.set(SCROLL_TO_TOP_KEY, true)
         scrollBehavior.state.heightOffset = 0f
@@ -916,24 +900,24 @@ internal fun revengeApp(activity: MainActivity, initialRoute: String) {
 
     fun handleWidgetAction(action: String?) {
       when (action) {
-        ACTION_NOW_PLAYING -> playerSheetState.expandSoft()
-        ACTION_QUEUE -> {
+        MainActivity.ACTION_NOW_PLAYING -> playerSheetState.expandSoft()
+        MainActivity.ACTION_QUEUE -> {
           playerSheetState.expandSoft()
           expandQueueRequested = true
         }
-        ACTION_SONG_OPTIONS -> {
+        MainActivity.ACTION_SONG_OPTIONS -> {
           playerSheetState.expandSoft()
           showPlayerMenuRequested = true
         }
-        ACTION_LYRICS -> {
+        MainActivity.ACTION_LYRICS -> {
           playerSheetState.expandSoft()
           showLyricsRequested = true
         }
-        ACTION_OUTPUT_SWITCHER -> {
+        MainActivity.ACTION_OUTPUT_SWITCHER -> {
           if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             val mediaOutput =
-              Intent(ACTION_MEDIA_OUTPUT).apply {
-                putExtra(EXTRA_MEDIA_OUTPUT_PACKAGE_NAME, context.packageName)
+              Intent(MainActivity.ACTION_MEDIA_OUTPUT).apply {
+                putExtra(MainActivity.EXTRA_MEDIA_OUTPUT_PACKAGE_NAME, context.packageName)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
               }
             val resolved = mediaOutput.resolveActivity(context.packageManager)
@@ -1018,7 +1002,7 @@ internal fun revengeApp(activity: MainActivity, initialRoute: String) {
         )
 
     val hapticHelper = rememberHapticHelper()
-    val hapticFeedback = remember(hapticHelper) { hapticFeedbackFor(hapticHelper) }
+    val hapticFeedback = hapticFeedbackFor(hapticHelper)
 
     val ringtoneViewModel: RingtoneViewModel = viewModel()
     val ringtoneState by ringtoneViewModel.uiState.collectAsState()
@@ -1065,32 +1049,36 @@ internal fun revengeApp(activity: MainActivity, initialRoute: String) {
             modifier = if (useRail) Modifier.weight(1f) else Modifier.fillMaxSize(),
             containerColor = Color.Transparent,
             contentWindowInsets = WindowInsets(0, 0, 0, 0),
+            snackbarHost = { SnackbarHost(snackbarHostState) },
             topBar = {
               when {
                 searchVisible -> {
                   SearchTopBar(
                     query = searchQuery,
                     onQueryChange = { searchQuery = it },
-                    active = searchActive,
-                    onActiveChange = { searchActive = it },
                     onSearch = { submitSearch(it) },
                     scrollBehavior = scrollBehavior,
                     onAccountClick = { navController.navigate("account") },
                     onSettingsClick = { navController.navigate("settings") },
                     accountImageUrl = accountImageUrl,
                     onOpenMenu = { menuAction -> handleMenuAction(menuAction, navController, listenTogetherInTopBar) },
-                    showHistory = hasListeningHistory(activity, context),
+                    showHistory = showHistory,
                   )
                 }
                 topBarVisible -> {
                   ShellTopBar(
-                    title = topBarTitle(currentRoute)?.let { stringResource(it) } ?: "",
+                    title =
+                      if (currentRoute == Screens.Home.route) {
+                        HOME_TITLE
+                      } else {
+                        topBarTitle(currentRoute)?.let { stringResource(it) } ?: ""
+                      },
                     scrollBehavior = scrollBehavior,
                     onAccountClick = { navController.navigate("account") },
                     onSettingsClick = { navController.navigate("settings") },
                     accountImageUrl = accountImageUrl,
                     onOpenMenu = { menuAction -> handleMenuAction(menuAction, navController, listenTogetherInTopBar) },
-                    showHistory = hasListeningHistory(activity, context),
+                    showHistory = showHistory,
                   )
                 }
               }
@@ -1112,21 +1100,36 @@ internal fun revengeApp(activity: MainActivity, initialRoute: String) {
               navController = navController,
               startDestination = initialRoute,
               modifier = Modifier.fillMaxSize(),
-              enterTransition = { tabEnterTransition(navigationItems) },
-              exitTransition = { tabExitTransition(navigationItems) },
-              popEnterTransition = { tabPopEnterTransition(navigationItems) },
-              popExitTransition = { tabPopExitTransition(navigationItems) },
+              enterTransition = {
+                tabEnterTransition(
+                  initialState.destination.route,
+                  targetState.destination.route,
+                  navigationItems,
+                )
+              },
+              exitTransition = {
+                tabExitTransition(
+                  initialState.destination.route,
+                  targetState.destination.route,
+                  navigationItems,
+                )
+              },
+              popEnterTransition = {
+                tabPopEnterTransition(
+                  initialState.destination.route,
+                  targetState.destination.route,
+                  navigationItems,
+                )
+              },
+              popExitTransition = {
+                tabPopExitTransition(
+                  initialState.destination.route,
+                  targetState.destination.route,
+                  navigationItems,
+                )
+              },
             ) {
               navigationBuilder(navController, scrollBehavior, activity, snackbarHostState)
-            }
-
-            if (navBarVisible && !useRail) {
-              SnackbarHost(
-                hostState = snackbarHostState,
-                modifier =
-                  Modifier.align(Alignment.BottomCenter)
-                    .padding(bottom = SlimNavBarHeight + baseInsetsBottom(baseInsets)),
-              )
             }
           }
         }
@@ -1150,11 +1153,7 @@ internal fun revengeApp(activity: MainActivity, initialRoute: String) {
           com.revenge.music.updates.AudioDeviceBottomSheet(onDismiss = { showAudioDevices = false })
         }
 
-        if (shouldShowWelcome(
-            dataStoreValue(activity, LastOpenedVersionCodeKey) ?: -1,
-            BuildConfig.VERSION_CODE,
-          )
-        ) {
+        if (shouldShowWelcome(lastOpenedVersionCode, BuildConfig.VERSION_CODE)) {
           WelcomeDialog(
             onDismissRequest = {
               coroutineScope.launch {
@@ -1224,6 +1223,7 @@ private const val DESKTOP_BREAKPOINT_DP = 840
 private const val TABLET_BREAKPOINT_DP = 600
 private const val UPDATE_CHECK_DELAY_MS = 2000L
 private const val SCROLL_TO_TOP_KEY = "scrollToTop"
+private const val HOME_TITLE = "Revenge"
 
 private enum class ShellMenuAction {
   HISTORY,
@@ -1248,25 +1248,6 @@ private fun handleMenuAction(
   }
 }
 
-private fun hasListeningHistory(activity: MainActivity, context: Context): Boolean {
-  val paused = context.dataStore[PauseListenHistoryKey] == true
-  if (!paused) return true
-  val count =
-    runCatching {
-        kotlinx.coroutines.runBlocking {
-          kotlinx.coroutines.flow.first(activity.database.eventCount())
-        }
-      }
-      .getOrDefault(0)
-  return count > 0
-}
-
-private fun dataStoreValue(
-  context: Context,
-  key: androidx.datastore.preferences.core.Preferences.Key<Int>,
-): Int? = context.dataStore[key]
-
-@OptIn(AndroidEntryPoint::class)
 private fun isTopBarRoute(route: String?, listenTogetherInTopBar: Boolean): Boolean {
   return when (route) {
     Screens.Home.route, Screens.Podcast.route, Screens.Library.route -> true
@@ -1337,9 +1318,6 @@ private val BOTTOM_BAR_DETAIL_SEGMENTS =
     "artist",
   )
 
-private fun baseInsetsBottom(insets: WindowInsets): androidx.compose.ui.unit.Dp =
-  insets.getBottom(androidx.compose.ui.platform.LocalDensity.current)
-
 private fun tabIndex(
   route: String?,
   items: List<Screens>,
@@ -1348,44 +1326,52 @@ private fun tabIndex(
   return if (index >= 0) index to true else items.size to false
 }
 
-private fun AnimatedContentTransitionScope<*>.tabEnterTransition(
-  items: List<Screens>
+private fun tabEnterTransition(
+  fromRoute: String?,
+  toRoute: String?,
+  items: List<Screens>,
 ): EnterTransition {
-  val (from, fromKnown) = tabIndex(initialState.destination.route, items)
-  val (to, toKnown) = tabIndex(targetState.destination.route, items)
+  val (from, fromKnown) = tabIndex(fromRoute, items)
+  val (to, toKnown) = tabIndex(toRoute, items)
   val forward = if (fromKnown && toKnown) to >= from else true
   return slideInHorizontally(tween(400, easing = EmphasizedEasing)) { width ->
     if (forward) width / 8 else -width / 8
   } + fadeIn(tween(400, easing = EmphasizedEasing))
 }
 
-private fun AnimatedContentTransitionScope<*>.tabExitTransition(
-  items: List<Screens>
+private fun tabExitTransition(
+  fromRoute: String?,
+  toRoute: String?,
+  items: List<Screens>,
 ): ExitTransition {
-  val (from, fromKnown) = tabIndex(initialState.destination.route, items)
-  val (to, toKnown) = tabIndex(targetState.destination.route, items)
+  val (from, fromKnown) = tabIndex(fromRoute, items)
+  val (to, toKnown) = tabIndex(toRoute, items)
   val forward = if (fromKnown && toKnown) to >= from else true
   return slideOutHorizontally(tween(400, easing = EmphasizedEasing)) { width ->
     if (forward) -width / 8 else width / 8
   } + fadeOut(tween(400, easing = EmphasizedEasing))
 }
 
-private fun AnimatedContentTransitionScope<*>.tabPopEnterTransition(
-  items: List<Screens>
+private fun tabPopEnterTransition(
+  fromRoute: String?,
+  toRoute: String?,
+  items: List<Screens>,
 ): EnterTransition {
-  val (from, fromKnown) = tabIndex(initialState.destination.route, items)
-  val (to, toKnown) = tabIndex(targetState.destination.route, items)
+  val (from, fromKnown) = tabIndex(fromRoute, items)
+  val (to, toKnown) = tabIndex(toRoute, items)
   val forward = if (fromKnown && toKnown) to >= from else false
   return slideInHorizontally(tween(400, easing = EmphasizedEasing)) { width ->
     if (forward) width / 8 else -width / 8
   } + fadeIn(tween(400, easing = EmphasizedEasing))
 }
 
-private fun AnimatedContentTransitionScope<*>.tabPopExitTransition(
-  items: List<Screens>
+private fun tabPopExitTransition(
+  fromRoute: String?,
+  toRoute: String?,
+  items: List<Screens>,
 ): ExitTransition {
-  val (from, fromKnown) = tabIndex(initialState.destination.route, items)
-  val (to, toKnown) = tabIndex(targetState.destination.route, items)
+  val (from, fromKnown) = tabIndex(fromRoute, items)
+  val (to, toKnown) = tabIndex(toRoute, items)
   val forward = if (fromKnown && toKnown) to >= from else false
   return slideOutHorizontally(tween(400, easing = EmphasizedEasing)) { width ->
     if (forward) -width / 8 else width / 8
@@ -1435,8 +1421,6 @@ private fun ShellTopBar(
 private fun SearchTopBar(
   query: TextFieldValue,
   onQueryChange: (TextFieldValue) -> Unit,
-  active: Boolean,
-  onActiveChange: (Boolean) -> Unit,
   onSearch: (String) -> Unit,
   scrollBehavior: TopAppBarScrollBehavior,
   onAccountClick: () -> Unit,
@@ -1451,10 +1435,7 @@ private fun SearchTopBar(
     title = {
       TextField(
         value = query,
-        onValueChange = {
-          onQueryChange(it)
-          onActiveChange(true)
-        },
+        onValueChange = onQueryChange,
         modifier = Modifier.fillMaxWidth(),
         singleLine = true,
         placeholder = { Text(stringResource(R.string.search)) },
@@ -1490,11 +1471,6 @@ private fun SearchTopBar(
     },
     scrollBehavior = scrollBehavior,
   )
-
-  if (active && query.text.isNotEmpty()) {
-    // Suggestions are owned by the search screen; the shell field only holds the query.
-    Spacer(Modifier.height(0.dp))
-  }
 }
 
 @Composable
@@ -1643,9 +1619,13 @@ private suspend fun loadArtworkThemeColor(context: Context, url: String): Color?
   }
 }
 
+@Suppress("DEPRECATION")
 private fun applyRefreshRate(activity: Activity, highRefreshRate: Boolean) {
   val window = activity.window ?: return
-  val display = activity.display ?: return
+  val display: Display? =
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) activity.display
+    else activity.windowManager.defaultDisplay
+  display ?: return
   if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
     val modeId =
       if (highRefreshRate) {

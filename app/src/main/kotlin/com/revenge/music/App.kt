@@ -19,6 +19,7 @@ import androidx.work.Configuration
 import coil3.ImageLoader
 import coil3.SingletonImageLoader
 import coil3.disk.DiskCache
+import coil3.disk.directory
 import coil3.memory.MemoryCache
 import coil3.request.allowHardware
 import coil3.request.crossfade
@@ -40,9 +41,10 @@ import com.revenge.core.constants.ProxyUsernameKey
 import com.revenge.core.constants.SYSTEM_DEFAULT
 import com.revenge.core.constants.UseLoginForBrowse
 import com.revenge.core.constants.VisitorDataKey
-import com.revenge.core.constants.toEnum
 import com.revenge.core.di.ApplicationScope
+import com.revenge.core.extensions.toEnum
 import com.revenge.core.utils.dataStore
+import com.revenge.core.utils.get
 import com.revenge.core.utils.reportException
 import com.revenge.innertube.YouTube
 import com.revenge.innertube.models.IpVersion
@@ -106,7 +108,7 @@ class App : Application(), SingletonImageLoader.Factory, Configuration.Provider 
     }
 
     AppContextHolder.initialize(this)
-    NewEpisodesWorker.schedule(this)
+    NewEpisodesWorker.enqueue(this)
     CipherDeobfuscator.initialize(this)
     YTPlayerUtils.initialize()
 
@@ -166,7 +168,7 @@ class App : Application(), SingletonImageLoader.Factory, Configuration.Provider 
           add(YouTubeThumbnailFallbackInterceptor())
           add(LocalAlbumArtFetcher.Factory())
         }
-        .memoryCache { MemoryCache.Builder(this@App).maxSizePercent(0.25).build() }
+        .memoryCache { MemoryCache.Builder().maxSizePercent(this@App, 0.25).build() }
 
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
       builder.allowHardware(true)
