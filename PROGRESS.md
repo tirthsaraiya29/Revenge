@@ -26,7 +26,23 @@ baseline `src/` of a REIMPLEMENT file.
 - Phase 1 provenance audit: DONE (8 deliverables).
 - **M2 BLOCKED gate: RESOLVED** (119/119 recorded in `M2_GATE_DECISIONS.md`).
 - **Wave 0 foundation remediation: DONE** (see below).
-- **Wave 1 clean-room (`:domain`, `:metadata`, `:dsp-core`): IN PROGRESS.**
+- **Build and CI: GREEN at `f974ce8`** — GitHub Actions CI (full unit test
+  suite + FOSS universal debug APK upload), Semgrep, CodeQL and Gradle
+  dependency submission all pass. Locally the same commit passes
+  `./gradlew test` and `:app:assembleUniversalFossDebug`; the `gms` flavor also
+  compiles.
+- **Waves 1–3 and Wave 5 clean-room modules: implemented** (`:domain`,
+  `:metadata`, `:dsp-core`, `:core`, `:playback`, `:innertube`, `:lyrics`,
+  `:audio-dsp`, `:usbaudio`, `:canvas`, `:applecanvas`, `:artistvideo`), with
+  specs in `docs/specs/` and independent review fixes applied.
+- **Wave 4 (app shell / design system / screens): NOT STARTED as a dedicated
+  pass.** Existing app UI compiles and its tests pass, but the Wave 4
+  design-system spec (`docs/specs/design-system.md`) still needs to be applied
+  screen by screen and reviewed.
+- Known review residuals still to close: legacy `com.revenge.music.playback.*`
+  namespace migration, Listen Together typed protobuf mapping and outbound
+  player/queue/volume/heartbeat wiring, and the playback test `android.net.Uri`
+  stub.
 
 ## Wave 0 — completed and verified
 
