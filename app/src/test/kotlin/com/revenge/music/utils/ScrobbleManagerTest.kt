@@ -39,8 +39,8 @@ class ScrobbleManagerTest {
     manager.scrobbleDelaySeconds = 50
     manager.nowSeconds = { 1_000_000L }
     val track = metadata("t", 200)
-    manager.onSongStart(track, 200)
-    manager.onPlayerStateChanged(true, track, 200)
+    manager.onSongStart(track, 200_000L)
+    manager.onPlayerStateChanged(true, track, 200_000L)
 
     advanceTimeBy(49_000)
     runCurrent()
@@ -62,8 +62,8 @@ class ScrobbleManagerTest {
     manager.enableScrobbling = true
     manager.nowSeconds = { 5_000L }
     val track = metadata("short", 40)
-    manager.onSongStart(track, 40)
-    manager.onPlayerStateChanged(true, track, 40)
+    manager.onSongStart(track, 40_000L)
+    manager.onPlayerStateChanged(true, track, 40_000L)
 
     advanceTimeBy(19_000)
     runCurrent()
@@ -83,8 +83,8 @@ class ScrobbleManagerTest {
     manager.enableScrobbling = true
     manager.minSongDuration = 30
     val track = metadata("tiny", 10)
-    manager.onSongStart(track, 10)
-    manager.onPlayerStateChanged(true, track, 10)
+    manager.onSongStart(track, 10_000L)
+    manager.onPlayerStateChanged(true, track, 10_000L)
 
     advanceTimeBy(120_000)
     runCurrent()
@@ -122,8 +122,8 @@ class ScrobbleManagerTest {
     manager.enableScrobbling = true
     manager.scrobbleDelaySeconds = 50
     val track = metadata("resume", 200)
-    manager.onSongStart(track, 200)
-    manager.onPlayerStateChanged(true, track, 200)
+    manager.onSongStart(track, 200_000L)
+    manager.onPlayerStateChanged(true, track, 200_000L)
 
     advanceTimeBy(20_000)
     runCurrent()
@@ -147,8 +147,8 @@ class ScrobbleManagerTest {
     manager.enableScrobbling = true
     manager.scrobbleDelaySeconds = 50
     val track = metadata("once", 200)
-    manager.onSongStart(track, 200)
-    manager.onPlayerStateChanged(true, track, 200)
+    manager.onSongStart(track, 200_000L)
+    manager.onPlayerStateChanged(true, track, 200_000L)
 
     advanceTimeBy(200_000)
     runCurrent()
@@ -191,8 +191,8 @@ class ScrobbleManagerTest {
     manager.enableScrobbling = true
     manager.useNowPlaying = true
     val track = metadata("destroy", 200)
-    manager.onSongStart(track, 200)
-    manager.onPlayerStateChanged(true, track, 200)
+    manager.onSongStart(track, 200_000L)
+    manager.onPlayerStateChanged(true, track, 200_000L)
     runCurrent()
     assertEquals(1, nowPlaying)
 

@@ -189,7 +189,7 @@ class CastConnectionHandler(
         val startPosition =
           if (metadata.id == player.currentMediaItem?.mediaId) player.currentPosition else 0L
         val result =
-          client.queueLoad(items.toTypedArray(), startIndex, 0, startPosition)
+          client.queueLoad(items.toTypedArray(), startIndex, 0, startPosition, null)
         if (result != null) {
           _isCasting.value = true
           _autoReconnecting.value = false
@@ -215,7 +215,7 @@ class CastConnectionHandler(
       }
     if (queueItems.isEmpty()) return
     val ids = runCatching { client.mediaQueue.itemIds }.getOrDefault(intArrayOf())
-    val currentItemId = client.mediaStatus?.currentItem?.itemId ?: MediaQueueItem.INVALID_ITEM_ID
+    val currentItemId = client.currentItem?.itemId ?: MediaQueueItem.INVALID_ITEM_ID
     val currentIndex = ids.indexOf(currentItemId)
     val beforeId =
       if (currentIndex >= 0 && currentIndex + 1 < ids.size) ids[currentIndex + 1]
@@ -282,7 +282,7 @@ class CastConnectionHandler(
     val ids = runCatching { client.mediaQueue.itemIds }.getOrDefault(intArrayOf())
     if (itemId !in ids) return
     val before = ids.getOrNull(newIndex) ?: MediaQueueItem.INVALID_ITEM_ID
-    runCatching { client.queueReorderItems(intArrayOf(itemId), before) }
+    runCatching { client.queueReorderItems(intArrayOf(itemId), before, null) }
   }
 
   fun clearQueue() {
@@ -298,7 +298,7 @@ class CastConnectionHandler(
     val artists = metadata.artists.joinToString(", ") { it.name }
     val streamUrl = musicService.getStreamUrl(metadata.id, metadata.title, artists) ?: return null
     val castMetadata =
-      com.google.android.gms.cast.MediaMetadata(com.google.android.gms.cast.MediaMetadata.MEDIA_TYPE_MUSIC)
+      com.google.android.gms.cast.MediaMetadata(com.google.android.gms.cast.MediaMetadata.MEDIA_TYPE_MUSIC_TRACK)
         .apply {
           putString(com.google.android.gms.cast.MediaMetadata.KEY_TITLE, metadata.title)
           putString(com.google.android.gms.cast.MediaMetadata.KEY_ARTIST, artists)

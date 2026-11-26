@@ -47,5 +47,5 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
     testImplementation(libs.kotlinx.coroutines.test)
-    testImplementation("io.ktor:ktor-client-mock:3.6.1")
+    testImplementation("io.ktor:ktor-client-mock:${libs.versions.ktor.get()}")
 }

@@ -23,7 +23,6 @@ import androidx.mediarouter.media.MediaControlIntent
 import androidx.mediarouter.media.MediaRouteSelector
 import androidx.mediarouter.media.MediaRouter
 import com.google.android.gms.cast.CastMediaControlIntent
-import com.google.android.gms.cast.framework.CastContext
 import com.revenge.music.playback.CastDeviceKind
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -101,13 +100,7 @@ fun CastDevicePickerSheet(
                 Modifier.fillMaxWidth().clickable {
                     val fresh = router.routes.firstOrNull { it.id == route.id }
                     if (fresh != null) {
-                      val castContext =
-                        runCatching { CastContext.getSharedInstance(context) }.getOrNull()
-                      if (castContext != null) {
-                        castContext.sessionManager.startSession(fresh)
-                      } else {
-                        router.selectRoute(fresh)
-                      }
+                      router.selectRoute(fresh)
                       onDismiss()
                     }
                   }

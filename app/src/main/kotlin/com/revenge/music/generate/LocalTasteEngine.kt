@@ -52,9 +52,11 @@ fun scoreStats(
     val recent = stats.lastPlayedAtMillis > 0L && now - stats.lastPlayedAtMillis <= WEEK_MS
     val liked = stats.trackKey in likedKeys
     var score = ln(1.0 + stats.totalPlayTimeMs.coerceAtLeast(0L) / 60_000.0) * PLAY_WEIGHT -
-        stats.skipCount * SKIP_PENALTY +
-        if (liked) LIKED_BONUS else 0.0 +
-        if (recent) RECENCY_BONUS else 0.0
+        stats.skipCount * SKIP_PENALTY
+    // Separate statements: `+ if (a) x else 0.0 + if (b) y else 0.0` would bind the
+    // second addition inside the else branch.
+    if (liked) score += LIKED_BONUS
+    if (recent) score += RECENCY_BONUS
     if ((timeOfDay == "morning" && recent) || (timeOfDay == "night" && liked)) {
         score *= TIME_OF_DAY_BONUS
     }
