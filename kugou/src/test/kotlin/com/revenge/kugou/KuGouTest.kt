@@ -2,77 +2,124 @@ package com.revenge.kugou
 
 import com.revenge.kugou.models.Keyword
 import com.revenge.kugou.models.SearchLyricsResponse
-import kotlinx.serialization.decodeFromString
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.HttpClientEngineBase
+import io.ktor.client.engine.HttpClientEngineConfig
+import io.ktor.client.request.HttpRequestData
+import io.ktor.client.request.HttpResponseData
+import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpProtocolVersion
+import io.ktor.http.HttpStatusCode
+import io.ktor.http.headersOf
+import io.ktor.util.date.GMTDate
+import io.ktor.utils.io.ByteReadChannel
+import io.ktor.utils.io.InternalAPI
+import java.util.Base64
+import java.util.concurrent.CopyOnWriteArrayList
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
+import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 
-class KuGouTest {
+@OptIn(InternalAPI::class)
+private class FakeEngine(
+  private val handler: suspend (HttpRequestData) -> HttpResponseData,
+) : HttpClientEngineBase("kugou-fake") {
+  val requests = CopyOnWriteArrayList<String>()
 
-  private val json = Json { ignoreUnknownKeys = true }
+  override val config: HttpClientEngineConfig = HttpClientEngineConfig()
+
+  override suspend fun execute(data: HttpRequestData): HttpResponseData {
+    requests.add(data.url.toString())
+    return handler(data)
+  }
+}
+
+private fun reply(data: HttpRequestData, status: HttpStatusCode, body: String): HttpResponseData =
+  HttpResponseData(
+    status,
+    GMTDate(),
+    headersOf(HttpHeaders.ContentType, "application/json"),
+    HttpProtocolVersion.HTTP_1_1,
+    ByteReadChannel(body),
+    data.executionContext,
+  )
+
+private fun jsonString(raw: String): String =
+  raw.replace("\\", "\\\\")
+    .replace("\"", "\\\"")
+    .replace("\r", "\\r")
+    .replace("\n", "\\n")
+
+private fun bodyFromPath(data: HttpRequestData): String = data.url.encodedPath
+
+class KuGouTest {
+  @Before
+  fun setUp() {
+    KuGou.testClient = null
+  }
+
+  @After
+  fun tearDown() {
+    KuGou.testClient = null
+  }
 
   @Test
-  fun generateKeywordStripsBracketedTitleDecorations() {
+  fun `generateKeyword strips a parenthesised suffix`() {
     val keyword = KuGou.generateKeyword("Song (Remastered)", "Artist", "Album")
-
     assertEquals("Song ", keyword.title)
     assertEquals("Artist", keyword.artist)
     assertEquals("Album", keyword.album)
   }
 
   @Test
-  fun generateKeywordNormalizesArtistSeparatorsAndDots() {
+  fun `generateKeyword normalises artist separators and dots`() {
     val keyword = KuGou.generateKeyword("Song", "A, B & C")
-
     assertEquals("A、B、C", keyword.artist)
     assertNull(keyword.album)
     assertEquals("Mt Joy", KuGou.generateKeyword("T", "Mt. Joy").artist)
   }
 
   @Test
-  fun buildSearchQueryIncludesAlbumOnlyWhenPresent() {
+  fun `buildSearchQuery appends a non-blank album`() {
     assertEquals("T - A", buildSearchQuery(Keyword("T", "A")))
     assertEquals("T - A Album", buildSearchQuery(Keyword("T", "A", "Album")))
     assertEquals("T - A", buildSearchQuery(Keyword("T", "A", "  ")))
   }
 
   @Test
-  fun normalizeLyricsDropsUntimestampedLinesAndHeaderCredits() {
-    val raw =
-      """
-      song info
-      [00:00.00]作词: Alice
-      [00:00.00]作曲: Bob
-      [00:10.00]line one
-      [00:20.50]line two
-      """
-        .trimIndent()
-
+  fun `normalizeLyrics removes metadata and credit lines`() {
+    val raw = "some song info\n[00:00.00]作词: A\n[00:00.00]作曲: B\n" +
+      "[00:10.00]line one\n[00:20.50]line two"
     assertEquals("[00:10.00]line one\n[00:20.50]line two", raw.normalizeLyrics())
   }
 
   @Test
-  fun normalizeLyricsKeepsPlainTimestampedDocument() {
-    val raw = "[00:01.00]a\r\n[00:02.00]b"
-
-    assertEquals("[00:01.00]a\n[00:02.00]b", raw.normalizeLyrics())
+  fun `normalizeLyrics converts CRLF to LF`() {
+    assertEquals("[00:01.00]a\n[00:02.00]b", "[00:01.00]a\r\n[00:02.00]b".normalizeLyrics())
   }
 
   @Test
-  fun normalizeLyricsReturnsEmptyWhenNoTimestampedLineExists() {
+  fun `normalizeLyrics rejects documents without timestamped lines`() {
     assertEquals("", "no lyrics here".normalizeLyrics())
     assertEquals("", "".normalizeLyrics())
+    assertEquals("", "[1:02.00]x".normalizeLyrics())
   }
 
   @Test
-  fun normalizeLyricsDropsTrailingCreditBlockOnLongDocuments() {
-    val body = (0 until 34).joinToString("\n") { "[00:${"%02d".format(it % 60)}.00]line $it" }
-    val raw = "$body\n[00:59.00]作词: Alice"
+  fun `normalizeLyrics keeps thirty-four body lines and drops a trailing credit`() {
+    val body = (0..33).joinToString("\n") { index ->
+      String.format("[00:%02d.00]line %d", index, index)
+    }
+    val raw = body + "\n[00:33.00]作词: Someone"
 
     val normalized = raw.normalizeLyrics()
-    val lines = normalized.lines()
+    val lines = normalized.split("\n")
 
     assertEquals(34, lines.size)
     assertEquals("[00:00.00]line 0", lines.first())
@@ -80,9 +127,8 @@ class KuGouTest {
   }
 
   @Test
-  fun searchLyricsResponseReadsSnakeCaseFieldsAndToleratesMissingOnes() {
-    val payload =
-      """
+  fun `search lyrics response decodes snake case and defaults`() {
+    val fixture = """
       {
         "status": 1,
         "info": "ok",
@@ -90,27 +136,97 @@ class KuGouTest {
         "errmsg": "",
         "expire": 0,
         "candidates": [
-          {"id": 123, "product_from": "官方推荐歌词", "duration": 240, "accesskey": "abc"}
-        ]
+          {"id": 123, "product_from": "pc", "duration": 200, "accesskey": "key", "extra": true}
+        ],
+        "unknown": 1
       }
-      """
-        .trimIndent()
-
-    val response = json.decodeFromString<SearchLyricsResponse>(payload)
-
-    assertEquals(1, response.candidates.size)
-    val candidate = response.candidates.first()
+    """.trimIndent()
+    val decoded = Json { ignoreUnknownKeys = true }.decodeFromString<SearchLyricsResponse>(fixture)
+    val candidate = decoded.candidates.single()
     assertEquals(123L, candidate.id)
-    assertEquals("官方推荐歌词", candidate.productFrom)
-    assertEquals(240L, candidate.duration)
-    assertEquals("abc", candidate.accesskey)
+    assertEquals("pc", candidate.productFrom)
+    assertEquals(200L, candidate.duration)
+    assertEquals("key", candidate.accesskey)
+
+    val empty = Json { ignoreUnknownKeys = true }.decodeFromString<SearchLyricsResponse>("{}")
+    assertEquals(0, empty.status)
+    assertTrue(empty.candidates.isEmpty())
   }
 
   @Test
-  fun searchLyricsResponseDefaultsEmptyCandidates() {
-    val response = json.decodeFromString<SearchLyricsResponse>("{}")
+  fun `downloads MIME wrapped base64 and normalises it`() = runBlocking {
+    val rawLyrics = "[00:00.00]作词: A\n[00:10.00]line one\n[00:20.50]line two"
+    val encoded = Base64.getMimeEncoder(8, "\r\n".toByteArray())
+      .encodeToString(rawLyrics.toByteArray(Charsets.UTF_8))
 
-    assertEquals(0, response.status)
-    assertTrue(response.candidates.isEmpty())
+    val engine = FakeEngine { data ->
+      when (bodyFromPath(data)) {
+        "/api/v3/search/song" ->
+          reply(data, HttpStatusCode.OK, """{"data":{"info":[{"duration":100,"hash":"h1"}]}}""")
+        "/search" ->
+          reply(
+            data,
+            HttpStatusCode.OK,
+            """{"candidates":[{"id":1,"product_from":"pc","duration":100,"accesskey":"a1"}]}""",
+          )
+        "/download" -> reply(data, HttpStatusCode.OK, """{"content":"${jsonString(encoded)}"}""")
+        else -> reply(data, HttpStatusCode.NotFound, "")
+      }
+    }
+    KuGou.testClient = HttpClient(engine) { expectSuccess = true }
+
+    val result = KuGou.getLyrics("T", "A", 100)
+
+    assertTrue(result.isSuccess)
+    assertEquals("[00:10.00]line one\n[00:20.50]line two", result.getOrNull())
+    val downloadUrl = engine.requests.single { it.contains("/download") }
+    assertTrue(downloadUrl.contains("fmt=lrc"))
+    assertTrue(downloadUrl.contains("charset=utf8"))
+    assertTrue(downloadUrl.contains("id=1"))
+    assertTrue(downloadUrl.contains("accesskey=a1"))
+  }
+
+  @Test
+  fun `missing candidate produces the documented message`() = runBlocking {
+    val engine = FakeEngine { data ->
+      when (bodyFromPath(data)) {
+        "/api/v3/search/song" -> reply(data, HttpStatusCode.OK, """{"data":{"info":[]}}""")
+        "/search" -> reply(data, HttpStatusCode.OK, """{"candidates":[]}""")
+        else -> reply(data, HttpStatusCode.NotFound, "")
+      }
+    }
+    KuGou.testClient = HttpClient(engine) { expectSuccess = true }
+
+    val result = KuGou.getLyrics("T", "A", 100)
+
+    assertTrue(result.isFailure)
+    assertEquals("No lyrics candidate for T - A", result.exceptionOrNull()?.message)
+  }
+
+  @Test
+  fun `forbidden song search fails without retrying`() = runBlocking {
+    val engine = FakeEngine { data -> reply(data, HttpStatusCode.Forbidden, "") }
+    KuGou.testClient = HttpClient(engine) { expectSuccess = true }
+
+    val result = KuGou.getLyrics("T", "A", 100)
+
+    assertTrue(result.isFailure)
+    assertEquals(1, engine.requests.size)
+  }
+
+  @Test
+  fun `song search uses one page and literal-space keywords`() = runBlocking {
+    val engine = FakeEngine { data ->
+      reply(data, HttpStatusCode.OK, """{"data":{"info":[]}}""")
+    }
+    KuGou.testClient = HttpClient(engine) { expectSuccess = true }
+
+    KuGou.searchSongs(KuGou.generateKeyword("T", "A"))
+
+    val url = engine.requests.single()
+    assertTrue(url.contains("pagesize=8"))
+    assertFalse(url.contains("page="))
+    assertTrue(url.contains("keyword=T%20-%20A"))
+    assertFalse(url.contains("keyword=T+-+A"))
   }
 }

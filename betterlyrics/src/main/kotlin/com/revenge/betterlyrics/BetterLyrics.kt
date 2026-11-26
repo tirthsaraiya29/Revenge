@@ -2,81 +2,65 @@ package com.revenge.betterlyrics
 
 import com.revenge.betterlyrics.models.TTMLResponse
 import io.ktor.client.HttpClient
-import io.ktor.client.call.body
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.HttpTimeout
-import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.get
 import io.ktor.client.request.parameter
+import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpStatusCode
-import io.ktor.serialization.kotlinx.json.json
-import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.Json
 
-/**
- * Client for the BetterLyrics API, which serves word-level TTML for a track.
- *
- * [getLyrics] and [getAllLyrics] never throw for expected failures: transport errors, non-2xx
- * responses, malformed JSON and unparseable TTML are surfaced as a failed [Result].
- */
+private const val BASE_URL = "https://lyrics-api.boidu.dev"
+private const val LYRICS_UNAVAILABLE = "Lyrics unavailable"
+private const val PARSE_FAILED = "Failed to parse lyrics"
+
 object BetterLyrics {
-  private const val BASE_URL = "https://lyrics-api.boidu.dev"
+  private val json = Json {
+    isLenient = true
+    ignoreUnknownKeys = true
+  }
 
-  private val client by lazy {
+  internal var testClient: HttpClient? = null
+
+  private val defaultClient: HttpClient by lazy {
     HttpClient(CIO) {
-      install(ContentNegotiation) {
-        json(
-          Json {
-            isLenient = true
-            ignoreUnknownKeys = true
-          },
-        )
-      }
-
+      expectSuccess = false
       install(HttpTimeout) {
         requestTimeoutMillis = 15_000
         connectTimeoutMillis = 10_000
         socketTimeoutMillis = 15_000
       }
-
-      expectSuccess = false
     }
   }
 
-  /**
-   * Fetches synced lyrics for a track and converts them from TTML to the app's LRC dialect.
-   *
-   * @param title track title used for the provider lookup
-   * @param artist performing artist
-   * @param duration track duration in whole seconds; ignored when non-positive
-   * @param album optional album name
-   * @return the LRC text, or a failure describing why nothing usable was returned
-   */
+  private fun client(): HttpClient = testClient ?: defaultClient
+
   suspend fun getLyrics(
     title: String,
     artist: String,
     duration: Int,
     album: String? = null,
-  ): Result<String> =
-    try {
-      // The API matches on exact metadata, so no normalization is applied here.
+  ): Result<String> {
+    return try {
       val ttml = fetchTtml(title, artist, duration, album)
-        ?: throw IllegalStateException("Lyrics unavailable")
-      val lines = TTMLParser.parseTTML(ttml)
-      if (lines.isEmpty()) {
-        throw IllegalStateException("Failed to parse lyrics")
+      if (ttml == null) {
+        Result.failure(IllegalStateException(LYRICS_UNAVAILABLE))
+      } else {
+        val lines = TTMLParser.parseTTML(ttml)
+        if (lines.isEmpty()) {
+          Result.failure(IllegalStateException(PARSE_FAILED))
+        } else {
+          Result.success(TTMLParser.toLRC(lines))
+        }
       }
-      Result.success(TTMLParser.toLRC(lines))
     } catch (e: CancellationException) {
       throw e
     } catch (e: Exception) {
       Result.failure(e)
     }
+  }
 
-  /**
-   * Convenience wrapper for callers that only care about a successful result.
-   * [callback] is invoked exactly once, and only when lyrics were retrieved.
-   */
   suspend fun getAllLyrics(
     title: String,
     artist: String,
@@ -92,27 +76,23 @@ object BetterLyrics {
     artist: String,
     duration: Int,
     album: String?,
-  ): String? =
-    try {
-      val response =
-        client.get("$BASE_URL/getLyrics") {
-          parameter("s", title)
-          parameter("a", artist)
-          if (duration > 0) {
-            parameter("d", duration)
-          }
-          if (!album.isNullOrBlank()) {
-            parameter("al", album)
-          }
-        }
-      if (response.status == HttpStatusCode.OK) {
-        response.body<TTMLResponse>().ttml
-      } else {
+  ): String? {
+    return try {
+      val response = client().get("$BASE_URL/getLyrics") {
+        parameter("s", title)
+        parameter("a", artist)
+        if (duration > 0) parameter("d", duration)
+        if (!album.isNullOrBlank()) parameter("al", album)
+      }
+      if (response.status != HttpStatusCode.OK) {
         null
+      } else {
+        json.decodeFromString<TTMLResponse>(response.bodyAsText()).ttml
       }
     } catch (e: CancellationException) {
       throw e
     } catch (e: Exception) {
       null
     }
+  }
 }

@@ -2,9 +2,6 @@ package com.revenge.paxsenix.models
 
 import kotlinx.serialization.Serializable
 
-/** The search endpoint returns a bare JSON array of tracks. */
-typealias SearchResponse = List<SearchResult>
-
 @Serializable
 data class SearchResult(
   val id: String,
@@ -43,7 +40,10 @@ data class LyricsContent(
   val oppositeTurn: Boolean = false,
 )
 
-@Serializable data class LyricsMetadata(val songwriters: List<String> = emptyList())
+@Serializable
+data class LyricsMetadata(
+  val songwriters: List<String> = emptyList(),
+)
 
 @Serializable
 data class LyricsResponse(

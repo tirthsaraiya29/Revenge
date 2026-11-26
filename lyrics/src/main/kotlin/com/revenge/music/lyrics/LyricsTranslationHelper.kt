@@ -7,504 +7,471 @@ import com.revenge.music.api.DeepLService
 import com.revenge.music.api.MistralService
 import com.revenge.music.api.OpenRouterService
 import com.revenge.music.api.OpenRouterStreamingService
+import com.revenge.music.api.OpenRouterStreamingService.StreamChunk
 import com.revenge.music.constants.LanguageCodeToName
 import com.revenge.music.db.MusicDatabase
 import com.revenge.music.db.entities.LyricsEntity
 import java.util.Locale
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeoutOrNull
-import timber.log.Timber
+import kotlinx.coroutines.withTimeout
+
+sealed class TranslationStatus {
+    data object Idle : TranslationStatus()
+    data class Translating(val logs: List<String> = emptyList()) : TranslationStatus()
+    data object Success : TranslationStatus()
+    data class Error(val message: String) : TranslationStatus()
+}
+
+internal data class TranslationRequest(
+    val fullText: String,
+    val targetLanguageCode: String,
+    val targetLanguageName: String,
+    val apiKey: String,
+    val baseUrl: String,
+    val model: String,
+    val mode: String,
+    val provider: String,
+    val deeplApiKey: String,
+    val deeplFormality: String,
+    val useStreaming: Boolean,
+    val lineCount: Int,
+)
+
+internal interface TranslationDelegate {
+    suspend fun translate(request: TranslationRequest, onLog: (String) -> Unit): Result<List<String>>
+}
 
 object LyricsTranslationHelper {
-  private const val STATUS_LINGER_MS = 3_000L
-  private const val TRANSLATION_TIMEOUT_MS = 45_000L
 
-  private val _status = MutableStateFlow<TranslationStatus>(TranslationStatus.Idle)
-  val status: StateFlow<TranslationStatus> = _status.asStateFlow()
+    private const val STATUS_LINGER_MS = 3_000L
+    private const val TRANSLATION_BUDGET_MS = 45_000L
 
-  private val _hasActiveTranslations = MutableStateFlow(false)
-  val hasActiveTranslations: StateFlow<Boolean> = _hasActiveTranslations.asStateFlow()
+    private val _status = MutableStateFlow<TranslationStatus>(TranslationStatus.Idle)
+    val status: StateFlow<TranslationStatus> = _status.asStateFlow()
 
-  private val _manualTrigger =
-    MutableSharedFlow<Unit>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
-  val manualTrigger: SharedFlow<Unit> = _manualTrigger.asSharedFlow()
+    private val _hasActiveTranslations = MutableStateFlow(false)
+    val hasActiveTranslations: StateFlow<Boolean> = _hasActiveTranslations.asStateFlow()
 
-  private val _clearTranslationsTrigger =
-    MutableSharedFlow<Unit>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
-  val clearTranslationsTrigger: SharedFlow<Unit> = _clearTranslationsTrigger.asSharedFlow()
+    private val _manualTrigger = MutableSharedFlow<Unit>(
+        extraBufferCapacity = 1,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+    val manualTrigger: SharedFlow<Unit> = _manualTrigger
 
-  private val _translationSaved =
-    MutableSharedFlow<Unit>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
-  val translationSaved: SharedFlow<Unit> = _translationSaved.asSharedFlow()
+    private val _clearTranslationsTrigger = MutableSharedFlow<Unit>(
+        extraBufferCapacity = 1,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+    val clearTranslationsTrigger: SharedFlow<Unit> = _clearTranslationsTrigger
 
-  private var translationJob: Job? = null
-  private var statusResetJob: Job? = null
-  private var isCompositionActive = true
+    private val _translationSaved = MutableSharedFlow<Unit>(
+        extraBufferCapacity = 1,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+    val translationSaved: SharedFlow<Unit> = _translationSaved
 
-  // In-memory cache keyed by lyrics text hash + mode + language; survives song changes.
-  private val translationCache = mutableMapOf<String, List<String>>()
+    // Internal seams for deterministic tests.
+    internal var timerScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    internal var persistenceScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    internal var workDispatcher: CoroutineDispatcher = Dispatchers.IO
+    internal var translationDelegate: TranslationDelegate? = null
 
-  private fun cacheKey(text: String, mode: String, language: String): String =
-    "${text.hashCode()}_${mode}_$language"
+    private val cache = HashMap<String, List<String>>()
 
-  private fun nonEmptyEntries(lyrics: List<LyricsEntry>): List<Pair<Int, LyricsEntry>> =
-    lyrics.mapIndexedNotNull { index, entry ->
-      if (entry.text.isNotBlank()) index to entry else null
+    private var translationJob: Job? = null
+    private var statusResetJob: Job? = null
+
+    @Volatile
+    private var compositionActive: Boolean = false
+
+    fun getCachedTranslations(
+        lyrics: List<LyricsEntry>,
+        mode: String,
+        language: String,
+    ): List<String>? = synchronized(cache) { cache[cacheKey(lyrics, mode, language)] }
+
+    fun applyCachedTranslations(
+        lyrics: List<LyricsEntry>,
+        mode: String,
+        language: String,
+    ): Boolean {
+        val cached = getCachedTranslations(lyrics, mode, language) ?: return false
+        val nonEmpty = lyrics.filter { it.text.isNotBlank() }
+        if (cached.size < nonEmpty.size) return false
+        nonEmpty.forEachIndexed { index, entry -> entry.translatedTextFlow.value = cached[index] }
+        return true
     }
 
-  private fun systemText(lyrics: List<LyricsEntry>): String =
-    nonEmptyEntries(lyrics).joinToString("\n") { it.second.text }
-
-  /**
-   * Reads complete JSON strings from a partial streaming array so lines can appear as they arrive.
-   * Stops at the first unterminated string.
-   */
-  private fun tryParsePartial(content: String, expectedCount: Int): List<String> {
-    val start = content.indexOf('[')
-    if (start == -1) return emptyList()
-
-    val result = mutableListOf<String>()
-    val current = StringBuilder()
-    var inString = false
-    var escaping = false
-    var pos = start + 1
-
-    while (pos < content.length && result.size < expectedCount) {
-      val char = content[pos]
-      when {
-        escaping -> {
-          current.append(char)
-          escaping = false
-        }
-        inString && char == '\\' -> {
-          current.append(char)
-          escaping = true
-        }
-        char == '"' ->
-          if (inString) {
-            result.add(current.toString())
-            current.clear()
-            inString = false
-          } else {
-            inString = true
-          }
-        inString -> current.append(char)
-        char == ']' -> break
-      }
-      pos++
+    fun triggerManualTranslation() {
+        _manualTrigger.tryEmit(Unit)
     }
-    return result
-  }
 
-  fun getCachedTranslations(
-    lyrics: List<LyricsEntry>,
-    mode: String,
-    language: String,
-  ): List<String>? = translationCache[cacheKey(systemText(lyrics), mode, language)]
-
-  fun applyCachedTranslations(lyrics: List<LyricsEntry>, mode: String, language: String): Boolean {
-    val cached = getCachedTranslations(lyrics, mode, language) ?: return false
-    val entries = nonEmptyEntries(lyrics)
-    if (cached.size < entries.size) return false
-    entries.forEachIndexed { index, (originalIndex, _) ->
-      lyrics[originalIndex].translatedTextFlow.value = cached[index]
+    fun triggerClearTranslations() {
+        _hasActiveTranslations.value = false
+        _clearTranslationsTrigger.tryEmit(Unit)
     }
-    return true
-  }
 
-  fun triggerManualTranslation() {
-    _manualTrigger.tryEmit(Unit)
-  }
+    fun hasTranslations(lyricsEntity: LyricsEntity?): Boolean =
+        !lyricsEntity?.translatedLyrics.isNullOrBlank()
 
-  fun triggerClearTranslations() {
-    _hasActiveTranslations.value = false
-    _clearTranslationsTrigger.tryEmit(Unit)
-  }
+    fun clearTranslations(lyricsEntity: LyricsEntity): LyricsEntity = lyricsEntity.copy(
+        translatedLyrics = "",
+        translationLanguage = "",
+        translationMode = "",
+    )
 
-  fun hasTranslations(lyricsEntity: LyricsEntity?): Boolean =
-    !lyricsEntity?.translatedLyrics.isNullOrBlank()
-
-  fun clearTranslations(lyricsEntity: LyricsEntity): LyricsEntity =
-    lyricsEntity.copy(translatedLyrics = "", translationLanguage = "", translationMode = "")
-
-  fun resetStatus() {
-    statusResetJob?.cancel()
-    statusResetJob = null
-    _status.value = TranslationStatus.Idle
-  }
-
-  fun clearCache() {
-    translationCache.clear()
-  }
-
-  fun setCompositionActive(active: Boolean) {
-    isCompositionActive = active
-  }
-
-  fun cancelTranslation() {
-    statusResetJob?.cancel()
-    statusResetJob = null
-    translationJob?.cancel()
-    translationJob = null
-    _status.value = TranslationStatus.Idle
-  }
-
-  private fun reportError(scope: CoroutineScope, message: String) {
-    if (!isCompositionActive) return
-    statusResetJob?.cancel()
-    val errorStatus = TranslationStatus.Error(message)
-    _status.value = errorStatus
-    statusResetJob = scope.launch {
-      delay(STATUS_LINGER_MS)
-      if (_status.value == errorStatus && isCompositionActive) {
+    fun resetStatus() {
+        statusResetJob?.cancel()
         _status.value = TranslationStatus.Idle
-      }
     }
-  }
 
-  private suspend fun setSuccess() {
-    _hasActiveTranslations.value = true
-    _status.value = TranslationStatus.Success
-    delay(STATUS_LINGER_MS)
-    if (_status.value is TranslationStatus.Success && isCompositionActive) {
-      _status.value = TranslationStatus.Idle
+    fun clearCache() {
+        synchronized(cache) { cache.clear() }
     }
-  }
 
-  fun loadTranslationsFromDatabase(
-    lyrics: List<LyricsEntry>,
-    lyricsEntity: LyricsEntity?,
-    targetLanguage: String,
-    mode: String,
-  ) {
-    lyrics.forEach { it.translatedTextFlow.value = null }
+    fun setCompositionActive(active: Boolean) {
+        compositionActive = active
+    }
 
-    if (lyricsEntity?.translatedLyrics.isNullOrBlank() ||
-      lyricsEntity.translationLanguage != targetLanguage ||
-      lyricsEntity.translationMode != mode
+    fun cancelTranslation() {
+        statusResetJob?.cancel()
+        translationJob?.cancel()
+        translationJob = null
+        _status.value = TranslationStatus.Idle
+    }
+
+    fun loadTranslationsFromDatabase(
+        lyrics: List<LyricsEntry>,
+        lyricsEntity: LyricsEntity?,
+        targetLanguage: String,
+        mode: String,
     ) {
-      _hasActiveTranslations.value = false
-      return
+        lyrics.forEach { it.translatedTextFlow.value = null }
+
+        if (lyricsEntity == null ||
+            lyricsEntity.translatedLyrics.isNullOrBlank() ||
+            lyricsEntity.translationLanguage != targetLanguage ||
+            lyricsEntity.translationMode != mode
+        ) {
+            _hasActiveTranslations.value = false
+            return
+        }
+
+        val lines = lyricsEntity.translatedLyrics.split("\n")
+        val nonEmpty = lyrics.filter { it.text.isNotBlank() }
+        nonEmpty.forEachIndexed { index, entry ->
+            if (index < lines.size) entry.translatedTextFlow.value = lines[index]
+        }
+        storeCache(cacheKey(lyrics, mode, targetLanguage), lines)
+        _hasActiveTranslations.value = true
     }
 
-    val translatedLines = lyricsEntity.translatedLyrics.lines()
-    nonEmptyEntries(lyrics).forEachIndexed { index, (originalIndex, _) ->
-      if (index < translatedLines.size) {
-        lyrics[originalIndex].translatedTextFlow.value = translatedLines[index]
-      }
-    }
+    fun translateLyrics(
+        lyrics: List<LyricsEntry>,
+        targetLanguage: String,
+        apiKey: String,
+        baseUrl: String,
+        model: String,
+        mode: String,
+        scope: CoroutineScope,
+        context: Context,
+        provider: String = "OpenRouter",
+        deeplApiKey: String = "",
+        deeplFormality: String = "default",
+        useStreaming: Boolean = true,
+        songId: String = "",
+        database: MusicDatabase? = null,
+    ) {
+        statusResetJob?.cancel()
+        translationJob?.cancel()
+        _status.value = TranslationStatus.Translating()
+        lyrics.forEach { it.translatedTextFlow.value = null }
 
-    translationCache[cacheKey(systemText(lyrics), mode, targetLanguage)] = translatedLines
-    _hasActiveTranslations.value = true
-  }
-
-  fun translateLyrics(
-    lyrics: List<LyricsEntry>,
-    targetLanguage: String,
-    apiKey: String,
-    baseUrl: String,
-    model: String,
-    mode: String,
-    scope: CoroutineScope,
-    context: Context,
-    provider: String = "OpenRouter",
-    deeplApiKey: String = "",
-    deeplFormality: String = "default",
-    useStreaming: Boolean = true,
-    songId: String = "",
-    database: MusicDatabase? = null,
-  ) {
-    statusResetJob?.cancel()
-    statusResetJob = null
-    translationJob?.cancel()
-    _status.value = TranslationStatus.Translating()
-    lyrics.forEach { it.translatedTextFlow.value = null }
-
-    translationJob =
-      scope.launch(Dispatchers.IO) {
-        try {
-          val effectiveApiKey = if (provider == "DeepL") deeplApiKey else apiKey
-          if (effectiveApiKey.isBlank()) {
-            reportError(scope, context.getString(R.string.ai_error_api_key_required))
-            return@launch
-          }
-          if (lyrics.isEmpty()) {
-            reportError(scope, context.getString(R.string.ai_error_no_lyrics))
-            return@launch
-          }
-
-          val entries = nonEmptyEntries(lyrics)
-          if (entries.isEmpty()) {
-            reportError(scope, context.getString(R.string.ai_error_lyrics_empty))
-            return@launch
-          }
-
-          val fullText = entries.joinToString("\n") { it.second.text }
-          val key = cacheKey(fullText, mode, targetLanguage)
-
-          translationCache[key]?.let { cached ->
-            if (cached.size >= entries.size) {
-              entries.forEachIndexed { index, (originalIndex, _) ->
-                lyrics[originalIndex].translatedTextFlow.value = cached[index]
-              }
-              AiLogger.log(context, "Lyrics Translation", "Translated lyrics for $songId")
-              persistTranslations(
-                scope = scope,
-                database = database,
-                songId = songId,
-                targetLanguage = targetLanguage,
-                mode = mode,
-                lines = cached,
-                onlyIfEmpty = true,
-              )
-              setSuccess()
-              return@launch
+        translationJob = scope.launch(workDispatcher) {
+            try {
+                runPipeline(
+                    lyrics = lyrics,
+                    targetLanguage = targetLanguage,
+                    apiKey = apiKey,
+                    baseUrl = baseUrl,
+                    model = model,
+                    mode = mode,
+                    context = context,
+                    provider = provider,
+                    deeplApiKey = deeplApiKey,
+                    deeplFormality = deeplFormality,
+                    useStreaming = useStreaming,
+                    songId = songId,
+                    database = database,
+                )
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (error: Exception) {
+                reportError(
+                    error.message ?: context.getString(R.string.ai_error_translation_failed)
+                )
             }
-          }
+        }
+    }
 
-          if (targetLanguage.isBlank()) {
-            reportError(scope, context.getString(R.string.ai_error_language_required))
-            return@launch
-          }
+    private suspend fun runPipeline(
+        lyrics: List<LyricsEntry>,
+        targetLanguage: String,
+        apiKey: String,
+        baseUrl: String,
+        model: String,
+        mode: String,
+        context: Context,
+        provider: String,
+        deeplApiKey: String,
+        deeplFormality: String,
+        useStreaming: Boolean,
+        songId: String,
+        database: MusicDatabase?,
+    ) {
+        val effectiveApiKey = if (provider == "DeepL") deeplApiKey else apiKey
+        if (effectiveApiKey.isBlank()) {
+            reportError(context.getString(R.string.ai_error_api_key_required))
+            return
+        }
+        if (lyrics.isEmpty()) {
+            reportError(context.getString(R.string.ai_error_no_lyrics))
+            return
+        }
 
-          val languageName = resolveLanguageName(targetLanguage)
-          val result =
-            withTimeoutOrNull(TRANSLATION_TIMEOUT_MS) {
-              runTranslation(
-                provider = provider,
-                fullText = fullText,
-                targetLanguage = languageName,
-                languageCode = targetLanguage,
-                apiKey = apiKey,
-                deeplApiKey = deeplApiKey,
-                deeplFormality = deeplFormality,
-                baseUrl = baseUrl,
-                model = model,
-                mode = mode,
-                useStreaming = useStreaming,
-                entryCount = entries.size,
-                lyrics = lyrics,
-                entries = entries,
-              )
-            } ?: Result.failure(
-              Exception(context.getString(R.string.ai_error_translation_failed)),
+        val nonEmpty = lyrics.filter { it.text.isNotBlank() }
+        if (nonEmpty.isEmpty()) {
+            reportError(context.getString(R.string.ai_error_lyrics_empty))
+            return
+        }
+
+        val fullText = nonEmpty.joinToString("\n") { it.text }
+        val cached = getCachedTranslations(lyrics, mode, targetLanguage)
+        if (cached != null && cached.size >= nonEmpty.size) {
+            assignTranslations(nonEmpty, cached)
+            AiLogger.log(context, "Lyrics Translation", "Translated lyrics for $songId")
+            persist(songId, database, targetLanguage, mode, cached)
+            reportSuccess()
+            return
+        }
+
+        if (targetLanguage.isBlank()) {
+            reportError(context.getString(R.string.ai_error_language_required))
+            return
+        }
+
+        val request = TranslationRequest(
+            fullText = fullText,
+            targetLanguageCode = targetLanguage,
+            targetLanguageName = resolveLanguageName(targetLanguage),
+            apiKey = apiKey,
+            baseUrl = baseUrl,
+            model = model,
+            mode = mode,
+            provider = provider,
+            deeplApiKey = deeplApiKey,
+            deeplFormality = deeplFormality,
+            useStreaming = useStreaming,
+            lineCount = nonEmpty.size,
+        )
+
+        val delegate = translationDelegate ?: defaultDelegate
+        val result = try {
+            withTimeout(TRANSLATION_BUDGET_MS) {
+                delegate.translate(request) { message -> appendLog(message) }
+            }
+        } catch (timeout: TimeoutCancellationException) {
+            Result.failure(Exception(context.getString(R.string.ai_error_translation_failed)))
+        }
+
+        val translated = result.getOrNull()
+        if (translated == null) {
+            reportError(
+                result.exceptionOrNull()?.message ?: context.getString(R.string.ai_error_unknown)
+            )
+            return
+        }
+
+        if (!compositionActive) return
+
+        storeCache(cacheKey(lyrics, mode, targetLanguage), translated)
+        persist(songId, database, targetLanguage, mode, translated)
+
+        if (translated.isEmpty() && nonEmpty.isNotEmpty()) {
+            reportError(context.getString(R.string.ai_error_unexpected))
+            return
+        }
+
+        assignTranslations(nonEmpty, translated)
+        AiLogger.log(context, "Lyrics Translation", "Translated lyrics for $songId")
+        reportSuccess()
+    }
+
+    private fun assignTranslations(entries: List<LyricsEntry>, translated: List<String>) {
+        entries.forEachIndexed { index, entry ->
+            entry.translatedTextFlow.value = translated.getOrNull(index)
+        }
+    }
+
+    private fun appendLog(message: String) {
+        _status.update { current ->
+            if (current is TranslationStatus.Translating) {
+                TranslationStatus.Translating(current.logs + message)
+            } else {
+                current
+            }
+        }
+    }
+
+    private fun reportError(message: String) {
+        if (!compositionActive) return
+        statusResetJob?.cancel()
+        val error = TranslationStatus.Error(message)
+        _status.value = error
+        statusResetJob = timerScope.launch {
+            delay(STATUS_LINGER_MS)
+            if (_status.value == error && compositionActive) {
+                _status.value = TranslationStatus.Idle
+            }
+        }
+    }
+
+    private fun reportSuccess() {
+        _hasActiveTranslations.value = true
+        statusResetJob?.cancel()
+        _status.value = TranslationStatus.Success
+        statusResetJob = timerScope.launch {
+            delay(STATUS_LINGER_MS)
+            if (_status.value == TranslationStatus.Success && compositionActive) {
+                _status.value = TranslationStatus.Idle
+            }
+        }
+    }
+
+    private fun resolveLanguageName(code: String): String {
+        LanguageCodeToName[code]?.let { return it }
+        val display = try {
+            Locale.forLanguageTag(code).displayLanguage
+        } catch (_: Exception) {
+            ""
+        }
+        return if (display.isNotBlank() && display != code) display else code
+    }
+
+    private fun cacheKey(lyrics: List<LyricsEntry>, mode: String, language: String): String {
+        val text = lyrics.filter { it.text.isNotBlank() }.joinToString("\n") { it.text }
+        return "$text\u0000$mode\u0000$language"
+    }
+
+    private fun storeCache(key: String, lines: List<String>) {
+        synchronized(cache) { cache[key] = lines }
+    }
+
+    private fun persist(
+        songId: String,
+        database: MusicDatabase?,
+        targetLanguage: String,
+        mode: String,
+        lines: List<String>,
+    ) {
+        if (songId.isBlank() || database == null) return
+        persistenceScope.launch {
+            try {
+                val existing = database.lyrics(songId).first() ?: return@launch
+                if (!existing.translatedLyrics.isBlank()) return@launch
+                database.query {
+                    upsert(
+                        existing.copy(
+                            translatedLyrics = lines.joinToString("\n"),
+                            translationLanguage = targetLanguage,
+                            translationMode = mode,
+                        )
+                    )
+                }
+                _translationSaved.tryEmit(Unit)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    private val defaultDelegate = object : TranslationDelegate {
+        override suspend fun translate(
+            request: TranslationRequest,
+            onLog: (String) -> Unit,
+        ): Result<List<String>> = when {
+            request.provider == "DeepL" -> DeepLService.translate(
+                text = request.fullText,
+                targetLanguage = request.targetLanguageCode,
+                apiKey = request.deeplApiKey,
+                formality = request.deeplFormality,
+                onLog = onLog,
             )
 
-          result
-            .onSuccess { translated ->
-              if (!isCompositionActive) return@onSuccess
-              translationCache[cacheKey(fullText, mode, targetLanguage)] = translated
+            request.provider == "Mistral" -> MistralService.translate(
+                text = request.fullText,
+                targetLanguage = request.targetLanguageName,
+                apiKey = request.apiKey,
+                model = request.model,
+                mode = request.mode,
+                onLog = onLog,
+            )
 
-              persistTranslations(
-                scope = scope,
-                database = database,
-                songId = songId,
-                targetLanguage = targetLanguage,
-                mode = mode,
-                lines = translated,
-              )
+            request.useStreaming && request.provider != "Custom" -> streamTranslate(request)
 
-              if (translated.isEmpty() && entries.isNotEmpty()) {
-                reportError(scope, context.getString(R.string.ai_error_unexpected))
-                return@onSuccess
-              }
-              translated.forEachIndexed { index, line ->
-                if (index < entries.size) {
-                  lyrics[entries[index].first].translatedTextFlow.value = line
-                }
-              }
-              AiLogger.log(context, "Lyrics Translation", "Translated lyrics for $songId")
-              setSuccess()
-            }
-            .onFailure { error ->
-              reportError(
-                scope,
-                error.message ?: context.getString(R.string.ai_error_unknown),
-              )
-            }
-        } catch (e: CancellationException) {
-          throw e
-        } catch (e: Exception) {
-          reportError(
-            scope,
-            e.message ?: context.getString(R.string.ai_error_translation_failed),
-          )
+            else -> OpenRouterService.translate(
+                text = request.fullText,
+                targetLanguage = request.targetLanguageName,
+                apiKey = request.apiKey,
+                baseUrl = request.baseUrl,
+                model = request.model,
+                mode = request.mode,
+                onLog = onLog,
+            )
         }
-      }
-  }
-
-  private suspend fun runTranslation(
-    provider: String,
-    fullText: String,
-    targetLanguage: String,
-    languageCode: String,
-    apiKey: String,
-    deeplApiKey: String,
-    deeplFormality: String,
-    baseUrl: String,
-    model: String,
-    mode: String,
-    useStreaming: Boolean,
-    entryCount: Int,
-    lyrics: List<LyricsEntry>,
-    entries: List<Pair<Int, LyricsEntry>>,
-  ): Result<List<String>> =
-    when {
-      provider == "DeepL" ->
-        DeepLService.translate(
-          text = fullText,
-          targetLanguage = languageCode,
-          apiKey = deeplApiKey,
-          formality = deeplFormality,
-          onLog = ::appendLog,
-        )
-      provider == "Mistral" ->
-        MistralService.translate(
-          text = fullText,
-          targetLanguage = targetLanguage,
-          apiKey = apiKey,
-          model = model,
-          mode = mode,
-          onLog = ::appendLog,
-        )
-      useStreaming && provider != "Custom" ->
-        streamTranslation(
-          fullText = fullText,
-          targetLanguage = targetLanguage,
-          apiKey = apiKey,
-          baseUrl = baseUrl,
-          model = model,
-          mode = mode,
-          entryCount = entryCount,
-          lyrics = lyrics,
-          entries = entries,
-        )
-      else ->
-        OpenRouterService.translate(
-          text = fullText,
-          targetLanguage = targetLanguage,
-          apiKey = apiKey,
-          baseUrl = baseUrl,
-          model = model,
-          mode = mode,
-          onLog = ::appendLog,
-        )
     }
 
-  private suspend fun streamTranslation(
-    fullText: String,
-    targetLanguage: String,
-    apiKey: String,
-    baseUrl: String,
-    model: String,
-    mode: String,
-    entryCount: Int,
-    lyrics: List<LyricsEntry>,
-    entries: List<Pair<Int, LyricsEntry>>,
-  ): Result<List<String>> {
-    var complete: List<String>? = null
-    var failure: String? = null
-    val accumulated = StringBuilder()
-
-    OpenRouterStreamingService.streamTranslation(
-        text = fullText,
-        targetLanguage = targetLanguage,
-        apiKey = apiKey,
-        baseUrl = baseUrl,
-        model = model,
-        mode = mode,
-      )
-      .collect { chunk ->
-        when (chunk) {
-          is OpenRouterStreamingService.StreamChunk.Content -> {
-            accumulated.append(chunk.text)
-            tryParsePartial(accumulated.toString(), entryCount).forEachIndexed { index, line ->
-              if (index < entries.size && line.isNotBlank()) {
-                lyrics[entries[index].first].translatedTextFlow.value = line
-              }
+    private suspend fun streamTranslate(request: TranslationRequest): Result<List<String>> {
+        var failure: String? = null
+        var completed: List<String>? = null
+        OpenRouterStreamingService.streamTranslation(
+            text = request.fullText,
+            targetLanguage = request.targetLanguageName,
+            apiKey = request.apiKey,
+            baseUrl = request.baseUrl,
+            model = request.model,
+            mode = request.mode,
+        ).collect { chunk ->
+            when (chunk) {
+                is StreamChunk.Content -> Unit
+                is StreamChunk.Complete -> completed = chunk.translatedLines
+                is StreamChunk.Error -> failure = chunk.message
             }
-            if (_status.value is TranslationStatus.Translating) {
-              _status.value = TranslationStatus.Translating()
-            }
-          }
-          is OpenRouterStreamingService.StreamChunk.Complete -> complete = chunk.translatedLines
-          is OpenRouterStreamingService.StreamChunk.Error -> failure = chunk.message
         }
-      }
-
-    return when {
-      failure != null -> Result.failure(Exception(failure))
-      complete != null -> Result.success(complete!!)
-      else -> Result.failure(Exception("No translation received"))
-    }
-  }
-
-  private fun appendLog(message: String) {
-    val current = _status.value
-    if (current is TranslationStatus.Translating) {
-      _status.value = current.copy(logs = current.logs + message)
-    }
-  }
-
-  private fun resolveLanguageName(code: String): String =
-    LanguageCodeToName[code]
-      ?: runCatching { Locale.forLanguageTag(code).displayLanguage }
-        .getOrNull()
-        ?.takeIf { it.isNotBlank() && it != code }
-      ?: code
-
-  private fun persistTranslations(
-    scope: CoroutineScope,
-    database: MusicDatabase?,
-    songId: String,
-    targetLanguage: String,
-    mode: String,
-    lines: List<String>,
-    onlyIfEmpty: Boolean = false,
-  ) {
-    if (songId.isBlank() || database == null) return
-    scope.launch(Dispatchers.IO) {
-      try {
-        val existing = database.lyrics(songId).first() ?: return@launch
-        if (onlyIfEmpty && !existing.translatedLyrics.isNullOrBlank()) return@launch
-        database.query {
-          upsert(
-            existing.copy(
-              translatedLyrics = lines.joinToString("\n"),
-              translationLanguage = targetLanguage,
-              translationMode = mode,
-            ),
-          )
+        val recordedFailure = failure
+        val recordedComplete = completed
+        return when {
+            recordedFailure != null -> Result.failure(Exception(recordedFailure))
+            recordedComplete != null -> Result.success(recordedComplete)
+            else -> Result.failure(Exception("No translation received"))
         }
-        _translationSaved.tryEmit(Unit)
-      } catch (e: CancellationException) {
-        throw e
-      } catch (e: Exception) {
-        Timber.e(e, "Failed to persist translated lyrics")
-      }
     }
-  }
-
-  sealed class TranslationStatus {
-    data object Idle : TranslationStatus()
-
-    data class Translating(val logs: List<String> = emptyList()) : TranslationStatus()
-
-    data object Success : TranslationStatus()
-
-    data class Error(val message: String) : TranslationStatus()
-  }
 }

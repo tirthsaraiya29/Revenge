@@ -1,23 +1,221 @@
 package com.revenge.betterlyrics
 
+import java.io.StringReader
 import java.util.Locale
+import javax.xml.parsers.DocumentBuilder
 import javax.xml.parsers.DocumentBuilderFactory
-import org.w3c.dom.Document
+import kotlin.math.roundToLong
 import org.w3c.dom.Element
 import org.w3c.dom.Node
+import org.xml.sax.InputSource
 
-/**
- * Converts TTML (Timed Text Markup Language) lyric documents into the app's LRC dialect.
- *
- * The app's dialect understands line timestamps, inline word timestamps (`<w:t0:t1|...>`) and two
- * extensions: `{agent:<id>}` for the vocalist and `{bg}` for background vocals.
- */
+private const val TTML_METADATA_NS = "http://www.w3.org/ns/ttml#metadata"
+
+private fun hardenedBuilder(): DocumentBuilder {
+  val factory = DocumentBuilderFactory.newInstance()
+  factory.isNamespaceAware = true
+  val features = listOf(
+    "http://apache.org/xml/features/disallow-doctype-decl" to true,
+    "http://xml.org/sax/features/external-general-entities" to false,
+    "http://xml.org/sax/features/external-parameter-entities" to false,
+    "http://apache.org/xml/features/nonvalidating/load-external-dtd" to false,
+  )
+  for ((name, value) in features) {
+    try {
+      factory.setFeature(name, value)
+    } catch (_: Exception) {
+      // Hardening features are best-effort on JVMs that do not recognise them.
+    }
+  }
+  try {
+    factory.isXIncludeAware = false
+  } catch (_: Exception) {
+  }
+  try {
+    factory.setExpandEntityReferences(false)
+  } catch (_: Exception) {
+  }
+  return factory.newDocumentBuilder().apply {
+    setEntityResolver { _, _ -> InputSource(StringReader("")) }
+  }
+}
+
+private fun localName(element: Element): String =
+  element.localName ?: element.tagName.substringAfter(':')
+
+private fun isSpan(element: Element): Boolean = localName(element).equals("span", ignoreCase = true)
+
+private fun roleOf(element: Element): String = element.getAttribute("role").trim()
+
+private fun isIgnoredRole(role: String): Boolean = role == "x-translation" || role == "x-roman"
+
+private fun collectElements(root: Node, name: String): List<Element> {
+  val found = ArrayList<Element>()
+  fun visit(node: Node) {
+    if (node.nodeType == Node.ELEMENT_NODE) {
+      val element = node as Element
+      if (localName(element) == name) found.add(element)
+    }
+    var child = node.firstChild
+    while (child != null) {
+      visit(child)
+      child = child.nextSibling
+    }
+  }
+  visit(root)
+  return found
+}
+
+private fun childSpans(element: Element): List<Element> {
+  val spans = ArrayList<Element>()
+  var child = element.firstChild
+  while (child != null) {
+    if (child.nodeType == Node.ELEMENT_NODE) {
+      val candidate = child as Element
+      if (isSpan(candidate)) spans.add(candidate)
+    }
+    child = child.nextSibling
+  }
+  return spans
+}
+
+private fun parseTime(raw: String?): Double? {
+  val value = raw?.trim().orEmpty()
+  if (value.isEmpty()) return null
+  val parts = value.split(':')
+  return when (parts.size) {
+    1 -> parts[0].toDoubleOrNull()
+    2 -> {
+      val minutes = parts[0].toDoubleOrNull() ?: return null
+      val seconds = parts[1].toDoubleOrNull() ?: return null
+      minutes * 60 + seconds
+    }
+    3 -> {
+      val hours = parts[0].toDoubleOrNull() ?: return null
+      val minutes = parts[1].toDoubleOrNull() ?: return null
+      val seconds = parts[2].toDoubleOrNull() ?: return null
+      hours * 3600 + minutes * 60 + seconds
+    }
+    else -> null
+  }
+}
+
+private fun agentOf(element: Element): String? {
+  element.getAttributeNS(TTML_METADATA_NS, "agent").takeIf { it.isNotBlank() }?.let { return it }
+  element.getAttribute("agent").takeIf { it.isNotBlank() }?.let { return it }
+  element.getAttribute("ttm:agent").takeIf { it.isNotBlank() }?.let { return it }
+  val attributes = element.attributes
+  for (index in 0 until attributes.length) {
+    val attribute = attributes.item(index)
+    val local = attribute.localName ?: attribute.nodeName.substringAfter(':')
+    if (local == "agent") {
+      val value = attribute.nodeValue
+      if (!value.isNullOrBlank()) return value
+    }
+  }
+  return null
+}
+
+private fun followedByWhitespace(span: Element): Boolean {
+  val next = span.nextSibling ?: return false
+  return next.nodeType == Node.TEXT_NODE && (next.nodeValue ?: "").isNotBlank()
+}
+
+private fun directText(element: Element): String {
+  val builder = StringBuilder()
+  var child = element.firstChild
+  while (child != null) {
+    when (child.nodeType) {
+      Node.TEXT_NODE, Node.CDATA_SECTION_NODE -> builder.append(child.nodeValue ?: "")
+      Node.ELEMENT_NODE -> {
+        val nested = child as Element
+        if (isSpan(nested) && !isIgnoredRole(roleOf(nested)) && roleOf(nested) != "x-bg") {
+          builder.append(nested.textContent ?: "")
+        }
+      }
+    }
+    child = child.nextSibling
+  }
+  return builder.toString().trim()
+}
+
+private fun buildWords(spans: List<Element>): List<TTMLParser.ParsedWord> {
+  val words = ArrayList<TTMLParser.ParsedWord>()
+  var previous: Element? = null
+  var buffer: StringBuilder? = null
+  var wordStart = 0.0
+  var wordEnd = 0.0
+
+  fun flush() {
+    val current = buffer ?: return
+    val text = current.toString().trim()
+    if (text.isNotEmpty()) {
+      words.add(TTMLParser.ParsedWord(text, wordStart, wordEnd))
+    }
+    buffer = null
+  }
+
+  for (span in spans) {
+    val text = (span.textContent ?: "").trim()
+    val begin = parseTime(span.getAttribute("begin"))
+    val end = parseTime(span.getAttribute("end"))
+    if (begin == null || end == null || text.isEmpty()) continue
+    if (previous == null || followedByWhitespace(previous)) flush()
+    if (buffer == null) {
+      buffer = StringBuilder()
+      wordStart = begin
+    }
+    buffer!!.append(text)
+    wordEnd = end
+    previous = span
+  }
+  flush()
+  return words
+}
+
+private fun joinWords(words: List<TTMLParser.ParsedWord>): String =
+  words.joinToString(" ") { it.text }
+
+private fun formatTimestamp(seconds: Double): String {
+  val totalMillis = (seconds * 1000.0).roundToLong().coerceAtLeast(0)
+  val minutes = totalMillis / 60_000
+  val secs = (totalMillis / 1_000) % 60
+  val centis = (totalMillis % 1_000) / 10
+  return String.format(Locale.ROOT, "[%02d:%02d.%02d]", minutes, secs, centis)
+}
+
+private fun appendTimestampLine(
+  builder: StringBuilder,
+  text: String,
+  startTime: Double,
+  agent: String?,
+  background: Boolean,
+) {
+  builder.append(formatTimestamp(startTime))
+  if (background) {
+    builder.append("{bg}")
+  } else if (!agent.isNullOrEmpty()) {
+    builder.append("{agent:").append(agent).append('}')
+  }
+  builder.append(text).append('\n')
+}
+
+private fun appendWordTrack(builder: StringBuilder, words: List<TTMLParser.ParsedWord>) {
+  if (words.isEmpty()) return
+  builder.append('<')
+  words.forEachIndexed { index, word ->
+    if (index > 0) builder.append('|')
+    builder.append(word.text).append(':').append(word.startTime).append(':').append(word.endTime)
+  }
+  builder.append(">\n")
+}
+
 object TTMLParser {
-  private const val METADATA_NAMESPACE = "http://www.w3.org/ns/ttml#metadata"
-  private const val ROLE_BACKGROUND = "x-bg"
-  private val IGNORED_ROLES = setOf("x-translation", "x-roman")
-
-  data class ParsedWord(val text: String, val startTime: Double, val endTime: Double)
+  data class ParsedWord(
+    val text: String,
+    val startTime: Double,
+    val endTime: Double,
+  )
 
   data class ParsedLine(
     val text: String,
@@ -28,94 +226,31 @@ object TTMLParser {
     val backgroundLines: List<ParsedLine> = emptyList(),
   )
 
-  /** A timed run of text plus whether the source put a word break after it. */
-  private data class TimedSpan(
-    val text: String,
-    val startTime: Double,
-    val endTime: Double,
-    val endsWord: Boolean,
-  )
-
-  /**
-   * Parses a TTML document into timed lines. Returns an empty list when the input is malformed or
-   * contains no `<p>` element with a `begin` attribute; parsing never throws.
-   */
-  fun parseTTML(ttml: String): List<ParsedLine> =
-    try {
-      parseDocument(ttml)
+  fun parseTTML(ttml: String): List<ParsedLine> {
+    return try {
+      val document = hardenedBuilder().parse(InputSource(StringReader(ttml)))
+      collectElements(document, "p").mapNotNull { paragraph -> parseParagraph(paragraph) }
     } catch (e: Exception) {
       emptyList()
     }
-
-  private fun parseDocument(ttml: String): List<ParsedLine> {
-    val document = buildDocument(ttml)
-    val paragraphs = document.getElementsByTagNameNS("*", "p")
-    val lines = ArrayList<ParsedLine>(paragraphs.length)
-
-    for (index in 0 until paragraphs.length) {
-      val paragraph = paragraphs.item(index) as? Element ?: continue
-      val begin = paragraph.getAttribute("begin")
-      if (begin.isBlank()) continue
-      val parsed = parseParagraph(paragraph, parseTime(begin)) ?: continue
-      lines.add(parsed)
-    }
-
-    return lines
   }
 
-  /** Serializes parsed lines to the app's LRC format. */
-  fun toLRC(lines: List<ParsedLine>): String = buildString {
-    for (line in lines) {
-      appendTimedLine(line.startTime, line.agentPrefix(), line.text)
-      appendWordTrack(line.words)
+  private fun parseParagraph(paragraph: Element): ParsedLine? {
+    val startTime = parseTime(paragraph.getAttribute("begin")) ?: return null
+    val agent = agentOf(paragraph)
+    val spans = childSpans(paragraph)
 
-      for (background in line.backgroundLines) {
-        appendTimedLine(background.startTime, "{bg}", background.text)
-        appendWordTrack(background.words)
-      }
+    val wordSpans = spans.filter { span ->
+      val role = roleOf(span)
+      role != "x-bg" && !isIgnoredRole(role)
     }
-  }
-
-  private fun buildDocument(ttml: String): Document {
-    val factory = DocumentBuilderFactory.newInstance()
-    factory.isNamespaceAware = true
-    // Untrusted input: never resolve external entities or DOCTYPEs (XXE hardening).
-    // nosemgrep: revenge-cleartext-endpoint -- XML feature identifier, not a request URL.
-    factory.setFeatureQuietly("http://apache.org/xml/features/disallow-doctype-decl", true)
-    // nosemgrep: revenge-cleartext-endpoint -- XML feature identifier, not a request URL.
-    factory.setFeatureQuietly("http://xml.org/sax/features/external-general-entities", false)
-    // nosemgrep: revenge-cleartext-endpoint -- XML feature identifier, not a request URL.
-    factory.setFeatureQuietly("http://xml.org/sax/features/external-parameter-entities", false)
-
-    return factory.newDocumentBuilder().parse(ttml.byteInputStream())
-  }
-
-  private fun DocumentBuilderFactory.setFeatureQuietly(name: String, value: Boolean) {
-    runCatching { setFeature(name, value) }
-  }
-
-  private fun parseParagraph(paragraph: Element, startTime: Double): ParsedLine? {
-    val agent = attribute(paragraph, "agent")?.takeIf { it.isNotBlank() }
-    val spans = ArrayList<TimedSpan>()
-    val backgroundLines = ArrayList<ParsedLine>()
-
-    for (child in paragraph.elementChildren()) {
-      if (!child.isSpan()) continue
-      val role = attribute(child, "role")
-      when {
-        role == ROLE_BACKGROUND -> parseBackground(child, startTime)?.let(backgroundLines::add)
-        role != null && role in IGNORED_ROLES -> Unit
-        else -> timedSpan(child)?.let(spans::add)
-      }
-    }
-
-    val words = mergeSpans(spans)
-    val text = if (words.isNotEmpty()) {
-      words.joinToString(" ") { it.text }
-    } else {
-      directText(paragraph).trim()
-    }
+    val words = buildWords(wordSpans)
+    val text = if (words.isNotEmpty()) joinWords(words) else directText(paragraph)
     if (text.isEmpty()) return null
+
+    val backgroundLines = spans
+      .filter { roleOf(it) == "x-bg" }
+      .mapNotNull { backgroundSpan -> parseBackground(backgroundSpan, startTime) }
 
     return ParsedLine(
       text = text,
@@ -127,187 +262,32 @@ object TTMLParser {
     )
   }
 
-  private fun parseBackground(span: Element, fallbackStart: Double): ParsedLine? {
-    val begin = span.getAttribute("begin")
-    val startTime = if (begin.isBlank()) fallbackStart else parseTime(begin)
-
-    val spans = ArrayList<TimedSpan>()
-    for (child in span.elementChildren()) {
-      if (!child.isSpan()) continue
-      val role = attribute(child, "role")
-      if (role != null && role in IGNORED_ROLES) continue
-      timedSpan(child)?.let(spans::add)
-    }
-
-    val words = mergeSpans(spans)
-    val text = if (words.isNotEmpty()) {
-      words.joinToString(" ") { it.text }
-    } else {
-      directText(span).trim()
-    }
+  private fun parseBackground(span: Element, paragraphStart: Double): ParsedLine? {
+    val startTime = parseTime(span.getAttribute("begin")) ?: paragraphStart
+    val nestedSpans = childSpans(span).filter { !isIgnoredRole(roleOf(it)) }
+    val words = buildWords(nestedSpans)
+    val text = if (words.isNotEmpty()) joinWords(words) else directText(span)
     if (text.isEmpty()) return null
-
     return ParsedLine(
       text = text,
       startTime = startTime,
       words = words,
       agent = null,
       isBackground = true,
+      backgroundLines = emptyList(),
     )
   }
 
-  private fun timedSpan(span: Element): TimedSpan? {
-    val begin = span.getAttribute("begin")
-    val end = span.getAttribute("end")
-    if (begin.isBlank() || end.isBlank()) return null
-
-    val text = span.textContent?.trim().orEmpty()
-    if (text.isEmpty()) return null
-
-    return TimedSpan(
-      text = text,
-      startTime = parseTime(begin),
-      endTime = parseTime(end),
-      endsWord = endsWithWhitespace(span),
-    )
-  }
-
-  /**
-   * Spans with no whitespace between them are syllables of the same word, so they are joined and
-   * their time range is widened to cover the whole word.
-   */
-  private fun mergeSpans(spans: List<TimedSpan>): List<ParsedWord> {
-    if (spans.isEmpty()) return emptyList()
-
-    val words = ArrayList<ParsedWord>(spans.size)
-    val current = StringBuilder()
-    var wordStart = 0.0
-    var wordEnd = 0.0
-    var atWordStart = true
-
-    for (index in spans.indices) {
-      val span = spans[index]
-      if (!atWordStart && spans[index - 1].endsWord) {
-        flushWord(current, wordStart, wordEnd, words)
-        atWordStart = true
-      }
-
-      if (atWordStart) {
-        wordStart = span.startTime
-        atWordStart = false
-      }
-      current.append(span.text)
-      wordEnd = span.endTime
-    }
-
-    flushWord(current, wordStart, wordEnd, words)
-    return words
-  }
-
-  private fun flushWord(
-    buffer: StringBuilder,
-    startTime: Double,
-    endTime: Double,
-    into: MutableList<ParsedWord>,
-  ) {
-    val text = buffer.toString().trim()
-    if (text.isNotEmpty()) {
-      into.add(ParsedWord(text, startTime, endTime))
-    }
-    buffer.clear()
-  }
-
-  private fun directText(element: Element): String = buildString {
-    for (child in element.childNodesAsList()) {
-      if (child.nodeType == Node.TEXT_NODE) {
-        append(child.textContent ?: "")
-      } else if (child.nodeType == Node.ELEMENT_NODE) {
-        val span = child as? Element ?: continue
-        val role = attribute(span, "role")
-        val ignored = role == ROLE_BACKGROUND || (role != null && role in IGNORED_ROLES)
-        if (!ignored && span.isSpan()) {
-          append(span.textContent ?: "")
-        }
+  fun toLRC(lines: List<ParsedLine>): String {
+    val builder = StringBuilder()
+    for (line in lines) {
+      appendTimestampLine(builder, line.text, line.startTime, line.agent, background = false)
+      appendWordTrack(builder, line.words)
+      for (background in line.backgroundLines) {
+        appendTimestampLine(builder, background.text, background.startTime, agent = null, background = true)
+        appendWordTrack(builder, background.words)
       }
     }
-  }
-
-  private fun endsWithWhitespace(node: Node): Boolean {
-    val next = node.nextSibling ?: return false
-    return next.nodeType == Node.TEXT_NODE &&
-      next.textContent?.any { it.isWhitespace() } == true
-  }
-
-  /** Reads a TTML metadata attribute regardless of namespace prefix handling. */
-  private fun attribute(element: Element, localName: String): String? {
-    val namespaced = element.getAttributeNS(METADATA_NAMESPACE, localName)
-    if (namespaced.isNotEmpty()) return namespaced
-
-    val plain = element.getAttribute(localName)
-    if (plain.isNotEmpty()) return plain
-
-    val prefixed = element.getAttribute("ttm:$localName")
-    if (prefixed.isNotEmpty()) return prefixed
-
-    val attributes = element.attributes
-    for (index in 0 until attributes.length) {
-      val attr = attributes.item(index) ?: continue
-      val name = attr.localName ?: attr.nodeName.substringAfter(':', attr.nodeName)
-      if (name == localName) return attr.nodeValue ?: ""
-    }
-    return null
-  }
-
-  private fun Element.isSpan(): Boolean =
-    (localName ?: tagName.substringAfter(':', tagName)).equals("span", ignoreCase = true)
-
-  private fun Node.childNodesAsList(): List<Node> =
-    (0 until childNodes.length).mapNotNull { childNodes.item(it) }
-
-  private fun Element.elementChildren(): List<Element> =
-    childNodesAsList().filterIsInstance<Element>()
-
-  private fun ParsedLine.agentPrefix(): String =
-    agent?.takeIf { it.isNotEmpty() }?.let { "{agent:$it}" }.orEmpty()
-
-  private fun StringBuilder.appendTimedLine(startTime: Double, prefix: String, text: String) {
-    val totalMillis = (startTime * 1000.0).toLong()
-    val minutes = totalMillis / 60_000
-    val seconds = (totalMillis % 60_000) / 1_000
-    val centiseconds = (totalMillis % 1_000) / 10
-    append(
-      String.format(
-        Locale.US,
-        "[%02d:%02d.%02d]%s%s\n",
-        minutes,
-        seconds,
-        centiseconds,
-        prefix,
-        text,
-      ),
-    )
-  }
-
-  private fun StringBuilder.appendWordTrack(words: List<ParsedWord>) {
-    if (words.isEmpty()) return
-    append('<')
-    append(words.joinToString("|") { "${it.text}:${it.startTime}:${it.endTime}" })
-    append(">\n")
-  }
-
-  private fun parseTime(raw: String): Double {
-    val value = raw.trim()
-    if (value.isEmpty()) return 0.0
-
-    value.toDoubleOrNull()?.let { return it }
-
-    val parts = value.split(':')
-    if (parts.size !in 2..3) return 0.0
-    val numbers = parts.map { it.toDoubleOrNull() ?: return 0.0 }
-
-    return when (numbers.size) {
-      2 -> numbers[0] * 60.0 + numbers[1]
-      else -> numbers[0] * 3600.0 + numbers[1] * 60.0 + numbers[2]
-    }
+    return builder.toString()
   }
 }

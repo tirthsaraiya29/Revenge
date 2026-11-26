@@ -2,12 +2,6 @@ package com.revenge.youlyplus.models
 
 import kotlinx.serialization.Serializable
 
-/**
- * Payload returned by the LyricsPlus / KPoe backend at `GET /v2/lyrics/get`.
- *
- * The backend serves two shapes: LRCLib-style (`syncedLyrics` / `plainLyrics`) and KPoe-style
- * (`lyrics` as a list of timed lines). Both are modelled here so either can be consumed.
- */
 @Serializable
 data class LyricsResponse(
   val id: Int? = null,
@@ -21,7 +15,6 @@ data class LyricsResponse(
   val duration: Double? = null,
 )
 
-/** A single timed lyric line. All times are milliseconds. */
 @Serializable
 data class LyricsItem(
   val text: String? = null,
@@ -30,7 +23,6 @@ data class LyricsItem(
   val syllabus: List<Syllable>? = null,
 )
 
-/** A word/syllable fragment for word-by-word ("rich") sync. Times are milliseconds. */
 @Serializable
 data class Syllable(
   val text: String? = null,

@@ -1,10 +1,10 @@
 package com.revenge.music.lyrics
 
 import android.content.Context
-import android.util.LruCache
 import com.revenge.music.constants.LyricsProviderOrderKey
-import com.revenge.music.db.entities.LyricsEntity.Companion.LYRICS_NOT_FOUND
+import com.revenge.music.db.entities.LyricsEntity
 import com.revenge.music.models.MediaMetadata
+import com.revenge.music.playback.ILyricsHelper
 import com.revenge.music.playback.LyricsWithProvider
 import com.revenge.music.utils.NetworkConnectivityObserver
 import com.revenge.music.utils.dataStore
@@ -12,192 +12,268 @@ import com.revenge.music.utils.get
 import com.revenge.music.utils.reportException
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CopyOnWriteArrayList
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
-import kotlinx.coroutines.cancelChildren
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.withTimeout
 
 class LyricsHelper
 @Inject
 constructor(
-  @ApplicationContext private val context: Context,
-  private val networkConnectivity: NetworkConnectivityObserver,
-) {
-  private val cache = LruCache<String, List<LyricsResult>>(MAX_CACHE_SIZE)
-  private val inFlight = ConcurrentHashMap<String, Deferred<LyricsWithProvider>>()
+    @ApplicationContext private val context: Context,
+    private val networkConnectivity: NetworkConnectivityObserver,
+) : ILyricsHelper {
 
-  // Provider fetches outlive the caller's scope so a song switch cannot fail parallel callers.
-  private val fetchScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-  private var currentLyricsJob: Job? = null
+    // Internal seams used by deterministic tests. They do not alter the public surface.
+    internal var fetchScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    internal var providerTimeoutMs: Long = 5_000L
+    internal var providersOverride: List<LyricsProvider>? = null
+    internal var connectivityOverride: (() -> Boolean)? = null
+    internal var cache: LruResultCache = LruResultCache(20)
 
-  private suspend fun enabledProviders(): List<LyricsProvider> {
-    val order = context.dataStore[LyricsProviderOrderKey].orEmpty()
-    return LyricsProviderRegistry.orderedProviderNames(order)
-      .mapNotNull(LyricsProviderRegistry::getProviderByName)
-      .filter { it.isEnabled(context) }
-  }
+    private val inFlight = ConcurrentHashMap<String, Deferred<LyricsWithProvider>>()
+    private val inFlightLock = Any()
 
-  private fun isOnline(): Boolean =
-    try {
-      networkConnectivity.isCurrentlyConnected()
-    } catch (e: Exception) {
-      true
-    }
+    private var alternateJob: Job? = null
 
-  suspend fun getLyrics(mediaMetadata: MediaMetadata): LyricsWithProvider {
-    currentLyricsJob?.cancel()
+    override suspend fun getLyrics(mediaMetadata: MediaMetadata): LyricsWithProvider {
+        cancelCurrentLyricsJob()
 
-    cache.get(mediaMetadata.id)?.firstOrNull()?.let {
-      return LyricsWithProvider(it.lyrics, it.providerName)
-    }
-    if (!isOnline()) return LyricsWithProvider(LYRICS_NOT_FOUND, "Unknown")
-
-    val fresh =
-      fetchScope.async(start = CoroutineStart.LAZY) { fetchBestLyrics(mediaMetadata) }
-    val existing = inFlight.putIfAbsent(mediaMetadata.id, fresh)
-    if (existing != null) {
-      fresh.cancel()
-      return existing.await()
-    }
-    fresh.invokeOnCompletion { inFlight.remove(mediaMetadata.id, fresh) }
-    fresh.start()
-    return fresh.await()
-  }
-
-  private suspend fun fetchBestLyrics(mediaMetadata: MediaMetadata): LyricsWithProvider {
-    val providers = enabledProviders()
-    if (providers.isEmpty()) return LyricsWithProvider(LYRICS_NOT_FOUND, "Unknown")
-
-    return coroutineScope {
-      val outcomes = ConcurrentHashMap<String, ProviderOutcome>()
-      val lyrics = ConcurrentHashMap<String, String>()
-      val finished = Channel<Unit>(providers.size)
-      val order = providers.map { it.name }
-
-      providers.forEach { provider ->
-        launch {
-          val text = fetchFromProvider(provider, mediaMetadata)
-          if (text.isNullOrBlank() || text == LYRICS_NOT_FOUND) {
-            outcomes[provider.name] = ProviderOutcome.FAILED
-          } else {
-            lyrics[provider.name] = text
-            outcomes[provider.name] =
-              if (LyricsUtils.hasSyncedLyrics(text)) ProviderOutcome.SYNCED
-              else ProviderOutcome.UNSYNCED
-          }
-          finished.send(Unit)
+        val cacheKey = mediaMetadata.id
+        cache.get(cacheKey)?.firstOrNull()?.let { cached ->
+            return LyricsWithProvider(cached.lyrics, cached.providerName)
         }
-      }
 
-      repeat(providers.size) {
-        finished.receive()
-        when (val choice = LyricsProviderRegistry.chooseProvider(order, outcomes)) {
-          is ProviderChoice.Selected -> {
-            val text = lyrics[choice.name] ?: return@repeat
-            coroutineContext.cancelChildren()
-            cache.put(mediaMetadata.id, listOf(LyricsResult(choice.name, text)))
-            return@coroutineScope LyricsWithProvider(text, choice.name)
-          }
-          ProviderChoice.None -> return@coroutineScope LyricsWithProvider(LYRICS_NOT_FOUND, "Unknown")
-          ProviderChoice.Pending -> Unit
-        }
-      }
-      LyricsWithProvider(LYRICS_NOT_FOUND, "Unknown")
-    }
-  }
+        if (!isOnline()) return notFound()
 
-  private suspend fun fetchFromProvider(
-    provider: LyricsProvider,
-    mediaMetadata: MediaMetadata,
-  ): String? =
-    withTimeoutOrNull(PROVIDER_TIMEOUT_MS) {
-      try {
-        provider
-          .getLyrics(
-            id = mediaMetadata.id,
-            title = mediaMetadata.title,
-            artist = mediaMetadata.artists.joinToString { it.name },
-            duration = mediaMetadata.duration,
-            album = mediaMetadata.album?.title,
-          )
-          .getOrElse {
-            if (it is CancellationException) throw it
-            reportException(it)
-            null
-          }
-      } catch (e: CancellationException) {
-        throw e
-      } catch (e: Exception) {
-        reportException(e)
-        null
-      }
-    }
-
-  suspend fun getAllLyrics(
-    mediaId: String,
-    songTitle: String,
-    songArtists: String,
-    duration: Int,
-    album: String? = null,
-    callback: (LyricsResult) -> Unit,
-  ) {
-    currentLyricsJob?.cancel()
-
-    val cacheKey = "$songArtists-$songTitle".replace(" ", "")
-    cache.get(cacheKey)?.let { results ->
-      results.forEach(callback)
-      return
-    }
-    if (!isOnline()) return
-
-    val collected = java.util.concurrent.CopyOnWriteArrayList<LyricsResult>()
-    val providers = enabledProviders()
-    currentLyricsJob =
-      CoroutineScope(SupervisorJob()).launch {
-        val jobs =
-          providers.map { provider ->
-            launch {
-              try {
-                provider.getAllLyrics(mediaId, songTitle, songArtists, duration, album) { text ->
-                  val result = LyricsResult(provider.name, text)
-                  collected += result
-                  callback(result)
+        val deferred = synchronized(inFlightLock) {
+            inFlight[cacheKey] ?: fetchScope
+                .async(start = CoroutineStart.LAZY) { fetchBest(mediaMetadata) }
+                .also { created ->
+                    created.invokeOnCompletion { inFlight.remove(cacheKey, created) }
+                    inFlight[cacheKey] = created
+                    created.start()
                 }
-              } catch (e: CancellationException) {
-                throw e
-              } catch (e: Exception) {
-                reportException(e)
-              }
+        }
+        return deferred.await()
+    }
+
+    override suspend fun getAllLyrics(
+        mediaId: String,
+        songTitle: String,
+        songArtists: String,
+        duration: Int,
+        album: String?,
+        callback: (LyricsResult) -> Unit,
+    ) {
+        cancelCurrentLyricsJob()
+
+        val cacheKey = "$songArtists-$songTitle".replace(" ", "")
+        cache.get(cacheKey)?.let { cached ->
+            cached.forEach(callback)
+            return
+        }
+        if (!isOnline()) return
+
+        val providers = enabledProviders()
+        if (providers.isEmpty()) return
+
+        val collected = CopyOnWriteArrayList<LyricsResult>()
+        val job = fetchScope.launch {
+            try {
+                coroutineScope {
+                    providers.forEach { provider ->
+                        launch {
+                            try {
+                                provider.getAllLyrics(
+                                    mediaId,
+                                    songTitle,
+                                    songArtists,
+                                    duration,
+                                    album,
+                                ) { text ->
+                                    val result = LyricsResult(provider.name, text)
+                                    collected.add(result)
+                                    callback(result)
+                                }
+                            } catch (cancellation: CancellationException) {
+                                throw cancellation
+                            } catch (error: Exception) {
+                                reportSafely(error)
+                            }
+                        }
+                    }
+                }
+                cache.put(cacheKey, collected.toList())
+            } catch (cancellation: CancellationException) {
+                throw cancellation
             }
-          }
-        jobs.forEach { it.join() }
-        cache.put(cacheKey, collected.toList())
-      }
-    currentLyricsJob?.join()
-  }
+        }
+        alternateJob = job
+        try {
+            job.join()
+        } finally {
+            if (alternateJob === job) alternateJob = null
+        }
+    }
 
-  fun cancelCurrentLyricsJob() {
-    currentLyricsJob?.cancel()
-    currentLyricsJob = null
-  }
+    fun cancelCurrentLyricsJob() {
+        alternateJob?.cancel()
+        alternateJob = null
+    }
 
-  private companion object {
-    const val MAX_CACHE_SIZE = 20
-    const val PROVIDER_TIMEOUT_MS = 5_000L
-  }
+    private suspend fun fetchBest(mediaMetadata: MediaMetadata): LyricsWithProvider {
+        val providers = enabledProviders()
+        if (providers.isEmpty()) return notFound()
+
+        val args = Args.from(mediaMetadata)
+        val priority = providers.map { it.name }
+        val outcomes = ConcurrentHashMap<String, ProviderOutcome>()
+        val texts = ConcurrentHashMap<String, String>()
+        val completion = CompletableDeferred<LyricsWithProvider>()
+        val outcomeLock = Any()
+
+        providers.forEach { provider ->
+            fetchScope.launch {
+                val outcome = fetchOne(provider, args)
+                if (outcome.text != null) texts[provider.name] = outcome.text
+                synchronized(outcomeLock) {
+                    outcomes[provider.name] = outcome.outcome
+                    when (val choice = LyricsProviderRegistry.chooseProvider(priority, outcomes)) {
+                        is ProviderChoice.Selected -> {
+                            texts[choice.name]?.let { text ->
+                                completion.complete(LyricsWithProvider(text, choice.name))
+                            }
+                        }
+
+                        ProviderChoice.None -> completion.complete(notFound())
+                        ProviderChoice.Pending -> Unit
+                    }
+                }
+            }
+        }
+
+        val result = completion.await()
+        if (result.providerName != UNKNOWN && result.lyrics != null) {
+            cache.put(mediaMetadata.id, listOf(LyricsResult(result.providerName, result.lyrics)))
+        }
+        return result
+    }
+
+    private suspend fun fetchOne(provider: LyricsProvider, args: Args): ProviderResult = try {
+        val result = withTimeout(providerTimeoutMs) {
+            provider.getLyrics(args.id, args.title, args.artist, args.duration, args.album)
+        }
+        val text = result.getOrNull()
+        if (text.isNullOrBlank() || text == LyricsEntity.LYRICS_NOT_FOUND) {
+            result.exceptionOrNull()?.let { reportSafely(it) }
+            ProviderResult(ProviderOutcome.FAILED, null)
+        } else {
+            val outcome = if (LyricsUtils.hasSyncedLyrics(text)) {
+                ProviderOutcome.SYNCED
+            } else {
+                ProviderOutcome.UNSYNCED
+            }
+            ProviderResult(outcome, text)
+        }
+    } catch (timeout: TimeoutCancellationException) {
+        ProviderResult(ProviderOutcome.FAILED, null)
+    } catch (cancellation: CancellationException) {
+        throw cancellation
+    } catch (error: Exception) {
+        reportSafely(error)
+        ProviderResult(ProviderOutcome.FAILED, null)
+    }
+
+    private fun enabledProviders(): List<LyricsProvider> {
+        providersOverride?.let { return it }
+        return try {
+            val savedOrder = context.dataStore[LyricsProviderOrderKey] ?: ""
+            LyricsProviderRegistry.orderedProviderNames(savedOrder)
+                .mapNotNull(LyricsProviderRegistry::getProviderByName)
+                .filter { provider ->
+                    try {
+                        provider.isEnabled(context)
+                    } catch (_: Exception) {
+                        true
+                    }
+                }
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    private fun isOnline(): Boolean =
+        connectivityOverride?.invoke() ?: try {
+            networkConnectivity.isCurrentlyConnected()
+        } catch (_: Throwable) {
+            true
+        }
+
+    private fun reportSafely(error: Throwable) {
+        try {
+            reportException(error)
+        } catch (_: Throwable) {
+        }
+    }
+
+    private fun notFound(): LyricsWithProvider = LyricsWithProvider(LyricsEntity.LYRICS_NOT_FOUND, UNKNOWN)
+
+    private data class Args(
+        val id: String,
+        val title: String,
+        val artist: String,
+        val duration: Int,
+        val album: String?,
+    ) {
+        companion object {
+            fun from(metadata: MediaMetadata): Args = Args(
+                id = metadata.id,
+                title = metadata.title,
+                artist = metadata.artists.joinToString(", ") { it.name },
+                duration = metadata.duration,
+                album = metadata.album?.title,
+            )
+        }
+    }
+
+    private data class ProviderResult(val outcome: ProviderOutcome, val text: String?)
+
+    private companion object {
+        const val UNKNOWN = "Unknown"
+    }
 }
 
-data class LyricsResult(
-  val providerName: String,
-  val lyrics: String,
-)
+/** A tiny synchronized LRU keyed by request identity. */
+internal class LruResultCache(private val capacity: Int) {
+
+    private val entries = object : LinkedHashMap<String, List<LyricsResult>>(capacity, 0.75f, true) {
+        override fun removeEldestEntry(
+            eldest: MutableMap.MutableEntry<String, List<LyricsResult>>,
+        ): Boolean = size > capacity
+    }
+
+    @Synchronized
+    fun get(key: String): List<LyricsResult>? = entries[key]
+
+    @Synchronized
+    fun put(key: String, value: List<LyricsResult>) {
+        entries[key] = value
+    }
+
+    @Synchronized
+    fun clear() {
+        entries.clear()
+    }
+}

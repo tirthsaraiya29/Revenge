@@ -8,7 +8,6 @@ import java.util.Locale
 import kotlin.math.abs
 import timber.log.Timber
 
-/** The track the app is looking for, in both raw and cleaned form. */
 internal data class TrackTarget(
   val title: String,
   val cleanTitle: String,
@@ -16,197 +15,188 @@ internal data class TrackTarget(
   val durationSeconds: Int,
 )
 
-internal data class ScoredResult(val result: SearchResult, val score: Double)
+internal data class ScoredResult(
+  val result: SearchResult,
+  val score: Double,
+)
 
-internal data class LyricsCandidate(val lyrics: String, val hasWordTimings: Boolean)
+internal data class LyricsCandidate(
+  val lyrics: String,
+  val hasWordTimings: Boolean,
+)
 
-/**
- * Pure matching/formatting logic, kept independent of Android and networking so it can be unit
- * tested directly.
- */
+internal fun convertTtmlToLrc(ttml: String): String {
+  return try {
+    TTMLParser.toLRC(TTMLParser.parseTTML(ttml))
+  } catch (e: Exception) {
+    Timber.w(e, "Failed to convert Paxsenix TTML")
+    ""
+  }
+}
+
 internal object PaxsenixCore {
-  const val MAX_RANKED_RESULTS = 10
-  const val MAX_GET_LYRICS_CANDIDATES = 5
-  const val MAX_ALL_LYRICS_CANDIDATES = 3
+  const val MAX_RANKED_RESULTS: Int = 10
+  const val MAX_GET_LYRICS_CANDIDATES: Int = 5
+  const val MAX_ALL_LYRICS_CANDIDATES: Int = 3
 
-  private const val SYLLABLE_TYPE = "Syllable"
-  private const val DURATION_CLOSE_MS = 2_000L
-  private const val DURATION_NEAR_MS = 5_000L
-  private const val DURATION_OFF_MS = 10_000L
+  private val TITLE_NOISE = Regex("\\s*\\([^)]*\\)|\\s*\\[[^\\]]*\\]")
+  private val WORD_TIMING = Regex("<[^>]+>")
 
-  private val BRACKETED_TAG = Regex("""\s*\([^)]*\)|\s*\[[^\]]*\]""")
-  private val WORD_TIMING = Regex("""<[^>]+>""")
-  private val WHITESPACE = Regex("""\s+""")
-
-  /**
-   * Search attempts, most specific first. The album variant is only useful when an album is known;
-   * duplicates are removed so a single network call is not repeated.
-   */
   fun searchQueries(cleanTitle: String, cleanArtist: String, album: String?): List<String> {
     val combined = listOf(cleanTitle, cleanArtist).filter { it.isNotBlank() }.joinToString(" ")
-    return buildList {
-      add(combined)
-      add(cleanTitle)
-      if (!album.isNullOrBlank()) {
-        add(listOf(cleanTitle, cleanArtist, album).filter { it.isNotBlank() }.joinToString(" "))
-      }
+    val queries = ArrayList<String>()
+    queries.add(combined)
+    queries.add(cleanTitle)
+    if (!album.isNullOrBlank()) {
+      queries.add(listOf(cleanTitle, cleanArtist, album).filter { it.isNotBlank() }.joinToString(" "))
     }
-      .filter { it.isNotBlank() }
-      .distinct()
+    return queries.filter { it.isNotBlank() }.distinct()
   }
 
   fun rank(results: List<SearchResult>, target: TrackTarget): List<ScoredResult> {
-    return results
+    return results.asSequence()
       .filter { it.id.isNotBlank() }
       .map { ScoredResult(it, score(it, target)) }
       .filter { it.score > 0.0 }
       .sortedByDescending { it.score }
       .take(MAX_RANKED_RESULTS)
+      .toList()
   }
 
   fun score(result: SearchResult, target: TrackTarget): Double {
-    var score = 0.0
+    var total = 0.0
 
-    result.duration?.let { durationMs ->
-      val diff = abs(durationMs.toLong() - target.durationSeconds.toLong() * 1_000L)
-      score +=
-        when {
-          diff <= DURATION_CLOSE_MS -> 100.0
-          diff <= DURATION_NEAR_MS -> 50.0
-          diff <= DURATION_OFF_MS -> 10.0
-          else -> -50.0
-        }
-    }
-
-    val targetTitle = normalizedTitle(target.cleanTitle)
-    val resultTitle = normalizedTitle(result.displayName)
-    if (targetTitle.isNotEmpty() && resultTitle.isNotEmpty()) {
-      when {
-        resultTitle == targetTitle -> score += 80.0
-        resultTitle.contains(targetTitle) || targetTitle.contains(resultTitle) -> score += 40.0
+    val duration = result.duration
+    if (duration != null) {
+      val diff = abs(duration - target.durationSeconds * 1000)
+      total += when {
+        diff <= 2_000 -> 100.0
+        diff <= 5_000 -> 50.0
+        diff <= 10_000 -> 10.0
+        else -> -50.0
       }
     }
 
-    // Penalise alternate versions the caller did not ask for.
-    if (containsVersion(result.displayName, "mixed") && !containsVersion(target.title, "mixed")) {
-      score -= 60.0
-    }
-    if (containsVersion(result.displayName, "remix") && !containsVersion(target.title, "remix")) {
-      score -= 40.0
+    val wantedTitle = normalizeTitle(target.cleanTitle)
+    val resultTitle = normalizeTitle(result.displayName)
+    when {
+      wantedTitle == resultTitle -> total += 80.0
+      wantedTitle.isNotEmpty() && resultTitle.isNotEmpty() &&
+        (wantedTitle.contains(resultTitle) || resultTitle.contains(wantedTitle)) -> total += 40.0
     }
 
-    val targetArtist = target.cleanArtist.lowercase().trim()
-    if (targetArtist.isNotEmpty()) {
+    val resultName = result.displayName.lowercase()
+    val rawTitle = target.title.lowercase()
+    if (resultName.contains("mixed") && !rawTitle.contains("mixed")) total -= 60.0
+    if (resultName.contains("remix") && !rawTitle.contains("remix")) total -= 40.0
+
+    val wantedArtist = target.cleanArtist.lowercase().trim()
+    if (wantedArtist.isNotEmpty()) {
       val resultArtist = result.displayArtist.lowercase()
-      if (resultArtist.contains(targetArtist)) {
-        score += 50.0
-      } else if (targetArtist.split(WHITESPACE).any { it.length > 2 && resultArtist.contains(it) }) {
-        score += 25.0
+      if (resultArtist.contains(wantedArtist)) {
+        total += 50.0
+      } else if (wantedArtist.split(Regex("\\s+")).any { it.length > 2 && resultArtist.contains(it) }) {
+        total += 25.0
       }
     }
 
-    return score
+    return total
   }
 
-  /** Detects enhanced LRC word timings, which are emitted as `<word:start:end|...>`. */
   fun hasWordTimings(text: String): Boolean = WORD_TIMING.containsMatchIn(text)
 
   fun buildLyrics(
     response: LyricsResponse,
     ttmlConverter: (String) -> String = ::convertTtmlToLrc,
   ): Result<LyricsCandidate> {
-    response.ttmlContent?.takeIf { it.isNotBlank() }?.let { ttml ->
-      val lrc = ttmlConverter(ttml)
-      if (lrc.isNotBlank()) {
-        return Result.success(LyricsCandidate(lrc, hasWordTimings(lrc)))
+    val ttml = response.ttmlContent
+    if (!ttml.isNullOrBlank()) {
+      val converted = ttmlConverter(ttml)
+      if (converted.isNotBlank()) {
+        return Result.success(LyricsCandidate(converted, hasWordTimings(converted)))
       }
     }
 
-    response.elrcMultiPerson?.takeIf { it.isNotBlank() }?.let { elrc ->
-      return Result.success(LyricsCandidate(elrc, hasWordTimings(elrc)))
+    response.elrcMultiPerson?.takeIf { it.isNotBlank() }?.let {
+      return Result.success(LyricsCandidate(it, hasWordTimings(it)))
     }
-    response.elrc?.takeIf { it.isNotBlank() }?.let { elrc ->
-      return Result.success(LyricsCandidate(elrc, hasWordTimings(elrc)))
+    response.elrc?.takeIf { it.isNotBlank() }?.let {
+      return Result.success(LyricsCandidate(it, hasWordTimings(it)))
     }
-    response.plain?.takeIf { it.isNotBlank() }?.let { plain ->
-      return Result.success(LyricsCandidate(plain, false))
+    response.plain?.takeIf { it.isNotBlank() }?.let {
+      return Result.success(LyricsCandidate(it, false))
     }
 
     if (response.content.isEmpty()) {
       return Result.failure(IllegalStateException("Paxsenix returned no lyrics"))
     }
 
-    val candidate =
-      if (response.type.equals(SYLLABLE_TYPE, ignoreCase = true)) {
-        val lrc = lrcFromContent(response.content)
-        if (lrc.isBlank()) null else LyricsCandidate(lrc, true)
+    return if (response.type.equals("Syllable", ignoreCase = true)) {
+      val lrc = lrcFromContent(response.content)
+      if (lrc.isBlank()) {
+        Result.failure(IllegalStateException("Paxsenix returned empty lyrics"))
       } else {
-        val text = plainTextFromContent(response.content)
-        if (text.isBlank()) null else LyricsCandidate(text, false)
+        Result.success(LyricsCandidate(lrc, true))
       }
-
-    return candidate
-      ?.let { Result.success(it) }
-      ?: Result.failure(IllegalStateException("Paxsenix returned empty lyrics"))
+    } else {
+      val plain = plainTextFromContent(response.content)
+      if (plain.isBlank()) {
+        Result.failure(IllegalStateException("Paxsenix returned empty lyrics"))
+      } else {
+        Result.success(LyricsCandidate(plain, false))
+      }
+    }
   }
 
   fun plainTextFromContent(content: List<LyricsContent>): String {
-    return content
-      .map { line -> line.text.joinToString(" ") { it.text } }
-      .filter { it.isNotBlank() }
-      .joinToString("\n")
+    return content.mapNotNull { line ->
+      line.text
+        .map { it.text }
+        .filter { it.isNotBlank() }
+        .joinToString(" ")
+        .takeIf { it.isNotBlank() }
+    }.joinToString("\n")
   }
 
-  fun lrcFromContent(content: List<LyricsContent>): String = buildString {
-    content.forEach { line ->
-      val lineText = line.text.joinToString(" ") { it.text }
-      if (lineText.isBlank()) return@forEach
-
-      append(formatTimestamp(line.timestamp))
-      append(agentTag(line))
-      append(lineText)
-      append('\n')
-
+  fun lrcFromContent(content: List<LyricsContent>): String {
+    val builder = StringBuilder()
+    for (line in content) {
       val words = line.text.filter { it.text.isNotBlank() }
+      val lineText = words.joinToString(" ") { it.text }
+      if (lineText.isBlank()) continue
+
+      builder.append(formatTimestamp(line.timestamp))
+      builder.append(
+        when {
+          line.background -> "{bg}"
+          line.oppositeTurn -> "{agent:v2}"
+          else -> "{agent:v1}"
+        },
+      )
+      builder.append(lineText).append('\n')
+
       if (words.isNotEmpty()) {
-        append('<')
-        append(words.joinToString("|") { word -> "${word.text}:${seconds(word.timestamp)}:${seconds(word.endtime)}" })
-        append(">\n")
+        builder.append('<')
+        words.forEachIndexed { index, word ->
+          if (index > 0) builder.append('|')
+          builder.append(word.text)
+            .append(':').append(word.timestamp / 1000.0)
+            .append(':').append(word.endtime / 1000.0)
+        }
+        builder.append(">\n")
       }
     }
+    return builder.toString()
   }
 
-  private fun convertTtmlToLrc(ttml: String): String {
-    return runCatching { TTMLParser.toLRC(TTMLParser.parseTTML(ttml)) }
-      .onFailure { Timber.w(it, "Paxsenix TTML conversion failed") }
-      .getOrDefault("")
-  }
-
-  private fun normalizedTitle(title: String): String {
-    return title.replace(BRACKETED_TAG, "").lowercase().trim()
-  }
-
-  private fun containsVersion(text: String, version: String): Boolean {
-    return text.contains(version, ignoreCase = true)
-  }
+  private fun normalizeTitle(value: String): String =
+    value.replace(TITLE_NOISE, "").lowercase().trim()
 
   private fun formatTimestamp(timeMs: Long): String {
-    val ms = timeMs.coerceAtLeast(0L)
-    return String.format(
-      Locale.US,
-      "[%02d:%02d.%02d]",
-      ms / 60_000L,
-      (ms % 60_000L) / 1_000L,
-      (ms % 1_000L) / 10L,
-    )
+    val clamped = timeMs.coerceAtLeast(0)
+    val minutes = clamped / 60_000
+    val seconds = (clamped / 1_000) % 60
+    val centis = (clamped % 1_000) / 10
+    return String.format(Locale.US, "[%02d:%02d.%02d]", minutes, seconds, centis)
   }
-
-  private fun seconds(timeMs: Long): Double = timeMs / 1_000.0
-
-  private fun agentTag(line: LyricsContent): String =
-    when {
-      line.background -> "{bg}"
-      line.oppositeTurn -> "{agent:v2}"
-      else -> "{agent:v1}"
-    }
 }

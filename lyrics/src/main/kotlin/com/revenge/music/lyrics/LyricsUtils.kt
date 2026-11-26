@@ -412,7 +412,7 @@ object LyricsUtils {
             if (reading.isNullOrEmpty() || reading == "*") null else reading
         }
         return tokens.mapIndexed { index, token ->
-            val base = readings[index] ?: token.surfaceForm
+            val base = readings[index] ?: token.surface
             katakanaToRomaji(base, readings.getOrNull(index + 1))
         }.joinToString(" ").lowercase()
     }

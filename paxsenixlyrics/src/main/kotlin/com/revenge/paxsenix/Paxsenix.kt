@@ -1,51 +1,65 @@
 package com.revenge.paxsenix
 
 import android.content.Context
-import com.revenge.betterlyrics.TTMLParser
 import com.revenge.metadata.cleaner.MetadataCleaner
 import com.revenge.paxsenix.models.LyricsResponse
-import com.revenge.paxsenix.models.SearchResponse
 import com.revenge.paxsenix.models.SearchResult
 import io.ktor.client.HttpClient
-import io.ktor.client.call.body
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.HttpTimeout
-import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
-import io.ktor.client.plugins.defaultRequest
+import io.ktor.client.plugins.compression.ContentEncoding
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.parameter
+import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpHeaders
-import io.ktor.serialization.kotlinx.json.json
-import kotlin.coroutines.cancellation.CancellationException
-import kotlinx.coroutines.async
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.selects.select
+import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import timber.log.Timber
 
-/**
- * Paxsenix lyrics provider backed by https://lyrics.paxsenix.org.
- *
- * The client is process-wide; call [init] once (with a `Context`) before requesting lyrics.
- */
+private const val BASE_URL = "https://lyrics.paxsenix.org"
+private const val INIT_ERROR = "Paxsenix.init() must be called before fetching lyrics"
+private const val NO_MATCH = "No matching track found on Paxsenix"
+private const val NO_LYRICS = "No lyrics available from Paxsenix"
+
+internal typealias SearchResponse = List<SearchResult>
+
 object Paxsenix {
-  private const val BASE_URL = "https://lyrics.paxsenix.org"
-  private const val UNKNOWN_VERSION = "Unknown"
+  private val json = Json {
+    isLenient = true
+    ignoreUnknownKeys = true
+  }
 
-  private val lock = Any()
+  private val initLock = Any()
 
-  @Volatile private var client: HttpClient? = null
+  @Volatile
+  private var client: HttpClient? = null
+
+  @Volatile
+  private var version: String = "Unknown"
+
+  internal var testClient: HttpClient? = null
 
   fun init(context: Context) {
     if (client != null) return
-
-    synchronized(lock) {
+    synchronized(initLock) {
       if (client != null) return
-
-      val version = resolveAppVersion(context)
-      client = createClient(version)
-      Timber.d("Paxsenix client initialized (appVersion=%s)", version)
+      version = readVersion(context)
+      client = HttpClient(OkHttp) {
+        expectSuccess = true
+        install(ContentEncoding) {
+          gzip()
+          deflate()
+        }
+        install(HttpTimeout) {
+          requestTimeoutMillis = 5_000
+          connectTimeoutMillis = 4_000
+          socketTimeoutMillis = 5_000
+        }
+      }
     }
   }
 
@@ -54,13 +68,25 @@ object Paxsenix {
     artist: String,
     duration: Int,
     album: String? = null,
-  ): Result<String> = attempt {
-    val target = trackTarget(title, artist, duration)
-    val ranked = findCandidates(target, album)
-    check(ranked.isNotEmpty()) { "No matching track found on Paxsenix" }
-
-    awaitBestLyrics(ranked, PaxsenixCore.MAX_GET_LYRICS_CANDIDATES)
-      ?: throw IllegalStateException("No lyrics available from Paxsenix")
+  ): Result<String> {
+    return try {
+      val target = trackTarget(title, artist, duration)
+      val ranked = findCandidates(target, album)
+      if (ranked.isEmpty()) {
+        Result.failure(IllegalStateException(NO_MATCH))
+      } else {
+        val candidate = awaitBestLyrics(ranked, PaxsenixCore.MAX_GET_LYRICS_CANDIDATES)
+        if (candidate == null) {
+          Result.failure(IllegalStateException(NO_LYRICS))
+        } else {
+          Result.success(candidate.lyrics)
+        }
+      }
+    } catch (e: CancellationException) {
+      throw e
+    } catch (e: Exception) {
+      Result.failure(e)
+    }
   }
 
   suspend fun getAllLyrics(
@@ -70,64 +96,34 @@ object Paxsenix {
     album: String? = null,
     callback: (String) -> Unit,
   ) {
-    // The non-suspending view only uses the two title/artist queries, matching the provider's
-    // fast path; the album variant is reserved for getLyrics.
-    val ranked =
-      attempt { findCandidates(trackTarget(title, artist, duration), album = null) }
-        .onFailure { Timber.w(it, "Paxsenix candidate lookup failed") }
-        .getOrDefault(emptyList())
-
-    if (ranked.isEmpty()) {
-      Timber.i("Paxsenix found no candidates for %s - %s", title, artist)
-      return
-    }
-
-    val lyrics =
-      awaitBestLyrics(ranked, PaxsenixCore.MAX_ALL_LYRICS_CANDIDATES) ?: return
-    callback(lyrics)
-  }
-
-  private fun resolveAppVersion(context: Context): String {
-    return try {
-      context.packageManager
-        .getPackageInfo(context.packageName, 0)
-        .versionName
-        ?.takeIf { it.isNotBlank() }
-        ?: UNKNOWN_VERSION
+    try {
+      val target = trackTarget(title, artist, duration)
+      val ranked = findCandidates(target, album = null)
+      if (ranked.isEmpty()) {
+        Timber.d("Paxsenix found no matching track")
+        return
+      }
+      val candidate = awaitBestLyrics(ranked, PaxsenixCore.MAX_ALL_LYRICS_CANDIDATES) ?: return
+      callback(candidate.lyrics)
+    } catch (e: CancellationException) {
+      throw e
     } catch (e: Exception) {
-      Timber.w(e, "Paxsenix could not read the app version")
-      UNKNOWN_VERSION
+      Timber.w(e, "Paxsenix getAllLyrics failed")
     }
   }
 
-  private fun createClient(version: String): HttpClient =
-    HttpClient(OkHttp) {
-      expectSuccess = true
-
-      install(HttpTimeout) {
-        requestTimeoutMillis = 5_000
-        connectTimeoutMillis = 4_000
-        socketTimeoutMillis = 5_000
-      }
-
-      install(ContentNegotiation) {
-        json(
-          Json {
-            isLenient = true
-            ignoreUnknownKeys = true
-          },
-        )
-      }
-
-      defaultRequest {
-        url(BASE_URL)
-        header(HttpHeaders.UserAgent, "revenge/$version")
-      }
+  private fun readVersion(context: Context): String {
+    return try {
+      context.packageManager.getPackageInfo(context.packageName, 0).versionName
+        ?.takeIf { it.isNotBlank() } ?: "Unknown"
+    } catch (e: Exception) {
+      Timber.w(e, "Paxsenix could not read app version")
+      "Unknown"
     }
+  }
 
-  private val httpClient: HttpClient
-    get() =
-      client ?: throw IllegalStateException("Paxsenix.init() must be called before fetching lyrics")
+  private fun http(): HttpClient =
+    testClient ?: client ?: throw IllegalStateException(INIT_ERROR)
 
   private fun trackTarget(title: String, artist: String, duration: Int): TrackTarget {
     val (cleanTitle, cleanArtist) = MetadataCleaner.clean(title, artist).toSearchQuery()
@@ -148,63 +144,77 @@ object Paxsenix {
   }
 
   private suspend fun search(query: String): List<SearchResult> {
-    Timber.d("Paxsenix searching: %s", query)
-    return attempt {
-      httpClient.get("/apple-music/search") { parameter("q", query) }.body<SearchResponse>()
+    return try {
+      getJson(
+        path = "/apple-music/search",
+        params = listOf("q" to query),
+      ) { body -> json.decodeFromString<List<SearchResult>>(body) }
+    } catch (e: CancellationException) {
+      throw e
+    } catch (e: Exception) {
+      Timber.w(e, "Paxsenix search failed")
+      emptyList()
     }
-      .onFailure { Timber.w(it, "Paxsenix search failed for query: %s", query) }
-      .getOrDefault(emptyList())
   }
 
-  private suspend fun fetchLyrics(id: String): Result<LyricsCandidate> = attempt {
-    Timber.d("Paxsenix fetching lyrics for track: %s", id)
-    val response =
-      httpClient.get("/apple-music/lyrics") { parameter("id", id) }.body<LyricsResponse>()
-    PaxsenixCore.buildLyrics(response, ::convertTtmlToLrc).getOrThrow()
+  private suspend fun fetchLyrics(id: String): LyricsCandidate {
+    val response = getJson(
+      path = "/apple-music/lyrics",
+      params = listOf("id" to id),
+    ) { body -> json.decodeFromString<LyricsResponse>(body) }
+    return PaxsenixCore.buildLyrics(response, ::convertTtmlToLrc).getOrThrow()
   }
 
-  private fun convertTtmlToLrc(ttml: String): String =
-    attempt { TTMLParser.toLRC(TTMLParser.parseTTML(ttml)) }
-      .onFailure { Timber.w(it, "Paxsenix TTML conversion failed") }
-      .getOrDefault("")
+  private suspend fun <T> getJson(
+    path: String,
+    params: List<Pair<String, Any?>>,
+    decode: (String) -> T,
+  ): T {
+    val response = http().get("$BASE_URL$path") {
+      header(HttpHeaders.UserAgent, "revenge/$version")
+      for ((key, value) in params) {
+        parameter(key, value)
+      }
+    }
+    return decode(response.bodyAsText())
+  }
 
-  /**
-   * Fetches the ranked candidates concurrently and returns the first word-timed result, or the
-   * first non-empty unsynced result once every candidate has finished. Remaining requests are
-   * cancelled as soon as a winner is found.
-   */
-  private suspend fun awaitBestLyrics(ranked: List<ScoredResult>, limit: Int): String? =
-    coroutineScope {
-      val jobs = ranked.take(limit).map { candidate -> async { fetchLyrics(candidate.result.id) } }
-      val pending = jobs.toMutableList()
-      var fallback: String? = null
-
+  private suspend fun awaitBestLyrics(
+    ranked: List<ScoredResult>,
+    limit: Int,
+  ): LyricsCandidate? {
+    val targets = ranked.take(limit)
+    if (targets.isEmpty()) return null
+    return coroutineScope {
+      val results = Channel<LyricsCandidate?>(Channel.UNLIMITED)
+      val jobs = targets.map { scored ->
+        launch {
+          val candidate = try {
+            fetchLyrics(scored.result.id)
+          } catch (e: CancellationException) {
+            throw e
+          } catch (e: Exception) {
+            null
+          }
+          results.send(candidate)
+        }
+      }
+      var fallback: LyricsCandidate? = null
+      var winner: LyricsCandidate? = null
       try {
-        while (pending.isNotEmpty()) {
-          val fetched = select { pending.forEach { job -> job.onAwait { it } } }
-          pending.removeAll { it.isCompleted }
-
-          val candidate = fetched.getOrNull() ?: continue
+        for (index in targets.indices) {
+          val candidate = results.receive() ?: continue
           if (candidate.lyrics.isBlank()) continue
-
-          if (candidate.hasWordTimings) return@coroutineScope candidate.lyrics
-          if (fallback == null) fallback = candidate.lyrics
+          if (candidate.hasWordTimings) {
+            winner = candidate
+            break
+          }
+          if (fallback == null) fallback = candidate
         }
       } finally {
         jobs.forEach { it.cancel() }
       }
-
-      fallback
-    }
-
-  /** `runCatching` that never swallows coroutine cancellation. */
-  private inline fun <T> attempt(block: () -> T): Result<T> {
-    return try {
-      Result.success(block())
-    } catch (e: CancellationException) {
-      throw e
-    } catch (e: Throwable) {
-      Result.failure(e)
+      winner ?: fallback
     }
   }
 }

@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="ai_error_api_key_required">API key required</string>
-    <string name="ai_error_no_lyrics">No lyrics found</string>
-    <string name="ai_error_lyrics_empty">Lyrics are empty</string>
-    <string name="ai_error_language_required">Language required</string>
-    <string name="ai_error_unexpected">Unexpected error</string>
-    <string name="ai_error_unknown">Unknown error</string>
+    <string name="ai_error_api_key_required">An API key is required for translation</string>
+    <string name="ai_error_no_lyrics">There are no lyrics to translate</string>
+    <string name="ai_error_lyrics_empty">The lyrics are empty</string>
+    <string name="ai_error_language_required">Select a target language</string>
     <string name="ai_error_translation_failed">Translation failed</string>
+    <string name="ai_error_unexpected">The translation result was empty</string>
+    <string name="ai_error_unknown">An unknown translation error occurred</string>
 </resources>

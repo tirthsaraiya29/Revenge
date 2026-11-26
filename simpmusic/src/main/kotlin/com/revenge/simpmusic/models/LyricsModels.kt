@@ -3,22 +3,25 @@ package com.revenge.simpmusic.models
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
-/** A single lyrics candidate returned by the SimpMusic lyrics API. */
 @Serializable
 data class LyricsData(
   val id: String? = null,
   val videoId: String? = null,
-  @SerialName("songTitle") val title: String? = null,
-  @SerialName("artistName") val artist: String? = null,
-  @SerialName("albumName") val album: String? = null,
-  @SerialName("durationSeconds") val duration: Int? = null,
+  @SerialName("songTitle")
+  val title: String? = null,
+  @SerialName("artistName")
+  val artist: String? = null,
+  @SerialName("albumName")
+  val album: String? = null,
+  @SerialName("durationSeconds")
+  val duration: Int? = null,
   val syncedLyrics: String? = null,
-  @SerialName("plainLyric") val plainLyrics: String? = null,
+  @SerialName("plainLyric")
+  val plainLyrics: String? = null,
   val richSyncLyrics: String? = null,
   val vote: Int? = null,
 )
 
-/** Envelope of the SimpMusic lyrics API. */
 @Serializable
 data class SimpMusicApiResponse(
   val type: String? = null,

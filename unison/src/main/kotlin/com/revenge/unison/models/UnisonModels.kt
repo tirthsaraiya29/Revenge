@@ -1,12 +1,11 @@
 package com.revenge.unison.models
 
-import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 @Serializable
 data class UnisonEntry(
   val id: Long,
-  @SerialName("videoId") val videoId: String? = null,
+  val videoId: String? = null,
   val song: String,
   val artist: String,
   val lyrics: String,
