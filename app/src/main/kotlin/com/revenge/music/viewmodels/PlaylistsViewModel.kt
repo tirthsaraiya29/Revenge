@@ -50,6 +50,6 @@ constructor(
       .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
   suspend fun sync() {
-    syncUtils.syncSavedPlaylists()
+    syncUtils.performSavedPlaylistsSync()
   }
 }

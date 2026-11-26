@@ -112,7 +112,7 @@ constructor(
         .first { it != null }
         ?.playlist
         ?.browseId
-        ?.let { browseId -> syncUtils.syncPlaylist(browseId, playlistId) }
+        ?.let { browseId -> syncUtils.performSinglePlaylistSync(browseId, playlistId) }
     }
 
     viewModelScope.launch {
@@ -168,7 +168,7 @@ constructor(
   fun addSuggestedSong(song: SongItem) {
     viewModelScope.launch(Dispatchers.IO) {
       playlist.value?.let { currentPlaylist ->
-        database.transaction {
+        database.withTransaction {
           insert(song.toMediaMetadata())
           addSongToPlaylist(currentPlaylist, listOf(song.id))
         }

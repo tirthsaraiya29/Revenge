@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.revenge.music.ai.AiPlaylistGenerator
+import com.revenge.music.ai.weather.IpLocationRepository
 import com.revenge.music.ai.weather.LocationProvider
 import com.revenge.music.ai.weather.WeatherRepository
 import com.revenge.music.ai.weather.WeatherUiState
@@ -18,7 +19,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 @HiltViewModel
 class CreateAiPlaylistViewModel
@@ -26,6 +26,10 @@ class CreateAiPlaylistViewModel
 constructor(
   private val generationStatus: GenerationStatus,
   private val localTasteEngine: LocalTasteEngine,
+  private val aiPlaylistGenerator: AiPlaylistGenerator,
+  private val locationProvider: LocationProvider,
+  private val ipLocationRepository: IpLocationRepository,
+  private val weatherRepository: WeatherRepository,
 ) : ViewModel() {
 
   private var isTasteGenerating = false
@@ -129,12 +133,12 @@ constructor(
   fun fetchWeather(context: Context, hasPermission: Boolean = true) {
     fetchWeatherJob?.cancel()
     _weatherUiState.value = WeatherUiState.Loading
-    fetchWeatherJob = viewModelScope.launch {
+    fetchWeatherJob = viewModelScope.launch(Dispatchers.IO) {
       var lat: Double? = null
       var lon: Double? = null
 
       if (hasPermission) {
-        val location = LocationProvider.getLocation(context)
+        val location = locationProvider.getFusedLocation() ?: locationProvider.getLastKnownLocation()
         if (location != null) {
           lat = location.latitude
           lon = location.longitude
@@ -143,7 +147,7 @@ constructor(
 
       // Fallback to IP Location if GPS location unavailable or permission denied
       if (lat == null || lon == null) {
-        val ipResult = com.revenge.music.ai.weather.IpLocationRepository.fetchIpLocation()
+        val ipResult = ipLocationRepository.getLocation()
         ipResult.onSuccess { ipLoc ->
           lat = ipLoc.latitude
           lon = ipLoc.longitude
@@ -153,7 +157,7 @@ constructor(
       val currentLat = lat
       val currentLon = lon
       if (currentLat != null && currentLon != null) {
-        val result = WeatherRepository.fetchWeather(currentLat, currentLon)
+        val result = weatherRepository.getWeather(currentLat, currentLon)
         result.fold(
           onSuccess = { weatherInfo ->
             _weatherUiState.value = WeatherUiState.Success(weatherInfo)
@@ -188,12 +192,12 @@ constructor(
 
     viewModelScope.launch {
       val playlistId =
-        AiPlaylistGenerator.generatePlaylist(
+        aiPlaylistGenerator.generatePlaylist(
           context = context,
           userPrompt = currentPrompt,
           numberOfSongs = _numSongs.value.toInt(),
           weatherInfo = activeWeatherInfo,
-          onLog = { log -> withContext(Dispatchers.Main) { _generationLog.value = log } },
+          onLog = { log -> _generationLog.value = log },
         )
 
       if (playlistId != null) {

@@ -44,7 +44,7 @@ import com.revenge.music.spotify.LoadSpotifyRecommendationsUseCase
 import com.revenge.music.utils.PodcastProgress
 import com.revenge.music.utils.SyncUtils
 import com.revenge.music.utils.dataStore
-import com.revenge.music.utils.filterQuickPickSongs
+import com.revenge.music.utils.QuickPickSongs.filterQuickPickSongs
 import com.revenge.music.utils.get
 import com.revenge.music.utils.reportException
 import com.revenge.music.utils.selectHeroCarouselSongs
@@ -432,7 +432,12 @@ constructor(
     when (quickPicksEnum.first()) {
       QuickPicks.QUICK_PICKS -> {
         val relatedSongs = database.quickPicks().first().eligible()
-        val forgotten = database.forgottenFavorites().first().eligible().take(8)
+        val forgotten =
+          database
+            .forgottenFavorites(System.currentTimeMillis(), Random.nextInt())
+            .first()
+            .eligible()
+            .take(8)
 
         val recentSong = database.events().first().firstOrNull()?.song
         val ytSimilarSongs = mutableListOf<Song>()
@@ -566,7 +571,12 @@ constructor(
     getQuickPicks()
 
     forgottenFavorites.value =
-      database.forgottenFavorites().first().filterVideoSongs(hideVideoSongs).shuffled().take(20)
+      database
+        .forgottenFavorites(System.currentTimeMillis(), Random.nextInt())
+        .first()
+        .filterVideoSongs(hideVideoSongs)
+        .shuffled()
+        .take(20)
 
     val fromTimeStamp = System.currentTimeMillis() - 86400000L * 7 * 2
     val keepListeningSongs =
@@ -812,7 +822,7 @@ constructor(
         val newSections =
           (if (isMainHome) nextSections.sections
             else
-              PodcastProgress.withoutContinueShelf(
+              PodcastProgress.getInstance(context).withoutContinueShelf(
                 nextSections.sections,
                 context.getString(R.string.continue_listening),
               ))
@@ -882,7 +892,7 @@ constructor(
       nextSections.copy(
         chips = homePage.value?.chips,
         sections =
-          PodcastProgress.withoutContinueShelf(
+          PodcastProgress.getInstance(context).withoutContinueShelf(
               nextSections.sections,
               context.getString(R.string.continue_listening),
             )

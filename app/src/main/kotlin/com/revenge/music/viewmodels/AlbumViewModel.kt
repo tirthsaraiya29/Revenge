@@ -52,7 +52,7 @@ constructor(
             description.value = it.description
           }
           descriptionRuns.value = it.descriptionRuns
-          database.transaction {
+          database.withTransaction {
             if (album == null) {
               insert(it)
             } else {
@@ -67,7 +67,7 @@ constructor(
                 val artistEntity = database.getArtistById(artistId)
                 if (artistEntity?.thumbnailUrl == null) {
                   YouTube.artist(artistId).onSuccess { artistPage ->
-                    database.query {
+                    database.withTransaction {
                       getArtistById(artistId)?.let { currentArtist ->
                         update(currentArtist, artistPage)
                       }

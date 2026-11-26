@@ -54,7 +54,7 @@ constructor(
 
         val completeSongs = songs.filter {
           val contentLength = it.format?.contentLength
-          contentLength != null && playerCache.isCached(it.song.id, 0, contentLength)
+          contentLength != null && playerCache.isCached(it.song.id, 0, contentLength.toLong())
         }
 
         if (completeSongs.isNotEmpty()) {

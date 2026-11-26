@@ -206,7 +206,8 @@ constructor(
     val show = playlist.value?.takeIf { it.isPodcast } ?: return this
     val showArtist = Artist(name = show.title, id = PodcastPage.showBrowseId(show.id))
     val attributed = map { if (it.artists.isEmpty()) it.copy(artists = listOf(showArtist)) else it }
-    attributed.forEach(PodcastProgress::mergeRemote)
+    val podcastProgress = PodcastProgress.getInstance(context)
+    attributed.forEach { podcastProgress.mergeRemote(it) }
     return attributed
   }
 

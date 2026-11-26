@@ -272,7 +272,7 @@ constructor(
           }
           .forEach { artist ->
             YouTube.artist(artist.id).onSuccess { artistPage ->
-              database.query { update(artist, artistPage) }
+              database.withTransaction { update(artist, artistPage) }
             }
           }
       }
@@ -284,7 +284,7 @@ constructor(
           .forEach { album ->
             YouTube.album(album.id)
               .onSuccess { albumPage ->
-                database.query { update(album.album, albumPage, album.artists) }
+                database.withTransaction { update(album.album, albumPage, album.artists) }
               }
               .onFailure {
                 reportException(it)

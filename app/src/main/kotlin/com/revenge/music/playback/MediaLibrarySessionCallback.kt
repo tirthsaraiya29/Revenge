@@ -695,7 +695,7 @@ constructor(
                     evictHomePlaylist(playlistId)
                   }
                   val episodes = page?.takeIf { it.playlist.isPodcast }?.let { showEpisodes(it) }
-                  episodes?.forEach(podcastProgress::mergeRemote)
+                  episodes?.forEach { podcastProgress.mergeRemote(it) }
                   val songs =
                     (episodes?.withoutHiddenEpisodes() ?: page?.songs)
                       ?.take(100)
@@ -1707,7 +1707,7 @@ constructor(
         }
       }
     if (!episodes.isNullOrEmpty()) {
-      episodes.forEach(podcastProgress::mergeRemote)
+      episodes.forEach { podcastProgress.mergeRemote(it) }
       cachedNewEpisodes = episodes
       newEpisodesAtMs = now
       newEpisodesShows = showIds

@@ -98,10 +98,10 @@ constructor(
   private suspend fun fetchParsedUrlItem(parsedUrl: YouTubeUrlParser.ParsedUrl): YTItem? {
     return try {
       when (parsedUrl) {
-        is YouTubeUrlParser.ParsedUrl.Video -> {
+        is YouTubeUrlParser.Video -> {
           YouTube.queue(listOf(parsedUrl.id)).getOrNull()?.firstOrNull()
         }
-        is YouTubeUrlParser.ParsedUrl.Artist -> {
+        is YouTubeUrlParser.Artist -> {
           YouTube.artist(parsedUrl.id).getOrNull()?.artist
         }
       }

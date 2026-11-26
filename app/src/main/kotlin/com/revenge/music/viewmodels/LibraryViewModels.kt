@@ -155,15 +155,15 @@ constructor(
       .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
   fun syncLikedSongs() {
-    viewModelScope.launch(Dispatchers.IO) { syncUtils.syncLikedSongs() }
+    viewModelScope.launch(Dispatchers.IO) { syncUtils.performLikedSongsSync() }
   }
 
   fun syncLibrarySongs() {
-    viewModelScope.launch(Dispatchers.IO) { syncUtils.syncLibrarySongs() }
+    viewModelScope.launch(Dispatchers.IO) { syncUtils.performLibrarySongsSync() }
   }
 
   fun syncUploadedSongs() {
-    viewModelScope.launch(Dispatchers.IO) { syncUtils.syncUploadedSongs() }
+    viewModelScope.launch(Dispatchers.IO) { syncUtils.performUploadedSongsSync() }
   }
 }
 
@@ -208,7 +208,7 @@ constructor(
       .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
   fun sync() {
-    viewModelScope.launch(Dispatchers.IO) { syncUtils.syncArtistsSubscriptions() }
+    viewModelScope.launch(Dispatchers.IO) { syncUtils.performArtistsSubscriptionsSync() }
   }
 
   init {
@@ -224,7 +224,7 @@ constructor(
           }
           .forEach { artist ->
             YouTube.artist(artist.id).onSuccess { artistPage ->
-              database.query { update(artist, artistPage) }
+              database.withTransaction { update(artist, artistPage) }
             }
           }
       }
@@ -287,7 +287,7 @@ constructor(
       .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
   fun sync() {
-    viewModelScope.launch(Dispatchers.IO) { syncUtils.syncLikedAlbums() }
+    viewModelScope.launch(Dispatchers.IO) { syncUtils.performLikedAlbumsSync() }
   }
 
   init {
@@ -300,7 +300,7 @@ constructor(
           .forEach { album ->
             YouTube.album(album.id)
               .onSuccess { albumPage ->
-                database.query { update(album.album, albumPage, album.artists) }
+                database.withTransaction { update(album.album, albumPage, album.artists) }
               }
               .onFailure {
                 reportException(it)
@@ -351,7 +351,7 @@ constructor(
       .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
   fun sync() {
-    viewModelScope.launch(Dispatchers.IO) { syncUtils.syncSavedPlaylists() }
+    viewModelScope.launch(Dispatchers.IO) { syncUtils.performSavedPlaylistsSync() }
   }
 
   val topValue =
@@ -517,7 +517,7 @@ constructor(
         results
           .filterNotNull()
           .flatten()
-          .sortedByDescending { EpisodeDates.parse(it.publishedText, now) ?: 0L }
+          .sortedByDescending { it.publishedText?.let { text -> EpisodeDates.parse(text, now) } ?: 0L }
           .take(MAX_EPISODES)
       if (results.none { it == null }) {
         newEpisodesFor = showIds
@@ -598,7 +598,7 @@ constructor(
   fun refresh() {
     viewModelScope.launch(Dispatchers.IO) {
       _isRefreshing.value = true
-      syncUtils.performFullSyncSuspend()
+      syncUtils.fullSyncSuspend()
       _isRefreshing.value = false
     }
   }
@@ -663,7 +663,7 @@ constructor(
           .forEach { album ->
             YouTube.album(album.id)
               .onSuccess { albumPage ->
-                database.query { update(album.album, albumPage, album.artists) }
+                database.withTransaction { update(album.album, albumPage, album.artists) }
               }
               .onFailure {
                 reportException(it)
@@ -689,7 +689,7 @@ constructor(
           }
           .forEach { artist ->
             YouTube.artist(artist.id).onSuccess { artistPage ->
-              database.query { update(artist, artistPage) }
+              database.withTransaction { update(artist, artistPage) }
             }
           }
       }
