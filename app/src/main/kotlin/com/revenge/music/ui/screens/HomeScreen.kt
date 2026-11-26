@@ -384,7 +384,7 @@ fun CommunityPlaylistCard(
                         YouTube.playlist(item.playlist.id).completed().getOrNull()?.songs.orEmpty()
                       }
                       .map { it.toMediaMetadata() }
-                      .onEach(::insert)
+                      .onEach { insert(it) }
                       .mapIndexed { index, song ->
                         PlaylistSongMap(
                           songId = song.id,

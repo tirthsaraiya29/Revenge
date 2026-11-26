@@ -116,7 +116,7 @@ fun RecognitionHistoryScreen(navController: NavController) {
         TextButton(onClick = { showClearDialog = false }) { Text(stringResource(R.string.cancel)) }
         TextButton(
           onClick = {
-            coroutineScope.launch(Dispatchers.IO) { database.query { clearRecognitionHistory() } }
+            coroutineScope.launch(Dispatchers.IO) { database.clearRecognitionHistory() }
             showClearDialog = false
           },
         ) {
@@ -141,7 +141,7 @@ fun RecognitionHistoryScreen(navController: NavController) {
         TextButton(
           onClick = {
             coroutineScope.launch(Dispatchers.IO) {
-              database.query { deleteRecognitionHistoryById(item.id) }
+              database.deleteRecognitionHistoryById(item.id)
             }
             itemToDelete = null
           },

@@ -214,7 +214,7 @@ fun OldPlayerMenu(
   AddToPlaylistDialog(
     isVisible = showChoosePlaylistDialog,
     onGetSong = {
-      database.transaction { insert(mediaMetadata) }
+      database.withTransaction { insert(mediaMetadata) }
       listOf(mediaMetadata.id)
     },
     onDismiss = { showChoosePlaylistDialog = false },
@@ -532,7 +532,9 @@ fun OldPlayerMenu(
                       )
                     },
                     onClick = {
-                      database.transaction { insert(mediaMetadata) }
+                      coroutineScope.launch(Dispatchers.IO) {
+                        database.insert(mediaMetadata)
+                      }
                       val downloadRequest =
                         DownloadRequest.Builder(mediaMetadata.id, mediaMetadata.id.toUri())
                           .setCustomCacheKey(mediaMetadata.id)
@@ -698,11 +700,11 @@ fun OldPlayerMenu(
                       }
                   context.startService(intent)
                   coroutineScope.launch(Dispatchers.IO) {
-                    database.query { deleteFormat(mediaMetadata.id) }
+                    database.deleteFormat(mediaMetadata.id)
                     YouTube.queue(listOf(mediaMetadata.id)).onSuccess {
                       val newSong = it.firstOrNull()
                       if (newSong != null) {
-                        database.transaction {
+                        database.withTransaction {
                           val songToUpdate = librarySong
                           if (songToUpdate != null) {
                             update(songToUpdate, newSong.toMediaMetadata())

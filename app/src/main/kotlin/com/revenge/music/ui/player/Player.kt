@@ -323,8 +323,9 @@ fun BottomSheetPlayer(
   val isEpisode =
     mediaMetadata?.let { metadata ->
       val durationMs = maxOf(playerConnection.player.duration, metadata.duration * 1000L)
-      PodcastProgress.get(metadata.id) != null ||
-        PodcastProgress.isEpisode(metadata, durationMs) ||
+      val podcastProgress = PodcastProgress.getInstance(context)
+      podcastProgress.get(metadata.id) != null ||
+        podcastProgress.isEpisode(metadata, durationMs) ||
         metadata.musicVideoType == MUSIC_VIDEO_TYPE_PODCAST_EPISODE ||
         metadata.artists.any { it.id?.startsWith(PODCAST_BROWSE_PREFIX) == true }
     } == true
@@ -2004,7 +2005,7 @@ fun BottomSheetPlayer(
                           )
                         }
                         else -> {
-                          database.transaction { insert(meta) }
+                          coroutineScope.launch(Dispatchers.IO) { database.insert(meta) }
                           val downloadRequest =
                             DownloadRequest.Builder(meta.id, meta.id.toUri())
                               .setCustomCacheKey(meta.id)

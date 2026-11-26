@@ -69,7 +69,7 @@ fun SpeedDialGridItem(
             if (albumWithSongs?.songs.isNullOrEmpty()) {
               YouTube.album(item.id)
                 .onSuccess { albumPage ->
-                  database.transaction { insert(albumPage) }
+                  database.withTransaction { insert(albumPage) }
                   albumWithSongs = database.albumWithSongs(item.id).first()
                 }
                 .onFailure { reportException(it) }

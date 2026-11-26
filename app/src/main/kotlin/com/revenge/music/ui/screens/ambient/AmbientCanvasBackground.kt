@@ -8,6 +8,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import com.revenge.applecanvas.AppleMusicCanvasProvider
 import com.revenge.canvas.CanvasArtwork
 import com.revenge.canvas.TidalCanvasProvider
@@ -30,6 +31,7 @@ import kotlinx.coroutines.withContext
 @Composable
 fun AmbientCanvasBackground(modifier: Modifier = Modifier) {
   val playerConnection = LocalPlayerConnection.current ?: return
+  val context = LocalContext.current
   val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
   val isPlaying by playerConnection.isPlaying.collectAsState()
   val metadata = mediaMetadata ?: return
@@ -47,8 +49,9 @@ fun AmbientCanvasBackground(modifier: Modifier = Modifier) {
 
   val isEpisode = metadata.let { meta ->
     val durationMs = meta.duration * 1000L
-    PodcastProgress.get(meta.id) != null ||
-      PodcastProgress.isEpisode(meta, durationMs) ||
+    val podcastProgress = PodcastProgress.getInstance(context)
+    podcastProgress.get(meta.id) != null ||
+      podcastProgress.isEpisode(meta, durationMs) ||
       meta.musicVideoType == MUSIC_VIDEO_TYPE_PODCAST_EPISODE ||
       meta.artists.any { it.id?.startsWith(PODCAST_BROWSE_PREFIX) == true }
   }

@@ -256,7 +256,7 @@ fun AddToPlaylistDialog(
                 database.playlistSongMaps(targetPlaylist.id, 0).filter {
                   it.songId in toRemoveSongIds
                 }
-              database.transaction {
+              database.withTransaction {
                 maps.forEach { map ->
                   move(map.playlistId, map.position, Int.MAX_VALUE)
                   delete(map.copy(position = Int.MAX_VALUE))
@@ -297,7 +297,7 @@ fun AddToPlaylistDialog(
             val nonDuplicates = songIds.orEmpty().filter { !duplicates.contains(it) }
             coroutineScope.launch(Dispatchers.IO) {
               if (nonDuplicates.isNotEmpty()) {
-                database.transaction {
+                database.withTransaction {
                   addSongToPlaylist(targetPlaylist, nonDuplicates)
                 }
                 targetPlaylist.playlist.browseId?.let { plist ->
@@ -325,7 +325,7 @@ fun AddToPlaylistDialog(
             val targetPlaylist = selectedPlaylist ?: return@TextButton
             val allIds = songIds.orEmpty()
             coroutineScope.launch(Dispatchers.IO) {
-              database.transaction { addSongToPlaylist(targetPlaylist, allIds) }
+              database.withTransaction { addSongToPlaylist(targetPlaylist, allIds) }
               targetPlaylist.playlist.browseId?.let { plist ->
                 allIds.forEach { YouTube.addToPlaylist(plist, it) }
               }

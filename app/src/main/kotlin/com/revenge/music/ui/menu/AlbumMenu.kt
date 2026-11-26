@@ -551,7 +551,7 @@ fun AlbumMenu(
                 refetchIconDegree -= 360
                 scope.launch(Dispatchers.IO) {
                   YouTube.album(album.id).onSuccess {
-                    database.transaction { update(album.album, it, album.artists) }
+                    database.withTransaction { update(album.album, it, album.artists) }
                   }
                 }
               },

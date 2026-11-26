@@ -8,7 +8,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import com.revenge.innertube.models.Artist
@@ -26,8 +28,10 @@ import com.revenge.music.utils.listItemShape
 /** Episodes started and not finished, most recently listened first. */
 @Composable
 fun rememberEpisodesInProgress(limit: Int = Int.MAX_VALUE): List<EpisodeProgress> {
-  val entries by PodcastProgress.entries.collectAsState()
-  return PodcastProgress.inProgress(entries).take(limit)
+  val context = LocalContext.current
+  val progress = remember { PodcastProgress.getInstance(context) }
+  val entries by progress.entries.collectAsState()
+  return progress.inProgress(entries).take(limit)
 }
 
 /** An episode as a [SongItem], so it is drawn and played like the episodes of a show. */
@@ -54,13 +58,14 @@ fun LazyListScope.continueListening(episodes: List<EpisodeProgress>, keyPrefix: 
     index,
     episode ->
     val playerConnection = LocalPlayerConnection.current
+    val context = LocalContext.current
     val song = episode.toSongItem()
     YouTubeListItem(
       item = song,
       isSwipeable = false,
       shape = listItemShape(index = index, count = episodes.size),
       trailingContent = {
-        IconButton(onClick = { PodcastProgress.dismiss(episode.id) }) {
+        IconButton(onClick = { PodcastProgress.getInstance(context).dismiss(episode.id) }) {
           Icon(
             painter = painterResource(R.drawable.close),
             contentDescription = stringResource(R.string.remove_from_continue_listening),

@@ -12,6 +12,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.revenge.music.LocalDatabase
 import com.revenge.music.R
 import com.revenge.music.ai.AiRecommendationHelper
 import kotlinx.coroutines.Dispatchers
@@ -21,6 +22,7 @@ import kotlinx.coroutines.withContext
 @Composable
 fun RefreshAiRecommendationDialog(onDismiss: () -> Unit) {
   val context = LocalContext.current
+  val database = LocalDatabase.current
   val coroutineScope = rememberCoroutineScope()
 
   var isGenerating by remember { mutableStateOf(true) }
@@ -30,9 +32,9 @@ fun RefreshAiRecommendationDialog(onDismiss: () -> Unit) {
   LaunchedEffect(Unit) {
     coroutineScope.launch {
       try {
-        AiRecommendationHelper.generateRecommendations(
+        AiRecommendationHelper(database).generateRecommendations(
           context = context,
-          onLog = { log -> withContext(Dispatchers.Main) { generationLog = log } },
+          onLog = { log -> generationLog = log },
         )
         withContext(Dispatchers.Main) { onDismiss() }
       } catch (e: Exception) {

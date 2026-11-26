@@ -421,15 +421,25 @@ fun AddToPlaylistDialogOnline(
           onClick = {
             showDuplicateDialog = false
             onDismiss()
-            database.transaction {
-              addSongToPlaylist(selectedPlaylist!!, songIds!!.filter { !duplicates.contains(it) })
+            coroutineScope.launch(Dispatchers.IO) {
+              database.withTransaction {
+                addSongToPlaylist(
+                  selectedPlaylist!!,
+                  songIds!!.filter { !duplicates.contains(it) },
+                )
+              }
+              withContext(Dispatchers.Main) {
+                Toast.makeText(
+                    context,
+                    context.getString(
+                      R.string.added_to_playlist,
+                      selectedPlaylist!!.playlist.name,
+                    ),
+                    Toast.LENGTH_SHORT,
+                  )
+                  .show()
+              }
             }
-            Toast.makeText(
-                context,
-                context.getString(R.string.added_to_playlist, selectedPlaylist!!.playlist.name),
-                Toast.LENGTH_SHORT,
-              )
-              .show()
           },
         ) {
           Text(stringResource(R.string.skip_duplicates))
@@ -439,13 +449,20 @@ fun AddToPlaylistDialogOnline(
           onClick = {
             showDuplicateDialog = false
             onDismiss()
-            database.transaction { addSongToPlaylist(selectedPlaylist!!, songIds!!) }
-            Toast.makeText(
-                context,
-                context.getString(R.string.added_to_playlist, selectedPlaylist!!.playlist.name),
-                Toast.LENGTH_SHORT,
-              )
-              .show()
+            coroutineScope.launch(Dispatchers.IO) {
+              database.withTransaction { addSongToPlaylist(selectedPlaylist!!, songIds!!) }
+              withContext(Dispatchers.Main) {
+                Toast.makeText(
+                    context,
+                    context.getString(
+                      R.string.added_to_playlist,
+                      selectedPlaylist!!.playlist.name,
+                    ),
+                    Toast.LENGTH_SHORT,
+                  )
+                  .show()
+              }
+            }
           },
         ) {
           Text(stringResource(R.string.add_anyway))

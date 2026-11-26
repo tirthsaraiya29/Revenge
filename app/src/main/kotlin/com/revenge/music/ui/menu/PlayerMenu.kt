@@ -108,6 +108,8 @@ import com.revenge.music.ui.component.NewActionGrid
 import com.revenge.music.ui.component.SongDnaBottomSheet
 import com.revenge.music.utils.PodcastProgress
 import com.revenge.music.utils.rememberPreference
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlin.math.log2
 import kotlin.math.pow
 import kotlin.math.round
@@ -184,8 +186,9 @@ fun PlayerMenu(
 
   val isEpisode = mediaMetadata.let { metadata ->
     val durationMs = maxOf(playerConnection.player.duration, metadata.duration * 1000L)
-    PodcastProgress.get(metadata.id) != null ||
-      PodcastProgress.isEpisode(metadata, durationMs) ||
+    val podcastProgress = PodcastProgress.getInstance(context)
+    podcastProgress.get(metadata.id) != null ||
+      podcastProgress.isEpisode(metadata, durationMs) ||
       metadata.musicVideoType == MUSIC_VIDEO_TYPE_PODCAST_EPISODE ||
       metadata.artists.any { it.id?.startsWith(PODCAST_BROWSE_PREFIX) == true }
   }
@@ -321,7 +324,7 @@ fun PlayerMenu(
   AddToPlaylistDialog(
     isVisible = showChoosePlaylistDialog,
     onGetSong = {
-      database.transaction { insert(mediaMetadata) }
+      database.withTransaction { insert(mediaMetadata) }
       listOf(mediaMetadata.id)
     },
     onDismiss = { showChoosePlaylistDialog = false },
@@ -753,7 +756,9 @@ fun PlayerMenu(
                     )
                   },
                   onClick = {
-                    database.transaction { insert(mediaMetadata) }
+                    coroutineScope.launch(Dispatchers.IO) {
+                      database.insert(mediaMetadata)
+                    }
                     val downloadRequest =
                       DownloadRequest.Builder(mediaMetadata.id, mediaMetadata.id.toUri())
                         .setCustomCacheKey(mediaMetadata.id)

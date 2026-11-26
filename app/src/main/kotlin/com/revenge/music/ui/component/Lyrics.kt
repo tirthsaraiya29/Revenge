@@ -145,6 +145,7 @@ import com.revenge.music.constants.TranslateModeKey
 import com.revenge.music.db.entities.LyricsEntity.Companion.LYRICS_NOT_FOUND
 import com.revenge.music.lyrics.LyricsEntry
 import com.revenge.music.lyrics.LyricsTranslationHelper
+import com.revenge.music.lyrics.TranslationStatus
 import com.revenge.music.lyrics.LyricsUtils.findCurrentLineIndex
 import com.revenge.music.lyrics.LyricsUtils.isBelarusian
 import com.revenge.music.lyrics.LyricsUtils.isBulgarian
@@ -439,13 +440,13 @@ fun Lyrics(
   }
 
   LaunchedEffect(translationStatus) {
-    if (translationStatus !is LyricsTranslationHelper.TranslationStatus.Idle) {
+    if (translationStatus !is TranslationStatus.Idle) {
       showTranslationBanner = true
       kotlinx.coroutines.delay(3000)
       showTranslationBanner = false
       if (
-        translationStatus is LyricsTranslationHelper.TranslationStatus.Error ||
-          translationStatus is LyricsTranslationHelper.TranslationStatus.Success
+        translationStatus is TranslationStatus.Error ||
+          translationStatus is TranslationStatus.Success
       ) {
         LyricsTranslationHelper.resetStatus()
       }
@@ -471,7 +472,7 @@ fun Lyrics(
           effectiveApiKey.isNotBlank() &&
           !LyricsTranslationHelper.hasTranslations(lyricsEntity) &&
           LyricsTranslationHelper.status.value !is
-            LyricsTranslationHelper.TranslationStatus.Translating &&
+            TranslationStatus.Translating &&
           !LyricsTranslationHelper.hasActiveTranslations.value
       ) {
         LyricsTranslationHelper.triggerManualTranslation()
@@ -719,14 +720,14 @@ fun Lyrics(
       visible =
         !compact &&
           showTranslationBanner &&
-          translationStatus !is LyricsTranslationHelper.TranslationStatus.Idle,
+          translationStatus !is TranslationStatus.Idle,
       enter = fadeIn() + slideInVertically { -it },
       exit = fadeOut() + slideOutVertically { -it },
       modifier = Modifier.fillMaxWidth().zIndex(1f).padding(top = 56.dp),
     ) {
       Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
         when (val status = translationStatus) {
-          is LyricsTranslationHelper.TranslationStatus.Translating -> {
+          is TranslationStatus.Translating -> {
             Card(
               colors =
                 CardDefaults.cardColors(
@@ -755,7 +756,7 @@ fun Lyrics(
               }
             }
           }
-          is LyricsTranslationHelper.TranslationStatus.Error -> {
+          is TranslationStatus.Error -> {
             Card(
               colors =
                 CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
@@ -781,7 +782,7 @@ fun Lyrics(
               }
             }
           }
-          is LyricsTranslationHelper.TranslationStatus.Success -> {
+          is TranslationStatus.Success -> {
             Card(
               colors =
                 CardDefaults.cardColors(
@@ -809,7 +810,7 @@ fun Lyrics(
               }
             }
           }
-          is LyricsTranslationHelper.TranslationStatus.Idle -> {}
+          is TranslationStatus.Idle -> {}
         }
       }
     }

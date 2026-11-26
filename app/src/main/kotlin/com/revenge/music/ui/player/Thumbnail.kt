@@ -665,8 +665,9 @@ private fun ThumbnailItem(
       val isEpisode =
         item.metadata?.let { meta ->
           val durationMs = meta.duration * 1000L
-          PodcastProgress.get(meta.id) != null ||
-            PodcastProgress.isEpisode(meta, durationMs) ||
+          val podcastProgress = PodcastProgress.getInstance(context)
+          podcastProgress.get(meta.id) != null ||
+            podcastProgress.isEpisode(meta, durationMs) ||
             meta.musicVideoType == MUSIC_VIDEO_TYPE_PODCAST_EPISODE ||
             meta.artists.any { it.id?.startsWith(PODCAST_BROWSE_PREFIX) == true }
         } == true

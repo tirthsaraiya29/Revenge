@@ -194,7 +194,9 @@ fun OnlinePlaylistScreen(
     if (oldestFirst && isPlaylistLoaded) viewModel.loadAllSongs()
   }
   val (hidePlayed, onHidePlayedChange) = rememberPreference(PodcastHidePlayedKey, false)
-  val episodeProgress by PodcastProgress.entries.collectAsState()
+  val context = LocalContext.current
+  val podcastProgress = remember { PodcastProgress.getInstance(context) }
+  val episodeProgress by podcastProgress.entries.collectAsState()
 
   // Beyond the songs loaded up front, load the next page when the list is
   // scrolled close to its end instead of fetching the whole playlist.
@@ -218,7 +220,6 @@ fun OnlinePlaylistScreen(
   }
   var query by
     rememberSaveable(stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue()) }
-  val context = LocalContext.current
 
   var downloadState by remember { mutableIntStateOf(Download.STATE_STOPPED) }
 

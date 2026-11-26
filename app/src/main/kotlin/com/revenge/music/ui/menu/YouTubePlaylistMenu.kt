@@ -180,7 +180,7 @@ fun YouTubePlaylistMenu(
         songs
           .ifEmpty { YouTube.playlist(targetPlaylist.id).completed().getOrNull()?.songs.orEmpty() }
           .map { it.toMediaMetadata() }
-      database.transaction { allSongs.forEach(::insert) }
+      database.withTransaction { allSongs.forEach { insert(it) } }
       coroutineScope.launch(Dispatchers.IO) {
         targetPlaylist.playlist.browseId?.let { playlistId ->
           YouTube.addPlaylistToPlaylist(playlistId, targetPlaylist.id)
@@ -223,7 +223,7 @@ fun YouTubePlaylistMenu(
                       YouTube.playlist(playlist.id).completed().getOrNull()?.songs.orEmpty()
                     }
                     .map { it.toMediaMetadata() }
-                    .onEach(::insert)
+                    .onEach { insert(it) }
                     .mapIndexed { index, song ->
                       PlaylistSongMap(
                         songId = song.id,
@@ -236,10 +236,12 @@ fun YouTubePlaylistMenu(
                 }
               }
             } else {
-              database.transaction {
-                val currentPlaylist = dbPlaylist!!.playlist
-                update(currentPlaylist, playlist)
-                update(currentPlaylist.toggleLike())
+              coroutineScope.launch {
+                database.withTransaction {
+                  val currentPlaylist = dbPlaylist!!.playlist
+                  update(currentPlaylist, playlist)
+                  update(currentPlaylist.toggleLike())
+                }
               }
             }
           },
@@ -320,7 +322,7 @@ fun YouTubePlaylistMenu(
         songs
           .ifEmpty { YouTube.playlist(playlist.id).completed().getOrNull()?.songs.orEmpty() }
           .map { it.toMediaMetadata() }
-      database.transaction { allSongs.forEach(::insert) }
+      database.withTransaction { allSongs.forEach { insert(it) } }
       allSongs.map { it.id }
     },
     playlistTitle = playlist.title,

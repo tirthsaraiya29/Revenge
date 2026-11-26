@@ -287,15 +287,21 @@ fun YouTubeSelectionSongMenu(
             },
             onClick = {
               if (allInLibrary) {
-                database.query { songSelection.forEach { song -> inLibrary(song.id, null) } }
+                coroutineScope.launch {
+                  database.withTransaction {
+                    songSelection.forEach { song -> inLibrary(song.id, null) }
+                  }
+                }
                 coroutineScope.launch {
                   songSelection.forEach { song -> YouTube.toggleSongLibrary(song.id, false) }
                 }
               } else {
-                database.transaction {
-                  songSelection.forEach { song ->
-                    insert(song.toMediaMetadata())
-                    inLibrary(song.id, LocalDateTime.now())
+                coroutineScope.launch {
+                  database.withTransaction {
+                    songSelection.forEach { song ->
+                      insert(song.toMediaMetadata())
+                      inLibrary(song.id, LocalDateTime.now())
+                    }
                   }
                 }
                 coroutineScope.launch {
@@ -371,30 +377,32 @@ fun YouTubeSelectionSongMenu(
               )
             },
             onClick = {
-              database.transaction {
-                songSelection.forEach { song ->
-                  val metadata = song.toMediaMetadata()
-                  if ((!allLiked && !metadata.liked) || allLiked) {
+              coroutineScope.launch {
+                database.withTransaction {
+                  songSelection.forEach { song ->
+                    val metadata = song.toMediaMetadata()
+                    if ((!allLiked && !metadata.liked) || allLiked) {
 
-                    insert(metadata)
+                      insert(metadata)
 
-                    val songEntity =
-                      com.revenge.music.db.entities.SongEntity(
-                        id = metadata.id,
-                        title = metadata.title,
-                        duration = metadata.duration,
-                        thumbnailUrl = metadata.thumbnailUrl,
-                        albumId = metadata.album?.id,
-                        albumName = metadata.album?.title,
-                        liked = !metadata.liked,
-                        totalPlayTime = 0,
-                        inLibrary = metadata.inLibrary,
-                        isLocal = false,
-                        libraryAddToken = metadata.libraryAddToken,
-                        libraryRemoveToken = metadata.libraryRemoveToken,
-                      )
-                    update(songEntity)
-                    syncUtils.likeSong(songEntity)
+                      val songEntity =
+                        com.revenge.music.db.entities.SongEntity(
+                          id = metadata.id,
+                          title = metadata.title,
+                          duration = metadata.duration,
+                          thumbnailUrl = metadata.thumbnailUrl,
+                          albumId = metadata.album?.id,
+                          albumName = metadata.album?.title,
+                          liked = !metadata.liked,
+                          totalPlayTime = 0,
+                          inLibrary = metadata.inLibrary,
+                          isLocal = false,
+                          libraryAddToken = metadata.libraryAddToken,
+                          libraryRemoveToken = metadata.libraryRemoveToken,
+                        )
+                      update(songEntity)
+                      syncUtils.likeSong(songEntity)
+                    }
                   }
                 }
               }

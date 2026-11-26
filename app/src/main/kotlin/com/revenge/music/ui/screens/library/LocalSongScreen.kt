@@ -202,8 +202,8 @@ fun LocalSongScreen(
     remember(minimumDurationSeconds, excludedFolders, includedFolders, filterMode) {
       LocalSongScanConfig(
         minimumDurationSeconds = minimumDurationSeconds,
-        excludedFolders = excludedFolders,
-        includedFolders = includedFolders,
+        excludedFolders = excludedFolders.toList(),
+        includedFolders = includedFolders.toList(),
         filterMode = filterMode,
       )
     }
@@ -251,7 +251,9 @@ fun LocalSongScreen(
       val normalizedFolder =
         uri?.toExcludedFolderEntry() ?: return@rememberLauncherForActivityResult
       onExcludedFoldersChange(
-        LocalSongScanConfig.deduplicateFolderEntries(excludedFolders + normalizedFolder),
+        LocalSongScanConfig(excludedFolders = (excludedFolders + normalizedFolder).toList())
+          .normalizedExcludedFolders
+          .toSet(),
       )
     }
 
@@ -262,7 +264,9 @@ fun LocalSongScreen(
       val normalizedFolder =
         uri?.toExcludedFolderEntry() ?: return@rememberLauncherForActivityResult
       onIncludedFoldersChange(
-        LocalSongScanConfig.deduplicateFolderEntries(includedFolders + normalizedFolder),
+        LocalSongScanConfig(includedFolders = (includedFolders + normalizedFolder).toList())
+          .normalizedIncludedFolders
+          .toSet(),
       )
     }
 
@@ -991,14 +995,14 @@ private fun LocalSongScanSheet(
   val hasSummary = lastSummary != null
   val sanitizedExcludedFolders =
     remember(excludedFolders) {
-      LocalSongScanConfig.deduplicateFolderEntries(excludedFolders)
-        .toList()
+      LocalSongScanConfig(excludedFolders = excludedFolders.toList())
+        .normalizedExcludedFolders
         .sortedWith(String.CASE_INSENSITIVE_ORDER)
     }
   val sanitizedIncludedFolders =
     remember(includedFolders) {
-      LocalSongScanConfig.deduplicateFolderEntries(includedFolders)
-        .toList()
+      LocalSongScanConfig(includedFolders = includedFolders.toList())
+        .normalizedIncludedFolders
         .sortedWith(String.CASE_INSENSITIVE_ORDER)
     }
   val durationLabel =
@@ -1363,7 +1367,7 @@ private fun LocalSongScanSheet(
                         onExcludedFoldersChange(
                           excludedFolders
                             .filterNot {
-                              LocalSongScanConfig.normalizeFolderEntry(it)
+                              normalizeFolderEntry(it)
                                 .equals(folderPath, ignoreCase = true)
                             }
                             .toSet(),
@@ -1432,7 +1436,7 @@ private fun LocalSongScanSheet(
                         onIncludedFoldersChange(
                           includedFolders
                             .filterNot {
-                              LocalSongScanConfig.normalizeFolderEntry(it)
+                              normalizeFolderEntry(it)
                                 .equals(folderPath, ignoreCase = true)
                             }
                             .toSet(),
@@ -1711,8 +1715,12 @@ private fun Uri.toExcludedFolderEntry(): String? {
     .getOrNull()
     .orEmpty()
   val relativeFolder = treeDocumentId.substringAfter(':', missingDelimiterValue = treeDocumentId)
-  return LocalSongScanConfig.normalizeFolderEntry(relativeFolder).takeIf(String::isNotEmpty)
+  return normalizeFolderEntry(relativeFolder).takeIf(String::isNotEmpty)
 }
+
+private fun normalizeFolderEntry(folder: String): String =
+  LocalSongScanConfig(excludedFolders = listOf(folder)).normalizedExcludedFolders.firstOrNull()
+    .orEmpty()
 
 private enum class LocalSongSortType {
   MODIFIED,

@@ -344,15 +344,21 @@ fun SelectionSongMenu(
                 },
                 onClick = {
                   if (allInLibrary) {
-                    database.query { songSelection.forEach { song -> inLibrary(song.id, null) } }
+                    coroutineScope.launch(Dispatchers.IO) {
+                      database.withTransaction {
+                        songSelection.forEach { song -> inLibrary(song.id, null) }
+                      }
+                    }
                     coroutineScope.launch {
                       songSelection.forEach { song -> YouTube.toggleSongLibrary(song.id, false) }
                     }
                   } else {
-                    database.transaction {
-                      songSelection.forEach { song ->
-                        insert(song.toMediaMetadata())
-                        inLibrary(song.id, LocalDateTime.now())
+                    coroutineScope.launch(Dispatchers.IO) {
+                      database.withTransaction {
+                        songSelection.forEach { song ->
+                          insert(song.toMediaMetadata())
+                          inLibrary(song.id, LocalDateTime.now())
+                        }
                       }
                     }
                     coroutineScope.launch {
@@ -467,12 +473,14 @@ fun SelectionSongMenu(
                   },
                   onClick = {
                     onDismiss()
-                    var i = 0
-                    database.query {
-                      songPosition.forEach { cur ->
-                        move(cur.playlistId, cur.position - i, Int.MAX_VALUE)
-                        delete(cur.copy(position = Int.MAX_VALUE))
-                        i++
+                    coroutineScope.launch(Dispatchers.IO) {
+                      var i = 0
+                      database.withTransaction {
+                        songPosition.forEach { cur ->
+                          move(cur.playlistId, cur.position - i, Int.MAX_VALUE)
+                          delete(cur.copy(position = Int.MAX_VALUE))
+                          i++
+                        }
                       }
                     }
                     clearAction()

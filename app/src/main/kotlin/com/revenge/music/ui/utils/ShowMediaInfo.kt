@@ -267,7 +267,9 @@ fun ShowMediaInfo(videoId: String) {
               InfoItem(
                 label = stringResource(R.string.file_size),
                 value =
-                  currentFormat?.contentLength?.let { Formatter.formatShortFileSize(context, it) }
+                  currentFormat?.contentLength?.let {
+                    Formatter.formatShortFileSize(context, it.toLong())
+                  }
                     ?: "N/A",
                 modifier = Modifier.weight(1f),
               )

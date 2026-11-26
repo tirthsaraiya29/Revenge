@@ -249,11 +249,15 @@ fun MusicFlowScreen(
                 actions =
                   MusicFlowPageActions(
                     onTogglePlay = viewModel::togglePlayPause,
-                    onLike = { toggleLike(database, syncUtils, item.song, librarySong) },
+                    onLike = {
+                      scope.launch { toggleLike(database, syncUtils, item.song, librarySong) }
+                    },
                     onAddToPlaylist = { playlistTarget = item.song },
                     onLyrics = { lyricsExpanded = true },
                     onShare = { context.shareSong(item.song) },
-                    onDownload = { toggleDownload(context, database, item.song, download?.state) },
+                    onDownload = {
+                      scope.launch { toggleDownload(context, database, item.song, download?.state) }
+                    },
                     onMore = {
                       menuState.show {
                         YouTubeSongMenu(
@@ -610,13 +614,13 @@ private fun LyricsEntity?.isUsableFor(mediaId: String?): Boolean =
     lyrics.isNotBlank() &&
     lyrics != LyricsEntity.LYRICS_NOT_FOUND
 
-private fun toggleLike(
+private suspend fun toggleLike(
   database: MusicDatabase,
   syncUtils: SyncUtils,
   song: SongItem,
   librarySong: Song?,
 ) {
-  database.transaction {
+  database.withTransaction {
     val updated: SongEntity =
       if (librarySong == null) {
         insert(song.toMediaMetadata(), SongEntity::toggleLike)
@@ -628,14 +632,19 @@ private fun toggleLike(
   }
 }
 
-private fun toggleDownload(context: Context, database: MusicDatabase, song: SongItem, state: Int?) {
+private suspend fun toggleDownload(
+  context: Context,
+  database: MusicDatabase,
+  song: SongItem,
+  state: Int?,
+) {
   when (state) {
     Download.STATE_COMPLETED,
     Download.STATE_QUEUED,
     Download.STATE_DOWNLOADING ->
       DownloadService.sendRemoveDownload(context, ExoDownloadService::class.java, song.id, false)
     else -> {
-      database.transaction { insert(song.toMediaMetadata()) }
+      database.insert(song.toMediaMetadata())
       val request =
         DownloadRequest.Builder(song.id, song.id.toUri())
           .setCustomCacheKey(song.id)

@@ -421,7 +421,7 @@ fun SongListItem(
           if (showSize && song.format?.contentLength != null) {
             android.text.format.Formatter.formatFileSize(
               LocalContext.current,
-              song.format!!.contentLength,
+              song.format!!.contentLength.toLong(),
             )
           } else null,
         ),
@@ -1237,7 +1237,7 @@ fun YouTubeGridItem(
             if (albumWithSongs?.songs.isNullOrEmpty()) {
               YouTube.album(item.id)
                 .onSuccess { albumPage ->
-                  database.transaction { insert(albumPage) }
+                  database.withTransaction { insert(albumPage) }
                   albumWithSongs = database.albumWithSongs(item.id).first()
                 }
                 .onFailure { reportException(it) }

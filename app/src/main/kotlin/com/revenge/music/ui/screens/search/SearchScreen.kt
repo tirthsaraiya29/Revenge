@@ -345,14 +345,14 @@ fun SearchScreen(
         focusManager.clearFocus(force = true)
         keyboardController?.hide()
         when (val parsedUrl = YouTubeUrlParser.parse(searchQuery)) {
-          is YouTubeUrlParser.ParsedUrl.Video -> {
+          is YouTubeUrlParser.Video -> {
             playerConnection?.playQueue(
               YouTubeQueue(
                 WatchEndpoint(videoId = parsedUrl.id),
               ),
             )
           }
-          is YouTubeUrlParser.ParsedUrl.Artist -> {
+          is YouTubeUrlParser.Artist -> {
             navController.navigate("artist/${parsedUrl.id}")
           }
           null -> {

@@ -713,8 +713,8 @@ fun SongMenu(
                     )
                   },
                   onClick = {
-                    database.transaction {
-                      coroutineScope.launch {
+                    coroutineScope.launch(Dispatchers.IO) {
+                      database.withTransaction {
                         playlistBrowseId?.let { playlistId ->
                           if (playlistSong.map.setVideoId != null) {
                             YouTube.removeFromPlaylist(
@@ -724,9 +724,9 @@ fun SongMenu(
                             )
                           }
                         }
+                        move(playlistSong.map.playlistId, playlistSong.map.position, Int.MAX_VALUE)
+                        delete(playlistSong.map.copy(position = Int.MAX_VALUE))
                       }
-                      move(playlistSong.map.playlistId, playlistSong.map.position, Int.MAX_VALUE)
-                      delete(playlistSong.map.copy(position = Int.MAX_VALUE))
                     }
                     onDismiss()
                   },
@@ -1005,11 +1005,11 @@ fun SongMenu(
                         }
                     context.startService(intent)
                     scope.launch(Dispatchers.IO) {
-                      database.query { deleteFormat(song.id) }
+                      database.deleteFormat(song.id)
                       YouTube.queue(listOf(song.id)).onSuccess {
                         val newSong = it.firstOrNull()
                         if (newSong != null) {
-                          database.transaction { update(song, newSong.toMediaMetadata()) }
+                          database.withTransaction { update(song, newSong.toMediaMetadata()) }
                         }
                       }
                     }

@@ -110,7 +110,7 @@ fun QueueMenu(
   AddToPlaylistDialog(
     isVisible = showChoosePlaylistDialog,
     onGetSong = { playlist ->
-      database.transaction { insert(mediaMetadata) }
+      database.withTransaction { insert(mediaMetadata) }
       coroutineScope.launch(Dispatchers.IO) {
         playlist.playlist.browseId?.let { YouTube.addToPlaylist(it, mediaMetadata.id) }
       }
@@ -189,7 +189,7 @@ fun QueueMenu(
       IconButton(
         onClick = {
           coroutineScope.launch(Dispatchers.IO) {
-            database.transaction {
+            database.withTransaction {
               if (librarySong == null) {
                 insert(mediaMetadata)
               }
@@ -388,7 +388,9 @@ fun QueueMenu(
                     )
                   },
                   onClick = {
-                    database.transaction { insert(mediaMetadata) }
+                    coroutineScope.launch(Dispatchers.IO) {
+                      database.insert(mediaMetadata)
+                    }
                     val downloadRequest =
                       DownloadRequest.Builder(mediaMetadata.id, mediaMetadata.id.toUri())
                         .setCustomCacheKey(mediaMetadata.id)
@@ -508,11 +510,11 @@ fun QueueMenu(
                       }
                   context.startService(intent)
                   coroutineScope.launch(Dispatchers.IO) {
-                    database.query { deleteFormat(mediaMetadata.id) }
+                    database.deleteFormat(mediaMetadata.id)
                     YouTube.queue(listOf(mediaMetadata.id)).onSuccess {
                       val newSong = it.firstOrNull()
                       if (newSong != null && librarySong != null) {
-                        database.transaction { update(librarySong!!, newSong.toMediaMetadata()) }
+                        database.withTransaction { update(librarySong!!, newSong.toMediaMetadata()) }
                       }
                     }
                   }

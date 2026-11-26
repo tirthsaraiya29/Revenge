@@ -261,17 +261,19 @@ fun YouTubeSongMenu(
       trailingContent = {
         IconButton(
           onClick = {
-            database.transaction {
-              librarySong.let { librarySong ->
-                val s: SongEntity
-                if (librarySong == null) {
-                  insert(song.toMediaMetadata(), SongEntity::toggleLike)
-                  s = song.toMediaMetadata().toSongEntity().let(SongEntity::toggleLike)
-                } else {
-                  s = librarySong.song.toggleLike()
-                  update(s)
+            coroutineScope.launch {
+              database.withTransaction {
+                librarySong.let { librarySong ->
+                  val s: SongEntity
+                  if (librarySong == null) {
+                    insert(song.toMediaMetadata(), SongEntity::toggleLike)
+                    s = song.toMediaMetadata().toSongEntity().let(SongEntity::toggleLike)
+                  } else {
+                    s = librarySong.song.toggleLike()
+                    update(s)
+                  }
+                  syncUtils.likeSong(s)
                 }
-                syncUtils.likeSong(s)
               }
             }
           },
@@ -519,12 +521,16 @@ fun YouTubeSongMenu(
                   coroutineScope.launch { YouTube.toggleSongLibrary(song.id, !isInLibrary) }
 
                   if (isInLibrary) {
-                    database.query { inLibrary(song.id, null) }
+                    coroutineScope.launch {
+                      database.withTransaction { inLibrary(song.id, null) }
+                    }
                   } else {
-                    database.transaction {
-                      insert(song.toMediaMetadata())
-                      inLibrary(song.id, LocalDateTime.now())
-                      addLibraryTokens(song.id, song.libraryAddToken, song.libraryRemoveToken)
+                    coroutineScope.launch {
+                      database.withTransaction {
+                        insert(song.toMediaMetadata())
+                        inLibrary(song.id, LocalDateTime.now())
+                        addLibraryTokens(song.id, song.libraryAddToken, song.libraryRemoveToken)
+                      }
                     }
                   }
                 },
@@ -585,7 +591,9 @@ fun YouTubeSongMenu(
                     )
                   },
                   onClick = {
-                    database.transaction { insert(song.toMediaMetadata()) }
+                    coroutineScope.launch {
+                      database.insert(song.toMediaMetadata())
+                    }
                     val downloadRequest =
                       DownloadRequest.Builder(song.id, song.id.toUri())
                         .setCustomCacheKey(song.id)

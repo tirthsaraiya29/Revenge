@@ -44,7 +44,7 @@ import com.revenge.music.spotify.LoadSpotifyRecommendationsUseCase
 import com.revenge.music.utils.PodcastProgress
 import com.revenge.music.utils.SyncUtils
 import com.revenge.music.utils.dataStore
-import com.revenge.music.utils.QuickPickSongs.filterQuickPickSongs
+import com.revenge.music.utils.QuickPickSongs
 import com.revenge.music.utils.get
 import com.revenge.music.utils.reportException
 import com.revenge.music.utils.selectHeroCarouselSongs
@@ -145,15 +145,12 @@ constructor(
         val (preferences, hidden) = filters
         val disliked =
           preferences[DislikedSongsKey].orEmpty().map { it.substringBefore("||") }.toSet()
-        songs?.let {
-          filterQuickPickSongs(
-            it,
-            hidden + disliked,
-            preferences[BlockedArtistsKey].orEmpty(),
-            preferences[HideExplicitKey] ?: false,
-            preferences[HideVideoSongsKey] ?: false,
-          )
-        }
+        songs?.filterQuickPicks(
+          hidden + disliked,
+          preferences[BlockedArtistsKey].orEmpty(),
+          preferences[HideExplicitKey] ?: false,
+          preferences[HideVideoSongsKey] ?: false,
+        )
       }
       .stateIn(viewModelScope, SharingStarted.Eagerly, null)
   private val carouselRecommendations =
@@ -422,8 +419,7 @@ constructor(
     val hideVideoSongs = preferences[HideVideoSongsKey] ?: false
     val hidden = database.hiddenFromQuickPicksSongIds().first().toSet()
     fun List<Song>.eligible() =
-      filterQuickPickSongs(
-        this,
+      filterQuickPicks(
         hidden,
         preferences[BlockedArtistsKey].orEmpty(),
         preferences[HideExplicitKey] ?: false,
@@ -1155,4 +1151,23 @@ constructor(
         }
     }
   }
+}
+
+/** Applies the shared quick-pick content filters while keeping the original entities. */
+private fun List<Song>.filterQuickPicks(
+  excludedSongIds: Set<String>,
+  blockedArtists: Set<String>,
+  hideExplicit: Boolean,
+  hideVideoSongs: Boolean,
+): List<Song> {
+  val keptIds =
+    QuickPickSongs.filterQuickPickSongs(
+      map { it.toCarouselSong() },
+      excludedSongIds,
+      blockedArtists,
+      hideExplicit,
+      hideVideoSongs,
+    )
+      .mapTo(HashSet()) { it.id }
+  return filter { it.id in keptIds }.distinctBy { it.id }
 }

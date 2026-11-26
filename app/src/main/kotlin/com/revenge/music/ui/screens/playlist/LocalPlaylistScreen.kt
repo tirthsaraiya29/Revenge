@@ -362,7 +362,9 @@ fun LocalPlaylistScreen(
           onClick = {
             showRemoveDownloadDialog = false
             if (!editable) {
-              database.transaction { playlist?.id?.let { clearPlaylist(it) } }
+              coroutineScope.launch(Dispatchers.IO) {
+                playlist?.id?.let { database.clearPlaylist(it) }
+              }
             }
             songs.forEach { song ->
               DownloadService.sendRemoveDownload(
@@ -435,7 +437,7 @@ fun LocalPlaylistScreen(
   LaunchedEffect(reorderableState.isAnyItemDragging) {
     if (!reorderableState.isAnyItemDragging) {
       dragInfo?.let { (from, to) ->
-        database.transaction { move(viewModel.playlistId, from, to) }
+        database.withTransaction { move(viewModel.playlistId, from, to) }
 
         if (viewModel.playlist.value?.playlist?.browseId != null) {
           viewModel.viewModelScope.launch(Dispatchers.IO) {
@@ -560,17 +562,17 @@ fun LocalPlaylistScreen(
           val currentItem by rememberUpdatedState(song)
 
           fun deleteFromPlaylist() {
-            database.transaction {
-              coroutineScope.launch {
+            coroutineScope.launch(Dispatchers.IO) {
+              database.withTransaction {
                 playlist?.playlist?.browseId?.let { browseId ->
                   val setVideoId = getSetVideoId(currentItem.map.songId)
                   setVideoId?.setVideoId?.let { setVideoIdValue ->
                     YouTube.removeFromPlaylist(browseId, currentItem.map.songId, setVideoIdValue)
                   }
                 }
+                move(currentItem.map.playlistId, currentItem.map.position, Int.MAX_VALUE)
+                delete(currentItem.map.copy(position = Int.MAX_VALUE))
               }
-              move(currentItem.map.playlistId, currentItem.map.position, Int.MAX_VALUE)
-              delete(currentItem.map.copy(position = Int.MAX_VALUE))
             }
           }
 
@@ -1321,11 +1323,11 @@ fun LocalPlaylistHeader(
                   val playlistPage =
                     YouTube.playlist(playlist.playlist.browseId!!).completed().getOrNull()
                       ?: return@launch
-                  database.transaction {
+                  database.withTransaction {
                     clearPlaylist(playlist.id)
                     playlistPage.songs
                       .map(SongItem::toMediaMetadata)
-                      .onEach(::insert)
+                      .onEach { insert(it) }
                       .mapIndexed { position, song ->
                         PlaylistSongMap(
                           songId = song.id,

@@ -99,7 +99,7 @@ fun YouTubeAlbumMenu(
     database.album(albumItem.id).collect { album ->
       if (album == null) {
         YouTube.album(albumItem.id)
-          .onSuccess { albumPage -> database.transaction { insert(albumPage) } }
+          .onSuccess { albumPage -> database.withTransaction { insert(albumPage) } }
           .onFailure { reportException(it) }
       }
     }
