@@ -7,64 +7,59 @@ import androidx.room.Index
 import androidx.room.PrimaryKey
 import com.revenge.innertube.YouTube
 import java.time.LocalDateTime
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 
 @Immutable
-@Entity(tableName = "song", indices = [Index(value = ["albumId"])])
+@Entity(tableName = "song", indices = [Index("albumId")])
 data class SongEntity(
-  @PrimaryKey val id: String,
-  val title: String,
-  val duration: Int = -1,
-  val thumbnailUrl: String? = null,
-  val albumId: String? = null,
-  val albumName: String? = null,
-  @ColumnInfo(defaultValue = "0") val explicit: Boolean = false,
-  val year: Int? = null,
-  val date: LocalDateTime? = null,
-  val dateModified: LocalDateTime? = null,
-  val liked: Boolean = false,
-  val likedDate: LocalDateTime? = null,
-  val totalPlayTime: Long = 0,
-  val inLibrary: LocalDateTime? = null,
-  val dateDownload: LocalDateTime? = null,
-  @ColumnInfo(name = "isLocal", defaultValue = "false") val isLocal: Boolean = false,
-  val libraryAddToken: String? = null,
-  val libraryRemoveToken: String? = null,
-  @ColumnInfo(defaultValue = "0") val lyricsOffset: Int = 0,
-  @ColumnInfo(defaultValue = "true") val romanizeLyrics: Boolean = true,
-  @ColumnInfo(defaultValue = "0") val isDownloaded: Boolean = false,
-  @ColumnInfo(name = "isUploaded", defaultValue = "false") val isUploaded: Boolean = false,
-  @ColumnInfo(name = "isVideo", defaultValue = "false") val isVideo: Boolean = false,
-  @ColumnInfo(defaultValue = "0") val hideFromQuickPicks: Boolean = false,
+    @PrimaryKey val id: String,
+    val title: String,
+    val duration: Int = -1,
+    val thumbnailUrl: String? = null,
+    val albumId: String? = null,
+    val albumName: String? = null,
+    @ColumnInfo(defaultValue = "0") val explicit: Boolean = false,
+    val year: Int? = null,
+    val date: LocalDateTime? = null,
+    val dateModified: LocalDateTime? = null,
+    val liked: Boolean = false,
+    val likedDate: LocalDateTime? = null,
+    val totalPlayTime: Long = 0,
+    val inLibrary: LocalDateTime? = null,
+    val dateDownload: LocalDateTime? = null,
+    @ColumnInfo(name = "isLocal", defaultValue = "false") val isLocal: Boolean = false,
+    val libraryAddToken: String? = null,
+    val libraryRemoveToken: String? = null,
+    @ColumnInfo(defaultValue = "0") val lyricsOffset: Int = 0,
+    @ColumnInfo(defaultValue = "true") val romanizeLyrics: Boolean = true,
+    @ColumnInfo(defaultValue = "0") val isDownloaded: Boolean = false,
+    @ColumnInfo(name = "isUploaded", defaultValue = "false") val isUploaded: Boolean = false,
+    @ColumnInfo(name = "isVideo", defaultValue = "false") val isVideo: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val hideFromQuickPicks: Boolean = false,
 ) {
-  fun localToggleLike() =
-    copy(liked = !liked, likedDate = if (liked) null else LocalDateTime.now())
+    fun localToggleLike(): SongEntity {
+        val nowLiked = !liked
+        return copy(liked = nowLiked, likedDate = if (nowLiked) LocalDateTime.now() else null)
+    }
 
-  fun toggleLike() =
-    copy(
-        liked = !liked,
-        likedDate = if (liked) null else LocalDateTime.now(),
-        inLibrary = if (liked) inLibrary else inLibrary ?: LocalDateTime.now(),
-      )
-      .also { CoroutineScope(Dispatchers.IO).launch { YouTube.likeVideo(id, !liked) } }
+    fun toggleLike(): SongEntity {
+        val next = localToggleLike()
+        val result = if (next.liked && next.inLibrary == null) next.copy(inLibrary = next.likedDate) else next
+        launchBestEffort { YouTube.likeVideo(id, !liked) }
+        return result
+    }
 
-  fun toggleLibrary(syncToYouTube: Boolean = true) =
-    copy(
-        liked = if (inLibrary == null) liked else false,
-        inLibrary = if (inLibrary == null) LocalDateTime.now() else null,
-        likedDate = if (inLibrary == null) likedDate else null,
-      )
-      .also { updated ->
-        if (syncToYouTube) {
-          CoroutineScope(Dispatchers.IO).launch {
-            YouTube.toggleSongLibrary(id, updated.inLibrary != null)
-          }
-        }
-      }
+    fun toggleLibrary(syncToYouTube: Boolean = true): SongEntity {
+        val entering = inLibrary == null
+        val next = copy(
+            inLibrary = if (entering) LocalDateTime.now() else null,
+            liked = if (entering) liked else false,
+            likedDate = if (entering) likedDate else null,
+        )
+        if (syncToYouTube) launchBestEffort { YouTube.toggleSongLibrary(id, entering) }
+        return next
+    }
 
-  fun toggleUploaded() = copy(isUploaded = !isUploaded)
+    fun toggleUploaded(): SongEntity = copy(isUploaded = !isUploaded)
 
-  fun toggleHideFromQuickPicks() = copy(hideFromQuickPicks = !hideFromQuickPicks)
+    fun toggleHideFromQuickPicks(): SongEntity = copy(hideFromQuickPicks = !hideFromQuickPicks)
 }

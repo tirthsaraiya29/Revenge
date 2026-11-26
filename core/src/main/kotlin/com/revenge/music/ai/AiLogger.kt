@@ -5,41 +5,48 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.revenge.music.utils.dataStore
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.map
-import org.json.JSONArray
-import org.json.JSONObject
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import timber.log.Timber
 
-/** Records recent AI actions so the settings screen can show what the assistant did. */
-object AiLogger {
-  private const val MAX_LOGS = 50
-  private val LogsKey = stringPreferencesKey("ai_action_logs")
+private const val LOGS_KEY_NAME = "ai_action_logs"
+private const val MAX_LOG_ENTRIES = 50
 
-  suspend fun log(context: Context, action: String, details: String) {
-    try {
-      val raw = context.dataStore.data.map { it[LogsKey] ?: "[]" }.first()
-      val logs = runCatching { JSONArray(raw) }.getOrDefault(JSONArray())
+private val logsKey = stringPreferencesKey(LOGS_KEY_NAME)
 
-      logs.put(
-        JSONObject().apply {
-          put("timestamp", System.currentTimeMillis())
-          put("action", action)
-          put("details", details)
-        },
-      )
-
-      val trimmed =
-        if (logs.length() > MAX_LOGS) {
-          JSONArray().also { result ->
-            for (i in logs.length() - MAX_LOGS until logs.length()) result.put(logs.get(i))
-          }
-        } else {
-          logs
-        }
-
-      context.dataStore.edit { it[LogsKey] = trimmed.toString() }
-    } catch (e: Exception) {
-      Timber.e(e, "Failed to append AI log")
+private fun decodeLogs(raw: String?): List<JsonElement> {
+    if (raw == null) return emptyList()
+    return try {
+        Json.parseToJsonElement(raw) as? JsonArray ?: emptyList()
+    } catch (_: Exception) {
+        emptyList()
     }
-  }
+}
+
+object AiLogger {
+
+    suspend fun log(context: Context, action: String, details: String) {
+        try {
+            val store = context.dataStore
+            val existing = decodeLogs(store.data.first()[logsKey])
+            val record = buildJsonObject {
+                put("timestamp", System.currentTimeMillis())
+                put("action", action)
+                put("details", details)
+            }
+            val appended = existing + record
+            val bounded = if (appended.size > MAX_LOG_ENTRIES) {
+                appended.subList(appended.size - MAX_LOG_ENTRIES, appended.size)
+            } else {
+                appended
+            }
+            val encoded = JsonArray(bounded).toString()
+            store.edit { preferences -> preferences[logsKey] = encoded }
+        } catch (error: Exception) {
+            Timber.e(error)
+        }
+    }
 }

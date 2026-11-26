@@ -10,328 +10,327 @@ import androidx.datastore.preferences.core.stringSetPreferencesKey
 import java.time.LocalDateTime
 import java.time.ZoneOffset
 
-private fun boolKey(name: String): Preferences.Key<Boolean> = booleanPreferencesKey(name)
-private fun stringKey(name: String): Preferences.Key<String> = stringPreferencesKey(name)
-private fun intKey(name: String): Preferences.Key<Int> = intPreferencesKey(name)
-private fun longKey(name: String): Preferences.Key<Long> = longPreferencesKey(name)
-private fun floatKey(name: String): Preferences.Key<Float> = floatPreferencesKey(name)
-private fun stringSetKey(name: String): Preferences.Key<Set<String>> = stringSetPreferencesKey(name)
-
-const val SYSTEM_DEFAULT = "SYSTEM_DEFAULT"
-const val SYNC_COOLDOWN = 30 * 60L
+private fun bool(name: String): Preferences.Key<Boolean> = booleanPreferencesKey(name)
+private fun text(name: String): Preferences.Key<String> = stringPreferencesKey(name)
+private fun number(name: String): Preferences.Key<Int> = intPreferencesKey(name)
+private fun bigNumber(name: String): Preferences.Key<Long> = longPreferencesKey(name)
+private fun decimal(name: String): Preferences.Key<Float> = floatPreferencesKey(name)
+private fun texts(name: String): Preferences.Key<Set<String>> = stringSetPreferencesKey(name)
 
 // Account / Spotify / app icon
-val DataSaverEnabledKey = boolKey("dataSaverEnabled")
-val SpotifySpDcKey = stringKey("spotify_sp_dc")
-val SpotifySpKeyKey = stringKey("spotify_sp_key")
-val SpotifyAccountNameKey = stringKey("spotify_account_name")
-val SpotifyAccountAvatarUrlKey = stringKey("spotify_account_avatar_url")
-val SpotifyAccessTokenKey = stringKey("spotify_access_token")
-val SpotifyAccessTokenExpiresAtKey = longKey("spotify_access_token_expires_at")
-val EnableLegacyIconKey = boolKey("enableLegacyIcon")
-val AppIconTypeKey = stringKey("app_icon_type")
+val DataSaverEnabledKey = bool("dataSaverEnabled")
+val SpotifySpDcKey = text("spotify_sp_dc")
+val SpotifySpKeyKey = text("spotify_sp_key")
+val SpotifyAccountNameKey = text("spotify_account_name")
+val SpotifyAccountAvatarUrlKey = text("spotify_account_avatar_url")
+val SpotifyAccessTokenKey = text("spotify_access_token")
+val SpotifyAccessTokenExpiresAtKey = bigNumber("spotify_access_token_expires_at")
+val EnableLegacyIconKey = bool("enableLegacyIcon")
+val AppIconTypeKey = text("app_icon_type")
 
 // Haptics / refresh rate
-val EnableHighRefreshRateKey = boolKey("enableHighRefreshRate")
-val EnableHapticsKey = boolKey("enableHaptics")
-val HapticIntensityKey = stringKey("haptic_intensity")
-val EnableClickHapticsKey = boolKey("enable_click_haptics")
-val EnableLongPressHapticsKey = boolKey("enable_long_press_haptics")
-val EnableScrollEdgeHapticsKey = boolKey("enable_scroll_edge_haptics")
-val EnableSliderHapticsKey = boolKey("enable_slider_haptics")
+val EnableHighRefreshRateKey = bool("enableHighRefreshRate")
+val EnableHapticsKey = bool("enableHaptics")
+val HapticIntensityKey = text("haptic_intensity")
+val EnableClickHapticsKey = bool("enable_click_haptics")
+val EnableLongPressHapticsKey = bool("enable_long_press_haptics")
+val EnableScrollEdgeHapticsKey = bool("enable_scroll_edge_haptics")
+val EnableSliderHapticsKey = bool("enable_slider_haptics")
 
 // Appearance
-val AlbumArtThemeRecoloringKey = boolKey("albumArtThemeRecoloring")
-val SelectedThemeColorKey = intKey("selectedThemeColor")
-val DarkModeKey = stringKey("darkMode")
-val PureBlackKey = boolKey("pureBlack")
-val PureBlackMiniPlayerKey = boolKey("pureBlackMiniPlayer")
-val IsMonochromeThemeKey = boolKey("is_monochrome_theme")
-val DensityScaleKey = floatKey("density_scale_factor")
-val RevengeWrappedBannerDismissedKey = boolKey("revenge_wrapped_banner_dismissed_2026")
-val DefaultOpenTabKey = stringKey("defaultOpenTab")
-val GridItemsSizeKey = stringKey("gridItemSize")
-val SliderStyleKey = stringKey("sliderStyle")
-val SquigglySliderKey = boolKey("squigglySlider")
-val WavyPlayPauseKey = boolKey("wavyPlayPause")
-val SwipeToSongKey = boolKey("SwipeToSong")
-val SwipeToRemoveSongKey = boolKey("SwipeToRemoveSong")
-val UseNewPlayerDesignKey = boolKey("useNewPlayerDesign")
-val UseNewMiniPlayerDesignKey = boolKey("useNewMiniPlayerDesign")
-val ShowCodecOnPlayerKey = boolKey("showCodecOnPlayer")
-val HidePlayerSliderKey = boolKey("hidePlayerSlider")
-val HidePlayerThumbnailKey = boolKey("hidePlayerThumbnail")
-val ThumbnailCornerRadiusKey = floatKey("thumbnailCornerRadius")
-val CropAlbumArtKey = boolKey("cropAlbumArt")
-val SeekExtraSeconds = boolKey("seekExtraSeconds")
-val VarispeedKey = boolKey("varispeed")
+val AlbumArtThemeRecoloringKey = bool("albumArtThemeRecoloring")
+val SelectedThemeColorKey = number("selectedThemeColor")
+val DarkModeKey = text("darkMode")
+val PureBlackKey = bool("pureBlack")
+val PureBlackMiniPlayerKey = bool("pureBlackMiniPlayer")
+val IsMonochromeThemeKey = bool("is_monochrome_theme")
+val DensityScaleKey = decimal("density_scale_factor")
+val RevengeWrappedBannerDismissedKey = bool("revenge_wrapped_banner_dismissed_2026")
+val DefaultOpenTabKey = text("defaultOpenTab")
+val GridItemsSizeKey = text("gridItemSize")
+val SliderStyleKey = text("sliderStyle")
+val SquigglySliderKey = bool("squigglySlider")
+val WavyPlayPauseKey = bool("wavyPlayPause")
+val SwipeToSongKey = bool("SwipeToSong")
+val SwipeToRemoveSongKey = bool("SwipeToRemoveSong")
+val UseNewPlayerDesignKey = bool("useNewPlayerDesign")
+val UseNewMiniPlayerDesignKey = bool("useNewMiniPlayerDesign")
+val ShowCodecOnPlayerKey = bool("showCodecOnPlayer")
+val HidePlayerSliderKey = bool("hidePlayerSlider")
+val HidePlayerThumbnailKey = bool("hidePlayerThumbnail")
+val ThumbnailCornerRadiusKey = decimal("thumbnailCornerRadius")
+val CropAlbumArtKey = bool("cropAlbumArt")
+val SeekExtraSeconds = bool("seekExtraSeconds")
+val VarispeedKey = bool("varispeed")
 
 // Playback behaviour
-val PauseOnMute = boolKey("pauseOnMute")
-val ResumeOnBluetoothConnectKey = boolKey("resumeOnBluetoothConnect")
-val AutoplayOnAutomotiveConnectKey = boolKey("autoplayOnAutomotiveConnect")
-val KeepScreenOn = boolKey("keepScreenOn")
+val PauseOnMute = bool("pauseOnMute")
+val ResumeOnBluetoothConnectKey = bool("resumeOnBluetoothConnect")
+val AutoplayOnAutomotiveConnectKey = bool("autoplayOnAutomotiveConnect")
+val KeepScreenOn = bool("keepScreenOn")
 
 // Language / content region / lyrics providers / filters
-val AppLanguageKey = stringKey("appLanguage")
-val ContentLanguageKey = stringKey("contentLanguage")
-val ContentCountryKey = stringKey("contentCountry")
-val SuggestionRegionKey = stringKey("suggestionRegion")
-val EnableKugouKey = boolKey("enableKugou")
-val FetchFasterLyricsKey = boolKey("fetchFasterLyrics")
-val EnableLrcLibKey = boolKey("enableLrclib")
-val EnableBetterLyricsKey = boolKey("enableBetterLyrics")
-val EnableSimpMusicKey = boolKey("enableSimpMusic")
-val EnableYouLyPlusKey = boolKey("enableYouLyPlus")
-val EnablePaxsenixKey = boolKey("enablePaxsenix")
-val HideExplicitKey = boolKey("hideExplicit")
-val SponsorBlockEnabledKey = boolKey("sponsor_block_enabled")
-val HideVideoSongsKey = boolKey("hideVideoSongs")
-val HideYoutubeShortsKey = boolKey("hideYoutubeShorts")
-val ShowArtistDescriptionKey = boolKey("showArtistDescription")
-val ShowArtistSubscriberCountKey = boolKey("showArtistSubscriberCount")
-val ShowMonthlyListenersKey = boolKey("showMonthlyListeners")
-val ShowArtistVideoKey = boolKey("showArtistVideo")
-val ShowArtistBackgroundVideoKey = boolKey("showArtistBackgroundVideo")
-val ProxyEnabledKey = boolKey("proxyEnabled")
-val ProxyUrlKey = stringKey("proxyUrl")
-val ProxyTypeKey = stringKey("proxyType")
-val ProxyUsernameKey = stringKey("proxyUsername")
-val ProxyPasswordKey = stringKey("proxyPassword")
-val YtmSyncKey = boolKey("ytmSync")
+const val SYSTEM_DEFAULT = "SYSTEM_DEFAULT"
+val AppLanguageKey = text("appLanguage")
+val ContentLanguageKey = text("contentLanguage")
+val ContentCountryKey = text("contentCountry")
+val SuggestionRegionKey = text("suggestionRegion")
+val EnableKugouKey = bool("enableKugou")
+val FetchFasterLyricsKey = bool("fetchFasterLyrics")
+val EnableLrcLibKey = bool("enableLrclib")
+val EnableBetterLyricsKey = bool("enableBetterLyrics")
+val EnableSimpMusicKey = bool("enableSimpMusic")
+val EnableYouLyPlusKey = bool("enableYouLyPlus")
+val EnablePaxsenixKey = bool("enablePaxsenix")
+val HideExplicitKey = bool("hideExplicit")
+val SponsorBlockEnabledKey = bool("sponsor_block_enabled")
+val HideVideoSongsKey = bool("hideVideoSongs")
+val HideYoutubeShortsKey = bool("hideYoutubeShorts")
+val ShowArtistDescriptionKey = bool("showArtistDescription")
+val ShowArtistSubscriberCountKey = bool("showArtistSubscriberCount")
+val ShowMonthlyListenersKey = bool("showMonthlyListeners")
+val ShowArtistVideoKey = bool("showArtistVideo")
+val ShowArtistBackgroundVideoKey = bool("showArtistBackgroundVideo")
+val ProxyEnabledKey = bool("proxyEnabled")
+val ProxyUrlKey = text("proxyUrl")
+val ProxyTypeKey = text("proxyType")
+val ProxyUsernameKey = text("proxyUsername")
+val ProxyPasswordKey = text("proxyPassword")
+val YtmSyncKey = bool("ytmSync")
 
 // Streaming quality / downloads / audio processing
-val AudioQualityWifiKey = stringKey("audioQualityWifi")
-val AudioQualityCellularKey = stringKey("audioQualityCellular")
-val IpVersionKey = stringKey("ipVersion")
-val DownloadOnWifiOnlyKey = boolKey("downloadOnWifiOnly")
-val DownloadWithMetadataKey = boolKey("downloadWithMetadata")
-val AudioOffload = boolKey("enableOffload")
-val SpatialAudioKey = boolKey("spatialAudio")
-val AudioLoudnessPresetKey = stringKey("audioLoudnessPreset")
-val PlaybackEngineKey = stringKey("playbackEngine")
-val ShowSeekButtonsKey = boolKey("showSeekButtons")
-val PersistentQueueKey = boolKey("persistentQueue")
-val PersistentShuffleAcrossQueuesKey = boolKey("persistentShuffleAcrossQueues")
-val RememberShuffleAndRepeatKey = boolKey("rememberShuffleAndRepeat")
-val ShuffleModeKey = boolKey("shuffleMode")
-val SkipSilenceKey = boolKey("skipSilence")
-val SkipSilenceInstantKey = boolKey("skipSilenceInstant")
-val AudioNormalizationKey = boolKey("audioNormalization")
-val AutoLoadMoreKey = boolKey("autoLoadMore")
-val DisableLoadMoreWhenRepeatAllKey = boolKey("disableLoadMoreWhenRepeatAll")
-val AutoDownloadOnLikeKey = boolKey("autoDownloadOnLike")
-val SimilarContent = boolKey("similarContent")
-val AutoSkipNextOnErrorKey = boolKey("autoSkipNextOnError")
-val StopMusicOnTaskClearKey = boolKey("stopMusicOnTaskClear")
-val ShufflePlaylistFirstKey = boolKey("shufflePlaylistFirst")
-val PreventDuplicateTracksInQueueKey = boolKey("preventDuplicateTracksInQueue")
-val CrossfadeEnabledKey = boolKey("crossfadeEnabled")
-val CrossfadeDurationKey = floatKey("crossfadeDuration")
-val CrossfadeGaplessKey = boolKey("crossfadeGapless")
-val AutomixCrossfadeKey = boolKey("automixCrossfade")
-val AutomixDebugOverlayKey = boolKey("automixDebugOverlay")
+val AudioQualityWifiKey = text("audioQualityWifi")
+val AudioQualityCellularKey = text("audioQualityCellular")
+val IpVersionKey = text("ipVersion")
+val DownloadOnWifiOnlyKey = bool("downloadOnWifiOnly")
+val DownloadWithMetadataKey = bool("downloadWithMetadata")
+val AudioOffload = bool("enableOffload")
+val SpatialAudioKey = bool("spatialAudio")
+val AudioLoudnessPresetKey = text("audioLoudnessPreset")
+val PlaybackEngineKey = text("playbackEngine")
+val ShowSeekButtonsKey = bool("showSeekButtons")
+val PersistentQueueKey = bool("persistentQueue")
+val PersistentShuffleAcrossQueuesKey = bool("persistentShuffleAcrossQueues")
+val RememberShuffleAndRepeatKey = bool("rememberShuffleAndRepeat")
+val ShuffleModeKey = bool("shuffleMode")
+val SkipSilenceKey = bool("skipSilence")
+val SkipSilenceInstantKey = bool("skipSilenceInstant")
+val AudioNormalizationKey = bool("audioNormalization")
+val AutoLoadMoreKey = bool("autoLoadMore")
+val DisableLoadMoreWhenRepeatAllKey = bool("disableLoadMoreWhenRepeatAll")
+val AutoDownloadOnLikeKey = bool("autoDownloadOnLike")
+val SimilarContent = bool("similarContent")
+val AutoSkipNextOnErrorKey = bool("autoSkipNextOnError")
+val StopMusicOnTaskClearKey = bool("stopMusicOnTaskClear")
+val ShufflePlaylistFirstKey = bool("shufflePlaylistFirst")
+val PreventDuplicateTracksInQueueKey = bool("preventDuplicateTracksInQueue")
+val CrossfadeEnabledKey = bool("crossfadeEnabled")
+val CrossfadeDurationKey = decimal("crossfadeDuration")
+val CrossfadeGaplessKey = bool("crossfadeGapless")
+val AutomixCrossfadeKey = bool("automixCrossfade")
+val AutomixDebugOverlayKey = bool("automixDebugOverlay")
 
 // Cache / export / history / privacy
-val MaxImageCacheSizeKey = intKey("maxImageCacheSize")
-val MaxSongCacheSizeKey = intKey("maxSongCacheSize")
-val ExportDirectoryUriKey = stringKey("exportDirectoryUri")
-val ExportingSongIdsKey = stringKey("exportingSongIds")
-val ExportedSongIdsKey = stringKey("exportedSongIds")
-val ExportProgressKey = stringKey("exportProgress")
-val EnableExportAsMp3Key = boolKey("enableExportAsMp3")
-val PauseListenHistoryKey = boolKey("pauseListenHistory")
-val PodcastHidePlayedKey = boolKey("podcastHidePlayed")
-val PauseSearchHistoryKey = boolKey("pauseSearchHistory")
-val DisableScreenshotKey = boolKey("disableScreenshot")
-val EnableGoogleCastKey = boolKey("enableGoogleCast")
+val MaxImageCacheSizeKey = number("maxImageCacheSize")
+val MaxSongCacheSizeKey = number("maxSongCacheSize")
+val ExportDirectoryUriKey = text("exportDirectoryUri")
+val ExportingSongIdsKey = text("exportingSongIds")
+val ExportedSongIdsKey = text("exportedSongIds")
+val ExportProgressKey = text("exportProgress")
+val EnableExportAsMp3Key = bool("enableExportAsMp3")
+val PauseListenHistoryKey = bool("pauseListenHistory")
+val PodcastHidePlayedKey = bool("podcastHidePlayed")
+val PauseSearchHistoryKey = bool("pauseSearchHistory")
+val DisableScreenshotKey = bool("disableScreenshot")
+val EnableGoogleCastKey = bool("enableGoogleCast")
 
 // Listen Together
-val ListenTogetherServerUrlKey = stringKey("listenTogetherServerUrl")
-val ListenTogetherUsernameKey = stringKey("listenTogetherUsername")
-val ListenTogetherAutoApprovalKey = boolKey("listenTogetherAutoApproval")
-val ListenTogetherSyncVolumeKey = boolKey("listenTogetherSyncVolume")
-val ListenTogetherSmartResyncKey = boolKey("listenTogetherSmartResync")
-val ListenTogetherBlockedUsersKey = stringKey("listenTogetherBlockedUsers")
-val ListenTogetherInTopBarKey = boolKey("listenTogetherInTopBar")
-val ListenTogetherSessionTokenKey = stringKey("listenTogetherSessionToken")
-val ListenTogetherRoomCodeKey = stringKey("listenTogetherRoomCode")
-val ListenTogetherUserIdKey = stringKey("listenTogetherUserId")
-val ListenTogetherIsHostKey = boolKey("listenTogetherIsHost")
-val ListenTogetherSessionTimestampKey = longKey("listenTogetherSessionTimestamp")
+val ListenTogetherServerUrlKey = text("listenTogetherServerUrl")
+val ListenTogetherUsernameKey = text("listenTogetherUsername")
+val ListenTogetherAutoApprovalKey = bool("listenTogetherAutoApproval")
+val ListenTogetherSyncVolumeKey = bool("listenTogetherSyncVolume")
+val ListenTogetherSmartResyncKey = bool("listenTogetherSmartResync")
+val ListenTogetherBlockedUsersKey = text("listenTogetherBlockedUsers")
+val ListenTogetherInTopBarKey = bool("listenTogetherInTopBar")
+val ListenTogetherSessionTokenKey = text("listenTogetherSessionToken")
+val ListenTogetherRoomCodeKey = text("listenTogetherRoomCode")
+val ListenTogetherUserIdKey = text("listenTogetherUserId")
+val ListenTogetherIsHostKey = bool("listenTogetherIsHost")
+val ListenTogetherSessionTimestampKey = bigNumber("listenTogetherSessionTimestamp")
 
 // Last.fm / scrobbling
-val LastFMSessionKey = stringKey("lastfmSession")
-val LastFMUsernameKey = stringKey("lastfmUsername")
-val EnableLastFMScrobblingKey = boolKey("lastfmScrobblingEnable")
-val LastFMUseNowPlaying = boolKey("lastfmUseNowPlaying")
-val LastFMUseSendLikes = boolKey("lastfmUseSendLikes")
-val ScrobbleDelayPercentKey = floatKey("scrobbleDelayPercent")
-val ScrobbleMinSongDurationKey = intKey("scrobbleMinSongDuration")
-val ScrobbleDelaySecondsKey = intKey("scrobbleDelaySeconds")
+val LastFMSessionKey = text("lastfmSession")
+val LastFMUsernameKey = text("lastfmUsername")
+val EnableLastFMScrobblingKey = bool("lastfmScrobblingEnable")
+val LastFMUseNowPlaying = bool("lastfmUseNowPlaying")
+val LastFMUseSendLikes = bool("lastfmUseSendLikes")
+val ScrobbleDelayPercentKey = decimal("scrobbleDelayPercent")
+val ScrobbleMinSongDurationKey = number("scrobbleMinSongDuration")
+val ScrobbleDelaySecondsKey = number("scrobbleDelaySeconds")
 
 // Sort / filter / view / sync
-val ChipSortTypeKey = stringKey("chipSortType")
-val SongSortTypeKey = stringKey("songSortType")
-val SongSortDescendingKey = boolKey("songSortDescending")
-val DownloadedSongSortTypeKey = stringKey("downloadedSongSortType")
-val DownloadedSongSortDescendingKey = boolKey("downloadedSongSortDescending")
-val PlaylistSongSortTypeKey = stringKey("playlistSongSortType")
-val PlaylistSongSortDescendingKey = boolKey("playlistSongSortDescending")
-val ArtistSortTypeKey = stringKey("artistSortType")
-val ArtistSortDescendingKey = boolKey("artistSortDescending")
-val AlbumSortTypeKey = stringKey("albumSortType")
-val AlbumSortDescendingKey = boolKey("albumSortDescending")
-val PlaylistSortTypeKey = stringKey("playlistSortType")
-val PlaylistSortDescendingKey = boolKey("playlistSortDescending")
-val AddToPlaylistSortTypeKey = stringKey("addToPlaylistSortType")
-val AddToPlaylistSortDescendingKey = boolKey("addToPlaylistSortDescending")
-val ArtistSongSortTypeKey = stringKey("artistSongSortType")
-val ArtistSongSortDescendingKey = boolKey("artistSongSortDescending")
-val MixSortTypeKey = stringKey("mixSortType")
-val MixSortDescendingKey = boolKey("albumSortDescending")
-val LocalSongsMinDurationSecondsKey = intKey("local_songs_min_duration_seconds")
-val LocalSongsExcludedFoldersKey = stringSetKey("local_songs_excluded_folders")
-val LocalSongsIncludedFoldersKey = stringSetKey("local_songs_included_folders")
-val LocalSongsFolderFilterModeKey = stringKey("local_songs_folder_filter_mode")
-val LocalSongsSortTypeKey = stringKey("local_songs_sort_type")
-val LocalSongsSortDescendingKey = boolKey("local_songs_sort_descending")
-val SongFilterKey = stringKey("songFilter")
-val ArtistFilterKey = stringKey("artistFilter")
-val AlbumFilterKey = stringKey("albumFilter")
-val LastFullSyncKey = longKey("last_full_sync")
-val ArtistViewTypeKey = stringKey("artistViewType")
-val AlbumViewTypeKey = stringKey("albumViewType")
-val PlaylistViewTypeKey = stringKey("playlistViewType")
-val PlaylistEditLockKey = boolKey("playlistEditLock")
-val QuickPicksKey = stringKey("discover")
-val LyricsProviderOrderKey = stringKey("lyricsProviderOrder")
-val QueueEditLockKey = boolKey("queueEditLockV2")
-val RandomizeHomeOrderKey = boolKey("randomizeHomeOrder")
-val AlbumCanvasEnabledKey = boolKey("albumCanvasEnabled")
+val ChipSortTypeKey = text("chipSortType")
+val SongSortTypeKey = text("songSortType")
+val SongSortDescendingKey = bool("songSortDescending")
+val DownloadedSongSortTypeKey = text("downloadedSongSortType")
+val DownloadedSongSortDescendingKey = bool("downloadedSongSortDescending")
+val PlaylistSongSortTypeKey = text("playlistSongSortType")
+val PlaylistSongSortDescendingKey = bool("playlistSongSortDescending")
+val ArtistSortTypeKey = text("artistSortType")
+val ArtistSortDescendingKey = bool("artistSortDescending")
+val AlbumSortTypeKey = text("albumSortType")
+val AlbumSortDescendingKey = bool("albumSortDescending")
+val PlaylistSortTypeKey = text("playlistSortType")
+val PlaylistSortDescendingKey = bool("playlistSortDescending")
+val AddToPlaylistSortTypeKey = text("addToPlaylistSortType")
+val AddToPlaylistSortDescendingKey = bool("addToPlaylistSortDescending")
+val ArtistSongSortTypeKey = text("artistSongSortType")
+val ArtistSongSortDescendingKey = bool("artistSongSortDescending")
+val MixSortTypeKey = text("mixSortType")
+val MixSortDescendingKey = bool("albumSortDescending")
+val LocalSongsMinDurationSecondsKey = number("local_songs_min_duration_seconds")
+val LocalSongsExcludedFoldersKey = texts("local_songs_excluded_folders")
+val LocalSongsIncludedFoldersKey = texts("local_songs_included_folders")
+val LocalSongsFolderFilterModeKey = text("local_songs_folder_filter_mode")
+val LocalSongsSortTypeKey = text("local_songs_sort_type")
+val LocalSongsSortDescendingKey = bool("local_songs_sort_descending")
+val SongFilterKey = text("songFilter")
+val ArtistFilterKey = text("artistFilter")
+val AlbumFilterKey = text("albumFilter")
+val LastFullSyncKey = bigNumber("last_full_sync")
+const val SYNC_COOLDOWN = 1800L
+val ArtistViewTypeKey = text("artistViewType")
+val AlbumViewTypeKey = text("albumViewType")
+val PlaylistViewTypeKey = text("playlistViewType")
+val PlaylistEditLockKey = bool("playlistEditLock")
+val QuickPicksKey = text("discover")
+val LyricsProviderOrderKey = text("lyricsProviderOrder")
+val QueueEditLockKey = bool("queueEditLockV2")
+val RandomizeHomeOrderKey = bool("randomizeHomeOrder")
+val AlbumCanvasEnabledKey = bool("albumCanvasEnabled")
 
 // Home shelves / music flow / addons
-val ShowLikedPlaylistKey = boolKey("show_liked_playlist")
-val ShowDownloadedPlaylistKey = boolKey("show_downloaded_playlist")
-val ShowExportedPlaylistKey = boolKey("show_exported_playlist")
-val ShowTopPlaylistKey = boolKey("show_top_playlist")
-val ShowBottomPlaylistKey = boolKey("show_bottom_playlist")
-val ShowCachedPlaylistKey = boolKey("show_cached_playlist")
-val ShowSpeedDialKey = boolKey("showSpeedDial")
-val ShowHomeHeroCarouselKey = boolKey("showHomeHeroCarousel")
-val ShowHomeCommunityKey = boolKey("showHomeCommunity")
-val ShowHomeMoodAndGenresKey = boolKey("showHomeMoodAndGenres")
-val ShowCommentButtonKey = boolKey("show_comment_button")
-val MusicFlowEnabledKey = boolKey("music_flow_enabled")
-val MusicFlowAutoplayKey = boolKey("music_flow_autoplay")
-val MusicFlowAutoNextKey = boolKey("music_flow_auto_next")
-val MusicFlowAnimatedBackgroundKey = boolKey("music_flow_animated_background")
-val MusicFlowLyricsKey = boolKey("music_flow_lyrics")
-val MusicFlowCellularPrefetchKey = boolKey("music_flow_cellular_prefetch")
-val MusicFlowHideRecentKey = boolKey("music_flow_hide_recent")
-val PreferExtensionAudioKey = boolKey("prefer_extension_audio")
-val PreferredAudioAddonIdKey = stringKey("preferred_audio_addon_id")
+val ShowLikedPlaylistKey = bool("show_liked_playlist")
+val ShowDownloadedPlaylistKey = bool("show_downloaded_playlist")
+val ShowExportedPlaylistKey = bool("show_exported_playlist")
+val ShowTopPlaylistKey = bool("show_top_playlist")
+val ShowBottomPlaylistKey = bool("show_bottom_playlist")
+val ShowCachedPlaylistKey = bool("show_cached_playlist")
+val ShowSpeedDialKey = bool("showSpeedDial")
+val ShowHomeHeroCarouselKey = bool("showHomeHeroCarousel")
+val ShowHomeCommunityKey = bool("showHomeCommunity")
+val ShowHomeMoodAndGenresKey = bool("showHomeMoodAndGenres")
+val ShowCommentButtonKey = bool("show_comment_button")
+val MusicFlowEnabledKey = bool("music_flow_enabled")
+val MusicFlowAutoplayKey = bool("music_flow_autoplay")
+val MusicFlowAutoNextKey = bool("music_flow_auto_next")
+val MusicFlowAnimatedBackgroundKey = bool("music_flow_animated_background")
+val MusicFlowLyricsKey = bool("music_flow_lyrics")
+val MusicFlowCellularPrefetchKey = bool("music_flow_cellular_prefetch")
+val MusicFlowHideRecentKey = bool("music_flow_hide_recent")
+val PreferExtensionAudioKey = bool("prefer_extension_audio")
+val PreferredAudioAddonIdKey = text("preferred_audio_addon_id")
 
 // Player look / lyrics / AI / translation
-val TopSize = stringKey("topSize")
-val HistoryDuration = floatKey("historyDuration")
-val PlayerButtonsStyleKey = stringKey("player_buttons_style")
-val PlayerBackgroundStyleKey = stringKey("playerBackgroundStyle")
-val MiniPlayerBackgroundStyleKey = stringKey("miniPlayerBackgroundStyle")
-val ShowLyricsKey = boolKey("showLyrics")
-val ShowLyricsOnPlayerKey = boolKey("showLyricsOnPlayer")
-val SwipeLyricsKey = boolKey("swipeLyrics")
-val EnableLyricsThumbnailPlayPauseKey = boolKey("enableLyricsThumbnailPlayPause")
-val LyricsTextPositionKey = stringKey("lyricsTextPosition")
-val LyricsClickKey = boolKey("lyricsClick")
-val LyricsScrollKey = boolKey("lyricsScrollKey")
-val LyricsRomanizeJapaneseKey = boolKey("lyricsRomanizeJapanese")
-val LyricsRomanizeKoreanKey = boolKey("lyricsRomanizeKorean")
-val LyricsRomanizeChineseKey = boolKey("lyricsRomanizeChinese")
-val LyricsRomanizeRussianKey = boolKey("lyricsRomanizeRussian")
-val LyricsRomanizeUkrainianKey = boolKey("lyricsRomanizeUkrainian")
-val LyricsRomanizeSerbianKey = boolKey("lyricsRomanizeSerbian")
-val LyricsRomanizeBulgarianKey = boolKey("lyricsRomanizeBulgarian")
-val LyricsRomanizeBelarusianKey = boolKey("lyricsRomanizeBelarusian")
-val LyricsRomanizeKyrgyzKey = boolKey("lyricsRomanizeKyrgyz")
-val LyricsRomanizeMacedonianKey = boolKey("lyricsRomanizeMacedonian")
-val LyricsRomanizeHindiKey = boolKey("lyricsRomanizeHindi")
-val LyricsRomanizePunjabiKey = boolKey("lyricsRomanizePunjabi")
-val LyricsRomanizeAsMainKey = boolKey("lyricsRomanizeAsMain")
-val LyricsRomanizeCyrillicByLineKey = boolKey("lyricsRomanizeCyrillicByLine")
-val OpenRouterApiKey = stringKey("openRouterApiKey")
-val AiProviderKey = stringKey("aiProvider")
-val OpenRouterBaseUrlKey = stringKey("openRouterBaseUrl")
-val OpenRouterModelKey = stringKey("openRouterModel")
-val TranslateModeKey = stringKey("translateMode")
-val TranslateLanguageKey = stringKey("translateLanguage")
-val AutoTranslateKey = boolKey("autoTranslate")
-val AiRecommendationsKey = boolKey("aiRecommendations")
-val LastAiRecommendationUpdateDayKey = longKey("lastAiRecommendationUpdateDay")
-val CreateFromTasteDailyKey = boolKey("createFromTasteDaily")
-val DeeplApiKey = stringKey("deeplApiKey")
-val DeeplFormalityKey = stringKey("deeplFormality")
-val LyricsGlowEffectKey = boolKey("lyricsGlowEffect")
-val AppleMusicLyricsBlurKey = boolKey("appleMusicLyricsBlur")
-val LyricsStandardBlurKey = boolKey("lyricsStandardBlur")
-val HideStatusBarOnFullscreenKey = boolKey("hideStatusBarOnFullscreen")
-val LyricsAnimationStyleKey = stringKey("lyricsAnimationStyle")
-val LyricsTextSizeKey = floatKey("lyricsTextSize")
-val LyricsLineSpacingKey = floatKey("lyricsLineSpacing")
-val PlayerVolumeKey = floatKey("playerVolume")
-val RepeatModeKey = intKey("repeatMode")
-val SearchSourceKey = stringKey("searchSource")
-val SwipeThumbnailKey = boolKey("swipeThumbnail")
-val RotatingThumbnailKey = boolKey("rotatingThumbnail")
-val CanvasThumbnailAnimationKey = boolKey("canvasThumbnailAnimation")
-val SwipeSensitivityKey = floatKey("swipeSensitivity")
+val TopSize = text("topSize")
+val HistoryDuration = decimal("historyDuration")
+val PlayerButtonsStyleKey = text("player_buttons_style")
+val PlayerBackgroundStyleKey = text("playerBackgroundStyle")
+val MiniPlayerBackgroundStyleKey = text("miniPlayerBackgroundStyle")
+val ShowLyricsKey = bool("showLyrics")
+val ShowLyricsOnPlayerKey = bool("showLyricsOnPlayer")
+val SwipeLyricsKey = bool("swipeLyrics")
+val EnableLyricsThumbnailPlayPauseKey = bool("enableLyricsThumbnailPlayPause")
+val LyricsTextPositionKey = text("lyricsTextPosition")
+val LyricsClickKey = bool("lyricsClick")
+val LyricsScrollKey = bool("lyricsScrollKey")
+val LyricsRomanizeJapaneseKey = bool("lyricsRomanizeJapanese")
+val LyricsRomanizeKoreanKey = bool("lyricsRomanizeKorean")
+val LyricsRomanizeChineseKey = bool("lyricsRomanizeChinese")
+val LyricsRomanizeRussianKey = bool("lyricsRomanizeRussian")
+val LyricsRomanizeUkrainianKey = bool("lyricsRomanizeUkrainian")
+val LyricsRomanizeSerbianKey = bool("lyricsRomanizeSerbian")
+val LyricsRomanizeBulgarianKey = bool("lyricsRomanizeBulgarian")
+val LyricsRomanizeBelarusianKey = bool("lyricsRomanizeBelarusian")
+val LyricsRomanizeKyrgyzKey = bool("lyricsRomanizeKyrgyz")
+val LyricsRomanizeMacedonianKey = bool("lyricsRomanizeMacedonian")
+val LyricsRomanizeHindiKey = bool("lyricsRomanizeHindi")
+val LyricsRomanizePunjabiKey = bool("lyricsRomanizePunjabi")
+val LyricsRomanizeAsMainKey = bool("lyricsRomanizeAsMain")
+val LyricsRomanizeCyrillicByLineKey = bool("lyricsRomanizeCyrillicByLine")
+val OpenRouterApiKey = text("openRouterApiKey")
+val AiProviderKey = text("aiProvider")
+val OpenRouterBaseUrlKey = text("openRouterBaseUrl")
+val OpenRouterModelKey = text("openRouterModel")
+val TranslateModeKey = text("translateMode")
+val TranslateLanguageKey = text("translateLanguage")
+val AutoTranslateKey = bool("autoTranslate")
+val AiRecommendationsKey = bool("aiRecommendations")
+val LastAiRecommendationUpdateDayKey = bigNumber("lastAiRecommendationUpdateDay")
+val CreateFromTasteDailyKey = bool("createFromTasteDaily")
+val DeeplApiKey = text("deeplApiKey")
+val DeeplFormalityKey = text("deeplFormality")
+val LyricsGlowEffectKey = bool("lyricsGlowEffect")
+val AppleMusicLyricsBlurKey = bool("appleMusicLyricsBlur")
+val LyricsStandardBlurKey = bool("lyricsStandardBlur")
+val HideStatusBarOnFullscreenKey = bool("hideStatusBarOnFullscreen")
+val LyricsAnimationStyleKey = text("lyricsAnimationStyle")
+val LyricsTextSizeKey = decimal("lyricsTextSize")
+val LyricsLineSpacingKey = decimal("lyricsLineSpacing")
+val PlayerVolumeKey = decimal("playerVolume")
+val RepeatModeKey = number("repeatMode")
+val SearchSourceKey = text("searchSource")
+val SwipeThumbnailKey = bool("swipeThumbnail")
+val RotatingThumbnailKey = bool("rotatingThumbnail")
+val CanvasThumbnailAnimationKey = bool("canvasThumbnailAnimation")
+val SwipeSensitivityKey = decimal("swipeSensitivity")
 
 // Login / session / localisation extras / liquid glass / ambient / fonts / USB
-val VisitorDataKey = stringKey("visitorData")
-val DataSyncIdKey = stringKey("dataSyncId")
-val InnerTubeCookieKey = stringKey("innerTubeCookie")
-val AccountNameKey = stringKey("accountName")
-val AccountEmailKey = stringKey("accountEmail")
-val AccountChannelHandleKey = stringKey("accountChannelHandle")
-val UseLoginForBrowse = boolKey("useLoginForBrowse")
-val LastOpenedVersionCodeKey = intKey("lastOpenedVersionCode")
-val ListenBrainzEnabledKey = boolKey("listenbrainz_enabled")
-val ListenBrainzTokenKey = stringKey("listenbrainz_token")
-val UnisonLyricsEnabledKey = boolKey("unison_lyrics_enabled")
-val ForceOpusKey = boolKey("force_opus_audio")
-val PreloadNextSongEnabledKey = boolKey("preload_next_song_enabled")
-val PreloadNextSongLimitKey = intKey("preload_next_song_limit")
-val PreloadLyricsEnabledKey = boolKey("preload_lyrics_enabled")
-val LiquidGlassGlobalEnabledKey = boolKey("liquidGlassGlobalEnabled")
-val LiquidGlassTextColorKey = intKey("liquidGlassTextColor")
-val LiquidGlassSurfaceTintColorKey = intKey("liquidGlassSurfaceTintColor")
-val LiquidGlassSurfaceOpacityKey = floatKey("liquidGlassSurfaceOpacity")
-val LiquidGlassVibrancyKey = floatKey("liquidGlassVibrancy")
-val LiquidGlassBlurRadiusKey = floatKey("liquidGlassBlurRadius")
-val LiquidGlassLensHeightKey = floatKey("liquidGlassLensHeight")
-val LiquidGlassLensAmountKey = floatKey("liquidGlassLensAmount")
-val LiquidGlassChromaticAberrationKey = boolKey("liquidGlassChromaticAberration")
-val LiquidGlassDepthEffectKey = boolKey("liquidGlassDepthEffect")
-val LiquidGlassPlayerEnabledKey = boolKey("liquidGlassPlayerEnabled")
-val LiquidGlassMiniPlayerEnabledKey = boolKey("liquidGlassMiniPlayerEnabled")
-val LiquidGlassNavBarEnabledKey = boolKey("liquidGlassNavBarEnabled")
-val UseFloatingNavBarKey = boolKey("useFloatingNavBar")
-val SavedAccountsKey = stringKey("savedAccounts")
-val LiveBlurDensityKey = floatKey("live_blur_density")
-val AmbientArtScaleKey = floatKey("ambient_art_scale")
-val AmbientShowTitleKey = boolKey("ambient_show_title")
-val AmbientShowArtistKey = boolKey("ambient_show_artist")
-val AmbientShowLyricsKey = boolKey("ambient_show_lyrics")
-val AmbientShowArtKey = boolKey("ambient_show_art")
-val AmbientFullScreenArtKey = boolKey("ambient_full_screen_art")
-val AmbientSpacingKey = floatKey("ambient_spacing")
-val SelectedFontKey = stringKey("selected_app_font")
-val CustomFontPathKey = stringKey("custom_font_path")
-val BlockedArtistsKey = stringSetKey("blockedArtists")
-val DislikedSongsKey = stringSetKey("dislikedSongs")
-val EnableBitPerfectUsbDacKey = boolKey("enable_bit_perfect_usb_dac")
-val UsbDacVolumeModeKey = stringKey("usb_dac_volume_mode")
-val RecommendationSourceKey = stringKey("recommendation_source")
+val VisitorDataKey = text("visitorData")
+val DataSyncIdKey = text("dataSyncId")
+val InnerTubeCookieKey = text("innerTubeCookie")
+val AccountNameKey = text("accountName")
+val AccountEmailKey = text("accountEmail")
+val AccountChannelHandleKey = text("accountChannelHandle")
+val UseLoginForBrowse = bool("useLoginForBrowse")
+val LastOpenedVersionCodeKey = number("lastOpenedVersionCode")
+val ListenBrainzEnabledKey = bool("listenbrainz_enabled")
+val ListenBrainzTokenKey = text("listenbrainz_token")
+val UnisonLyricsEnabledKey = bool("unison_lyrics_enabled")
+val ForceOpusKey = bool("force_opus_audio")
+val PreloadNextSongEnabledKey = bool("preload_next_song_enabled")
+val PreloadNextSongLimitKey = number("preload_next_song_limit")
+val PreloadLyricsEnabledKey = bool("preload_lyrics_enabled")
+val LiquidGlassGlobalEnabledKey = bool("liquidGlassGlobalEnabled")
+val LiquidGlassTextColorKey = number("liquidGlassTextColor")
+val LiquidGlassSurfaceTintColorKey = number("liquidGlassSurfaceTintColor")
+val LiquidGlassSurfaceOpacityKey = decimal("liquidGlassSurfaceOpacity")
+val LiquidGlassVibrancyKey = decimal("liquidGlassVibrancy")
+val LiquidGlassBlurRadiusKey = decimal("liquidGlassBlurRadius")
+val LiquidGlassLensHeightKey = decimal("liquidGlassLensHeight")
+val LiquidGlassLensAmountKey = decimal("liquidGlassLensAmount")
+val LiquidGlassChromaticAberrationKey = bool("liquidGlassChromaticAberration")
+val LiquidGlassDepthEffectKey = bool("liquidGlassDepthEffect")
+val LiquidGlassPlayerEnabledKey = bool("liquidGlassPlayerEnabled")
+val LiquidGlassMiniPlayerEnabledKey = bool("liquidGlassMiniPlayerEnabled")
+val LiquidGlassNavBarEnabledKey = bool("liquidGlassNavBarEnabled")
+val UseFloatingNavBarKey = bool("useFloatingNavBar")
+val SavedAccountsKey = text("savedAccounts")
+val LiveBlurDensityKey = decimal("live_blur_density")
+val AmbientArtScaleKey = decimal("ambient_art_scale")
+val AmbientShowTitleKey = bool("ambient_show_title")
+val AmbientShowArtistKey = bool("ambient_show_artist")
+val AmbientShowLyricsKey = bool("ambient_show_lyrics")
+val AmbientShowArtKey = bool("ambient_show_art")
+val AmbientFullScreenArtKey = bool("ambient_full_screen_art")
+val AmbientSpacingKey = decimal("ambient_spacing")
+val SelectedFontKey = text("selected_app_font")
+val CustomFontPathKey = text("custom_font_path")
+val BlockedArtistsKey = texts("blockedArtists")
+val DislikedSongsKey = texts("dislikedSongs")
+val EnableBitPerfectUsbDacKey = bool("enable_bit_perfect_usb_dac")
+val UsbDacVolumeModeKey = text("usb_dac_volume_mode")
+val RecommendationSourceKey = text("recommendation_source")
 
 enum class HapticIntensity(val label: String, val scaleFactor: Float) {
     LIGHT("Light", 0.4f),
@@ -339,10 +338,8 @@ enum class HapticIntensity(val label: String, val scaleFactor: Float) {
     STRONG("Strong", 1.0f);
 
     companion object {
-        fun fromName(name: String?): HapticIntensity {
-            if (name == null || name.isBlank()) return MEDIUM
-            return entries.firstOrNull { it.name.equals(name, ignoreCase = true) } ?: MEDIUM
-        }
+        fun fromName(name: String?): HapticIntensity =
+            entries.firstOrNull { it.name.equals(name, ignoreCase = true) } ?: MEDIUM
     }
 }
 
@@ -391,7 +388,8 @@ enum class AudioLoudnessPreset(val gainOffsetMb: Int) {
 enum class PlaybackEngine { POTOKEN, BRAVEPIPE, AUTO }
 
 enum class LibraryViewType {
-    LIST, GRID;
+    LIST,
+    GRID;
 
     fun toggle(): LibraryViewType = if (this == LIST) GRID else LIST
 }
@@ -421,33 +419,66 @@ enum class MixSortType { CREATE_DATE, NAME, LAST_UPDATED }
 enum class GridItemSize { BIG, SMALL }
 
 enum class MyTopFilter {
-    ALL_TIME, DAY, WEEK, MONTH, YEAR;
+    ALL_TIME,
+    DAY,
+    WEEK,
+    MONTH,
+    YEAR;
 
-    fun toTimeMillis(): Long = when (this) {
-        ALL_TIME -> 0L
-        DAY -> LocalDateTime.now().minusDays(1).toInstant(ZoneOffset.UTC).toEpochMilli()
-        WEEK -> LocalDateTime.now().minusWeeks(1).toInstant(ZoneOffset.UTC).toEpochMilli()
-        MONTH -> LocalDateTime.now().minusMonths(1).toInstant(ZoneOffset.UTC).toEpochMilli()
-        YEAR -> LocalDateTime.now().minusMonths(12).toInstant(ZoneOffset.UTC).toEpochMilli()
+    fun toTimeMillis(): Long {
+        if (this == ALL_TIME) return 0L
+        val now = LocalDateTime.now()
+        val boundary = when (this) {
+            DAY -> now.minusDays(1)
+            WEEK -> now.minusWeeks(1)
+            MONTH -> now.minusMonths(1)
+            YEAR -> now.minusYears(1)
+            ALL_TIME -> return 0L
+        }
+        return boundary.toInstant(ZoneOffset.UTC).toEpochMilli()
     }
 }
 
 enum class QuickPicks { QUICK_PICKS, LAST_LISTEN }
 
-enum class PreferredLyricsProvider { LRCLIB, KUGOU, BETTER_LYRICS, SIMPMUSIC, YOULYPLUS, PAXSENIX, UNISON }
+enum class PreferredLyricsProvider {
+    LRCLIB,
+    KUGOU,
+    BETTER_LYRICS,
+    SIMPMUSIC,
+    YOULYPLUS,
+    PAXSENIX,
+    UNISON,
+}
 
 enum class PlayerButtonsStyle { DEFAULT, PRIMARY, TERTIARY }
 
 enum class PlayerBackgroundStyle {
-    DEFAULT, GRADIENT, BLUR, GLOW_ANIMATED, APPLE_MUSIC, LIVE_MESH, LIQUID_GLASS,
+    DEFAULT,
+    GRADIENT,
+    BLUR,
+    GLOW_ANIMATED,
+    APPLE_MUSIC,
+    LIVE_MESH,
+    LIQUID_GLASS,
 }
 
 enum class LyricsAnimationStyle {
-    NONE, FADE, GLOW, SLIDE, KARAOKE, APPLE, APPLE_V2, revenge_1, LYRICS_V2, METRO_LYRICS,
+    NONE,
+    FADE,
+    GLOW,
+    SLIDE,
+    KARAOKE,
+    APPLE,
+    APPLE_V2,
+    revenge_1,
+    LYRICS_V2,
+    METRO_LYRICS,
 }
 
 enum class SearchSource {
-    LOCAL, ONLINE;
+    LOCAL,
+    ONLINE;
 
     fun toggle(): SearchSource = if (this == LOCAL) ONLINE else LOCAL
 }
@@ -471,13 +502,10 @@ enum class RecommendationSource { YOUTUBE, SPOTIFY }
 val LanguageCodeToName: Map<String, String> = mapOf(
     "en" to "English",
     "en-GB" to "English (United Kingdom)",
-    "en-US" to "English (United States)",
     "es" to "Español",
     "es-419" to "Español (Latinoamérica)",
-    "es-ES" to "Español (España)",
     "pt" to "Português",
     "pt-PT" to "Português (Portugal)",
-    "pt-BR" to "Português (Brasil)",
     "fr" to "Français",
     "fr-CA" to "Français (Canada)",
     "de" to "Deutsch",
@@ -498,17 +526,16 @@ val LanguageCodeToName: Map<String, String> = mapOf(
     "gu" to "ગુજરાતી",
     "kn" to "ಕನ್ನಡ",
     "ml" to "മലയാളം",
-    "ja" to "日本語",
-    "ko" to "한국어",
-    "zh" to "中文",
-    "zh-CN" to "中文（简体）",
-    "zh-TW" to "中文（繁體）",
-    "zh-HK" to "中文（香港）",
     "th" to "ไทย",
     "vi" to "Tiếng Việt",
     "id" to "Bahasa Indonesia",
     "ms" to "Bahasa Melayu",
     "fil" to "Filipino",
+    "ja" to "日本語",
+    "ko" to "한국어",
+    "zh-CN" to "简体中文",
+    "zh-TW" to "繁體中文",
+    "zh-HK" to "繁體中文（香港）",
     "sv" to "Svenska",
     "no" to "Norsk",
     "da" to "Dansk",
@@ -520,10 +547,12 @@ val LanguageCodeToName: Map<String, String> = mapOf(
     "bg" to "Български",
     "sr" to "Српски",
     "hr" to "Hrvatski",
-    "sl" to "Slovenščina",
     "el" to "Ελληνικά",
+    "lt" to "Lietuvių",
+    "lv" to "Latviešu",
+    "et" to "Eesti",
     "fa" to "فارسی",
-    "ur" to "اردو",
+    "sw" to "Kiswahili",
 )
 
 val CountryCodeToName: Map<String, String> = mapOf(
@@ -531,8 +560,13 @@ val CountryCodeToName: Map<String, String> = mapOf(
     "GB" to "United Kingdom",
     "CA" to "Canada",
     "AU" to "Australia",
-    "NZ" to "New Zealand",
-    "IE" to "Ireland",
+    "IN" to "India",
+    "BR" to "Brazil",
+    "MX" to "Mexico",
+    "AR" to "Argentina",
+    "CL" to "Chile",
+    "CO" to "Colombia",
+    "PE" to "Peru",
     "DE" to "Germany",
     "FR" to "France",
     "ES" to "Spain",
@@ -546,6 +580,8 @@ val CountryCodeToName: Map<String, String> = mapOf(
     "NO" to "Norway",
     "DK" to "Denmark",
     "FI" to "Finland",
+    "IS" to "Iceland",
+    "IE" to "Ireland",
     "PL" to "Poland",
     "CZ" to "Czechia",
     "SK" to "Slovakia",
@@ -556,37 +592,32 @@ val CountryCodeToName: Map<String, String> = mapOf(
     "HR" to "Croatia",
     "SI" to "Slovenia",
     "RS" to "Serbia",
-    "RU" to "Russia",
     "UA" to "Ukraine",
+    "RU" to "Russia",
     "TR" to "Türkiye",
-    "IN" to "India",
-    "PK" to "Pakistan",
-    "BD" to "Bangladesh",
-    "LK" to "Sri Lanka",
-    "NP" to "Nepal",
+    "IL" to "Israel",
+    "SA" to "Saudi Arabia",
+    "AE" to "United Arab Emirates",
+    "EG" to "Egypt",
+    "ZA" to "South Africa",
+    "NG" to "Nigeria",
+    "KE" to "Kenya",
     "CN" to "China",
-    "TW" to "Taiwan",
     "HK" to "Hong Kong",
+    "TW" to "Taiwan",
     "JP" to "Japan",
     "KR" to "South Korea",
     "SG" to "Singapore",
     "MY" to "Malaysia",
     "ID" to "Indonesia",
-    "PH" to "Philippines",
     "TH" to "Thailand",
     "VN" to "Vietnam",
-    "BR" to "Brazil",
-    "AR" to "Argentina",
-    "MX" to "Mexico",
-    "CL" to "Chile",
-    "CO" to "Colombia",
-    "PE" to "Peru",
-    "ZA" to "South Africa",
-    "NG" to "Nigeria",
-    "EG" to "Egypt",
-    "SA" to "Saudi Arabia",
-    "AE" to "United Arab Emirates",
-    "IL" to "Israel",
+    "PH" to "Philippines",
+    "PK" to "Pakistan",
+    "BD" to "Bangladesh",
+    "LK" to "Sri Lanka",
+    "NP" to "Nepal",
+    "NZ" to "New Zealand",
 )
 
 val SuggestionRegionSlugToName: Map<String, String> = mapOf(
@@ -596,26 +627,31 @@ val SuggestionRegionSlugToName: Map<String, String> = mapOf(
     "ca" to "Canada",
     "au" to "Australia",
     "in" to "India",
+    "br" to "Brazil",
+    "mx" to "Mexico",
     "de" to "Germany",
     "fr" to "France",
     "es" to "Spain",
     "it" to "Italy",
     "pt" to "Portugal",
     "nl" to "Netherlands",
-    "br" to "Brazil",
-    "mx" to "Mexico",
-    "jp" to "Japan",
-    "kr" to "South Korea",
-    "cn" to "China",
-    "tw" to "Taiwan",
-    "hk" to "Hong Kong",
-    "sg" to "Singapore",
-    "id" to "Indonesia",
-    "ph" to "Philippines",
-    "th" to "Thailand",
-    "vn" to "Vietnam",
+    "se" to "Sweden",
+    "no" to "Norway",
+    "dk" to "Denmark",
+    "fi" to "Finland",
+    "pl" to "Poland",
     "ru" to "Russia",
     "ua" to "Ukraine",
     "tr" to "Türkiye",
+    "jp" to "Japan",
+    "kr" to "South Korea",
+    "cn" to "China",
+    "hk" to "Hong Kong",
+    "tw" to "Taiwan",
+    "sg" to "Singapore",
+    "id" to "Indonesia",
+    "th" to "Thailand",
+    "vn" to "Vietnam",
+    "ph" to "Philippines",
     "za" to "South Africa",
 )

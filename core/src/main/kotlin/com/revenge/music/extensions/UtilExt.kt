@@ -1,8 +1,7 @@
 package com.revenge.music.extensions
 
-fun <T> tryOrNull(block: () -> T): T? =
-  try {
+fun <T> tryOrNull(block: () -> T): T? = try {
     block()
-  } catch (e: Exception) {
+} catch (_: Exception) {
     null
-  }
+}

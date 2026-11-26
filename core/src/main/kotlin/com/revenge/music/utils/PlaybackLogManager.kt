@@ -1,48 +1,38 @@
 package com.revenge.music.utils
 
-import java.time.LocalDateTime
-import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
-enum class PlaybackLogLevel {
-  INFO,
-  WARNING,
-  ERROR,
-  DEBUG,
-  BOT,
-}
+enum class PlaybackLogLevel { INFO, WARNING, ERROR, DEBUG, BOT }
 
 data class PlaybackLogEntry(
-  val timestamp: String,
-  val level: PlaybackLogLevel,
-  val message: String,
-  val details: String? = null,
+    val timestamp: String,
+    val level: PlaybackLogLevel,
+    val message: String,
+    val details: String? = null,
 )
 
-/** In-memory ring buffer of playback diagnostics shown in the debug screen. */
 object PlaybackLogManager {
-  private const val MAX_LOG_ENTRIES = 500
-  private val timeFormat = DateTimeFormatter.ofPattern("HH:mm:ss.SSS")
 
-  private val _logs = MutableStateFlow<List<PlaybackLogEntry>>(emptyList())
-  val logs: StateFlow<List<PlaybackLogEntry>> = _logs.asStateFlow()
+    private const val MAX_ENTRIES = 500
 
-  fun log(level: PlaybackLogLevel, message: String, details: String? = null) {
-    val entry =
-      PlaybackLogEntry(
-        timestamp = LocalDateTime.now().format(timeFormat),
-        level = level,
-        message = message,
-        details = details,
-      )
+    private val clock = SimpleDateFormat("HH:mm:ss.SSS", Locale.getDefault())
+    private val state = MutableStateFlow<List<PlaybackLogEntry>>(emptyList())
 
-    _logs.value =
-      (_logs.value + entry).let { if (it.size > MAX_LOG_ENTRIES) it.takeLast(MAX_LOG_ENTRIES) else it }
-  }
+    val logs: StateFlow<List<PlaybackLogEntry>> = state.asStateFlow()
 
-  fun clearLogs() {
-    _logs.value = emptyList()
-  }
+    fun log(level: PlaybackLogLevel, message: String, details: String? = null) {
+        val stamp = synchronized(clock) { clock.format(Date()) }
+        val entry = PlaybackLogEntry(timestamp = stamp, level = level, message = message, details = details)
+        state.update { current -> (current + entry).takeLast(MAX_ENTRIES) }
+    }
+
+    fun clearLogs() {
+        state.value = emptyList()
+    }
 }

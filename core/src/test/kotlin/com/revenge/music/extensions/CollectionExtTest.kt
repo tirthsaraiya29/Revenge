@@ -1,56 +1,127 @@
 package com.revenge.music.extensions
 
+import com.revenge.music.db.entities.Album
+import com.revenge.music.db.entities.AlbumEntity
+import com.revenge.music.db.entities.ArtistEntity
+import com.revenge.music.db.entities.Playlist
+import com.revenge.music.db.entities.PlaylistEntity
+import com.revenge.music.db.entities.Song
+import com.revenge.music.db.entities.SongEntity
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CollectionExtTest {
 
-  private enum class Sample {
-    ALPHA,
-    BETA,
-  }
+    private fun song(id: String, explicit: Boolean = false, video: Boolean = false) = Song(
+        song = SongEntity(id = id, title = id, explicit = explicit, isVideo = video),
+        artists = listOf(ArtistEntity(id = "artist-$id", name = "Artist")),
+    )
 
-  @Test
-  fun `reversed respects the flag without copying`() {
-    val list = listOf(1, 2, 3)
-    assertEquals(listOf(3, 2, 1), list.reversed(true))
-    assertEquals(listOf(1, 2, 3), list.reversed(false))
-  }
+    private fun album(id: String, explicit: Boolean) = Album(
+        album = AlbumEntity(id = id, title = id, explicit = explicit, songCount = 1, duration = 100),
+    )
 
-  @Test
-  fun `move reorders in place`() {
-    assertEquals(listOf(1, 3, 2), mutableListOf(1, 2, 3).move(1, 2))
-    assertEquals(listOf(3, 1, 2), mutableListOf(1, 2, 3).move(2, 0))
-  }
+    private fun playlist(id: String, browseId: String?) = Playlist(
+        playlist = PlaylistEntity(id = id, name = id, browseId = browseId),
+        songCount = 0,
+        songThumbnails = emptyList(),
+    )
 
-  @Test
-  fun `mergeNearbyElements folds only adjacent matches`() {
-    val values = listOf("a1", "a2", "b1", "a3")
-    val merged =
-      values.mergeNearbyElements(
-        key = { it.first() },
-        merge = { first, second -> first + second.drop(1) },
-      )
-    assertEquals(listOf("a12", "b1", "a3"), merged)
-  }
+    private class EnumProbe { enum class Sample { ALPHA, BETA } }
 
-  @Test
-  fun `mergeNearbyElements keeps first element by default`() {
-    assertEquals(listOf(1, 2, 3), listOf(1, 2, 3).mergeNearbyElements())
-    assertEquals(emptyList<Int>(), emptyList<Int>().mergeNearbyElements())
-  }
+    @Test
+    fun `reversed true is a live view and false returns the receiver`() {
+        val backing = mutableListOf(1, 2, 3)
+        val view = backing.reversed(true)
+        assertEquals(listOf(3, 2, 1), view)
+        backing.add(4)
+        assertEquals(listOf(4, 3, 2, 1), view)
 
-  @Test
-  fun `toEnum parses names and falls back`() {
-    assertEquals(Sample.BETA, "BETA".toEnum(Sample.ALPHA))
-    assertEquals(Sample.ALPHA, "nope".toEnum(Sample.ALPHA))
-    assertEquals(Sample.ALPHA, null.toEnum(Sample.ALPHA))
-  }
+        val plain = mutableListOf(1, 2)
+        assertSame(plain, plain.reversed(false))
+    }
 
-  @Test
-  fun `tryOrNull swallows exceptions`() {
-    assertEquals(2, tryOrNull { 1 + 1 })
-    assertNull(tryOrNull<Int> { error("boom") })
-  }
+    @Test
+    fun `move repositions in place and returns the same instance`() {
+        val one = mutableListOf(1, 2, 3)
+        assertSame(one, one.move(1, 2))
+        assertEquals(listOf(1, 3, 2), one)
+
+        val two = mutableListOf(1, 2, 3)
+        two.move(2, 0)
+        assertEquals(listOf(3, 1, 2), two)
+    }
+
+    @Test
+    fun `mergeNearbyElements collapses adjacent runs only`() {
+        val merged = listOf("a1", "a2", "b1", "a3").mergeNearbyElements(
+            key = { it.first() },
+            merge = { first, second -> first + second.substring(1) },
+        )
+        assertEquals(listOf("a12", "b1", "a3"), merged)
+
+        assertEquals(emptyList<String>(), emptyList<String>().mergeNearbyElements())
+        assertEquals(listOf("a1", "b1", "a3"), listOf("a1", "b1", "a3").mergeNearbyElements())
+        assertEquals(listOf("a", "a"), listOf("a", "b", "a").mergeNearbyElements(key = { "x" }))
+    }
+
+    @Test
+    fun `song filters remove only matching rows unless disabled`() {
+        val songs = listOf(song("plain"), song("explicit", explicit = true), song("video", video = true))
+
+        assertEquals(listOf("plain", "video"), songs.filterExplicit(true).map { it.id })
+        assertSame(songs, songs.filterExplicit(false))
+
+        assertEquals(listOf("plain", "explicit"), songs.filterVideoSongs(true).map { it.id })
+        assertSame(songs, songs.filterVideoSongs(false))
+    }
+
+    @Test
+    fun `album and playlist filters respect their flags`() {
+        val albums = listOf(album("clean", false), album("dirty", true))
+        assertEquals(listOf("clean"), albums.filterExplicitAlbums(true).map { it.id })
+        assertSame(albums, albums.filterExplicitAlbums(false))
+
+        val playlists = listOf(playlist("short", "SSabc"), playlist("normal", "PL123"), playlist("none", null))
+        assertEquals(listOf("normal", "none"), playlists.filterYoutubeShorts(true).map { it.id })
+        assertSame(playlists, playlists.filterYoutubeShorts())
+    }
+
+    @Test
+    fun `toEnum matches exact names and falls back`() {
+        assertEquals(EnumProbe.Sample.BETA, "BETA".toEnum(EnumProbe.Sample.ALPHA))
+        assertEquals(EnumProbe.Sample.ALPHA, "nope".toEnum(EnumProbe.Sample.ALPHA))
+        assertEquals(EnumProbe.Sample.ALPHA, (null as String?).toEnum(EnumProbe.Sample.ALPHA))
+        assertEquals(EnumProbe.Sample.ALPHA, "beta".toEnum(EnumProbe.Sample.ALPHA))
+    }
+
+    @Test
+    fun `tryOrNull returns value or null for exceptions`() {
+        assertNull(tryOrNull<Int> { error("boom") })
+        assertEquals(2, tryOrNull { 2 })
+    }
+
+    @Test
+    fun `toInetSocketAddress splits without resolving`() {
+        val address = "example.org:8080".toInetSocketAddress()
+        assertTrue(address.isUnresolved)
+        assertEquals("example.org", address.hostString)
+        assertEquals(8080, address.port)
+
+        assertThrows<IndexOutOfBoundsException> { "host".toInetSocketAddress() }
+        assertThrows<NumberFormatException> { "host:abc".toInetSocketAddress() }
+    }
+
+    private inline fun <reified T : Throwable> assertThrows(crossinline body: () -> Unit) {
+        try {
+            body()
+        } catch (thrown: Throwable) {
+            if (thrown is T) return
+            throw AssertionError("expected ${T::class.java.simpleName} but got $thrown", thrown)
+        }
+        throw AssertionError("expected ${T::class.java.simpleName} to be thrown")
+    }
 }

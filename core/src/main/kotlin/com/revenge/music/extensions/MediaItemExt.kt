@@ -2,130 +2,97 @@ package com.revenge.music.extensions
 
 import android.net.Uri
 import android.os.Bundle
-import androidx.core.net.toUri
 import androidx.media3.common.MediaItem
-import androidx.media3.common.MediaMetadata.MEDIA_TYPE_MUSIC
+import androidx.media3.common.MediaMetadata as Media3Metadata
 import com.revenge.innertube.models.SongItem
 import com.revenge.music.db.entities.Song
 import com.revenge.music.models.MediaMetadata
-import com.revenge.music.models.toMediaMetadata
 import com.revenge.music.ui.utils.resize
 import java.util.Locale
 
+private val DIRECT_URI_SCHEMES = setOf("content", "file", "android.resource", "http", "https")
+private const val ARTWORK_URI_EXTRA = "artwork_uri"
+private const val WATCH_URL_PREFIX = "https://music.youtube.com/watch?v="
+
+private fun seedUri(id: String): String {
+    val scheme = Uri.parse(id).scheme?.lowercase(Locale.US)
+    return if (scheme != null && scheme in DIRECT_URI_SCHEMES) id else WATCH_URL_PREFIX + Uri.encode(id)
+}
+
+private fun assemble(
+    metadata: MediaMetadata,
+    artwork: String?,
+    albumTitle: String?,
+    artistText: String,
+): MediaItem {
+    val mediaMetadata = Media3Metadata.Builder()
+        .setTitle(metadata.title)
+        .setSubtitle(artistText)
+        .setArtist(artistText)
+        .setAlbumTitle(albumTitle)
+        .setAlbumArtist(metadata.artists.firstOrNull()?.name)
+        .setDisplayTitle(metadata.title)
+        .setMediaType(Media3Metadata.MEDIA_TYPE_MUSIC)
+        .setIsBrowsable(false)
+        .setIsPlayable(true)
+        .apply {
+            if (artwork != null) {
+                setArtworkUri(Uri.parse(artwork))
+                setExtras(Bundle().apply { putString(ARTWORK_URI_EXTRA, artwork) })
+            }
+        }
+        .build()
+
+    return MediaItem.Builder()
+        .setMediaId(metadata.id)
+        .setUri(seedUri(metadata.id))
+        .setCustomCacheKey(metadata.id)
+        .setTag(metadata)
+        .setMediaMetadata(mediaMetadata)
+        .build()
+}
+
 val MediaItem.metadata: MediaMetadata?
-  get() =
-    (localConfiguration?.tag as? MediaMetadata)
-      ?: run {
-        val meta = mediaMetadata
-        val title = (meta.title ?: meta.displayTitle)?.toString()
-        if (title.isNullOrBlank() && mediaId.isBlank()) {
-          null
-        } else {
-          MediaMetadata(
+    get() {
+        val tag = localConfiguration?.tag
+        if (tag is MediaMetadata) return tag
+
+        val source = mediaMetadata
+        val title = (source.title ?: source.displayTitle)?.toString()
+        if (title.isNullOrBlank() && mediaId.isBlank()) return null
+        val artist = source.artist?.toString()
+        return MediaMetadata(
             id = mediaId,
             title = title.orEmpty(),
-            artists =
-              listOfNotNull(
-                meta.artist
-                  ?.toString()
-                  ?.takeIf { it.isNotBlank() }
-                  ?.let { MediaMetadata.Artist(id = null, name = it) },
-              ),
+            artists = if (!artist.isNullOrBlank()) listOf(MediaMetadata.Artist(null, artist)) else emptyList(),
             duration = 0,
-            thumbnailUrl = meta.artworkUri?.toString() ?: meta.extras?.getString("artwork_uri"),
-          )
-        }
-      }
+            thumbnailUrl = source.artworkUri?.toString() ?: source.extras?.getString(ARTWORK_URI_EXTRA),
+        )
+    }
 
-/**
- * A media id may already be a playable URI (local files, downloads) or a bare YouTube video id.
- * Bare ids get a YouTube watch URL so ExoPlayer has something resolvable before the real stream
- * URL is selected by the resolver.
- */
-private fun playbackSeedUri(mediaId: String): String {
-  val scheme = mediaId.toUri().scheme?.lowercase(Locale.US)
-  return when (scheme) {
-    "content",
-    "file",
-    "android.resource",
-    "http",
-    "https" -> mediaId
-    else -> "https://music.youtube.com/watch?v=${Uri.encode(mediaId)}"
-  }
-}
-
-private fun mediaMetadataBuilder(
-  title: String,
-  subtitle: String,
-  artworkUri: String?,
-  albumTitle: String?,
-  albumArtist: String?,
-): androidx.media3.common.MediaMetadata.Builder =
-  androidx.media3.common.MediaMetadata.Builder()
-    .setTitle(title)
-    .setSubtitle(subtitle)
-    .setArtist(subtitle)
-    .setArtworkUri(artworkUri?.toUri())
-    .setAlbumTitle(albumTitle)
-    .setAlbumArtist(albumArtist)
-    .setDisplayTitle(title)
-    .setMediaType(MEDIA_TYPE_MUSIC)
-    .setIsBrowsable(false)
-    .setIsPlayable(true)
-    .setExtras(Bundle().apply { artworkUri?.let { putString("artwork_uri", it) } })
-
-fun Song.toMediaItem() =
-  MediaItem.Builder()
-    .setMediaId(song.id)
-    .setUri(playbackSeedUri(song.id))
-    .setCustomCacheKey(song.id)
-    .setTag(toMediaMetadata())
-    .setMediaMetadata(
-      mediaMetadataBuilder(
-        title = song.title,
-        subtitle = artists.joinToString { it.name },
-        artworkUri = song.thumbnailUrl,
+fun Song.toMediaItem(): MediaItem {
+    val metadata = toMediaMetadata()
+    return assemble(
+        metadata = metadata,
+        artwork = thumbnailUrl,
         albumTitle = song.albumName,
-        albumArtist = artists.firstOrNull()?.name,
-      )
-        .build(),
+        artistText = artists.joinToString(", ") { it.name },
     )
-    .build()
+}
 
 fun SongItem.toMediaItem(): MediaItem {
-  val artwork = thumbnail.resize(1200, 1200)
-  return MediaItem.Builder()
-    .setMediaId(id)
-    .setUri(playbackSeedUri(id))
-    .setCustomCacheKey(id)
-    .setTag(toMediaMetadata())
-    .setMediaMetadata(
-      mediaMetadataBuilder(
-        title = title,
-        subtitle = artists.joinToString { it.name },
-        artworkUri = artwork,
+    val metadata = toMediaMetadata()
+    return assemble(
+        metadata = metadata,
+        artwork = thumbnail.resize(1200, 1200),
         albumTitle = album?.name,
-        albumArtist = artists.firstOrNull()?.name,
-      )
-        .build(),
+        artistText = artists.joinToString(", ") { it.name },
     )
-    .build()
 }
 
-fun MediaMetadata.toMediaItem() =
-  MediaItem.Builder()
-    .setMediaId(id)
-    .setUri(playbackSeedUri(id))
-    .setCustomCacheKey(id)
-    .setTag(this)
-    .setMediaMetadata(
-      mediaMetadataBuilder(
-        title = title,
-        subtitle = artists.joinToString { it.name },
-        artworkUri = thumbnailUrl,
-        albumTitle = album?.title,
-        albumArtist = artists.firstOrNull()?.name,
-      )
-        .build(),
-    )
-    .build()
+fun MediaMetadata.toMediaItem(): MediaItem = assemble(
+    metadata = this,
+    artwork = thumbnailUrl,
+    albumTitle = album?.title,
+    artistText = artists.joinToString(", ") { it.name },
+)

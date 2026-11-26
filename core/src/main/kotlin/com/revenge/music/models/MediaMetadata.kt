@@ -4,6 +4,8 @@ import androidx.compose.runtime.Immutable
 import java.io.Serializable
 import java.time.LocalDateTime
 
+private const val AUDIO_ONLY_VIDEO_TYPE = "MUSIC_VIDEO_TYPE_ATV"
+
 @Immutable
 data class MediaMetadata(
     val id: String,
@@ -25,15 +27,11 @@ data class MediaMetadata(
 ) : Serializable {
 
     val isVideoSong: Boolean
-        get() = musicVideoType != null && musicVideoType != MUSIC_VIDEO_TYPE_ATV
+        get() = musicVideoType != null && musicVideoType != AUDIO_ONLY_VIDEO_TYPE
 
     data class Artist(val id: String?, val name: String) : Serializable
 
     data class Album(val id: String, val title: String) : Serializable
-
-    companion object {
-        const val MUSIC_VIDEO_TYPE_ATV = "MUSIC_VIDEO_TYPE_ATV"
-    }
 }
 
 enum class QueueItemSource { USER }

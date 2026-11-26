@@ -6,52 +6,49 @@ import androidx.room.Junction
 import androidx.room.Relation
 
 @Immutable
-data class Song
-@JvmOverloads
-constructor(
-  @Embedded val song: SongEntity,
-  @Relation(
-    entity = ArtistEntity::class,
-    entityColumn = "id",
-    parentColumn = "id",
-    associateBy =
-      Junction(
-        value = SortedSongArtistMap::class,
-        parentColumn = "songId",
-        entityColumn = "artistId",
-      ),
-  )
-  val artists: List<ArtistEntity>,
-  @Relation(
-    entity = AlbumEntity::class,
-    entityColumn = "id",
-    parentColumn = "id",
-    associateBy =
-      Junction(value = SongAlbumMap::class, parentColumn = "songId", entityColumn = "albumId"),
-  )
-  val album: AlbumEntity? = null,
-  @Relation(parentColumn = "id", entityColumn = "id") val format: FormatEntity? = null,
+data class Song @JvmOverloads constructor(
+    @Embedded val song: SongEntity,
+    @Relation(
+        entity = ArtistEntity::class,
+        entityColumn = "id",
+        parentColumn = "id",
+        associateBy = Junction(
+            SortedSongArtistMap::class,
+            parentColumn = "songId",
+            entityColumn = "artistId",
+        ),
+    )
+    val artists: List<ArtistEntity>,
+    @Relation(
+        entity = AlbumEntity::class,
+        entityColumn = "id",
+        parentColumn = "id",
+        associateBy = Junction(
+            SongAlbumMap::class,
+            parentColumn = "songId",
+            entityColumn = "albumId",
+        ),
+    )
+    val album: AlbumEntity? = null,
+    @Relation(parentColumn = "id", entityColumn = "id")
+    val format: FormatEntity? = null,
 ) : LocalItem() {
-  override val id: String
-    get() = song.id
+    override val id: String get() = song.id
+    override val title: String get() = song.title
 
-  override val title: String
-    get() = song.title
-
-  override val thumbnailUrl: String?
-    get() =
-      if (!song.isLocal) {
-        song.thumbnailUrl
-      } else {
-        // Local songs store the MediaStore album id inside albumId; use its artwork when present.
-        val mediaStoreAlbumId = song.albumId?.removePrefix("LOCAL_ALBUM_")?.toLongOrNull()
-        if (mediaStoreAlbumId != null && mediaStoreAlbumId > 0) {
-          "content://media/external/audio/albumart/$mediaStoreAlbumId"
-        } else {
-          song.thumbnailUrl ?: song.id
+    override val thumbnailUrl: String?
+        get() {
+            if (!song.isLocal) return song.thumbnailUrl
+            val albumArtId = song.albumId
+                ?.removePrefix("LOCAL_ALBUM_")
+                ?.toLongOrNull()
+                ?.takeIf { it > 0 }
+            return if (albumArtId != null) {
+                "content://media/external/audio/albumart/$albumArtId"
+            } else {
+                song.thumbnailUrl ?: song.id
+            }
         }
-      }
 
-  val romanizeLyrics: Boolean
-    get() = song.romanizeLyrics
+    val romanizeLyrics: Boolean get() = song.romanizeLyrics
 }
