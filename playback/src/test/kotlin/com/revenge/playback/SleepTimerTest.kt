@@ -5,6 +5,7 @@ import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Delay
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.InternalCoroutinesApi
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -158,6 +159,7 @@ class SleepTimerTest {
         } as Player
     }
 
+    @OptIn(InternalCoroutinesApi::class)
     private class VirtualClock : CoroutineDispatcher(), Delay {
 
         private class Task(val time: Long, val order: Long, val action: () -> Unit)

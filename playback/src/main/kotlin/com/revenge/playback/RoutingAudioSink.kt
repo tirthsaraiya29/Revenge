@@ -1,11 +1,15 @@
+@file:OptIn(androidx.media3.common.util.UnstableApi::class)
+
 package com.revenge.playback
 
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.Format
 import androidx.media3.common.PlaybackParameters
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.audio.AudioSink
 import java.nio.ByteBuffer
 
+@UnstableApi
 class RoutingAudioSink(
     val defaultSink: AudioSink,
     val usbSink: AudioSink,

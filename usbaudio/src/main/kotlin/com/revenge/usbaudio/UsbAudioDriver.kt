@@ -148,7 +148,7 @@ class UsbAudioDriver {
         }
         return try {
             val pendingBytes = pendingPlatformFrames(active) * frameSize
-            (active.bufferSizeInBytes - pendingBytes).coerceIn(0, Int.MAX_VALUE)
+            (active.bufferSizeInFrames.toLong() * frameSize - pendingBytes).coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
         } catch (error: Exception) {
             0
         }

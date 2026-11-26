@@ -67,7 +67,7 @@ class LocalMixQueue(
         return result
     }
 
-    private fun buildRemoteMix(seedId: String, playlistIds: Set<String>): List<SongItem> {
+    private suspend fun buildRemoteMix(seedId: String, playlistIds: Set<String>): List<SongItem> {
         val songs = try {
             val next = YouTube.next(WatchEndpoint(videoId = seedId)).getOrThrow()
             val related = next.relatedEndpoint

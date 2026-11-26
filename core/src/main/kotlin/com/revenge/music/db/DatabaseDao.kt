@@ -155,36 +155,6 @@ interface DatabaseDao {
     fun albumsUploaded(sortType: AlbumSortType, descending: Boolean): Flow<List<Album>> =
         albumsUploadedAsc(sortType).orderFlowed(descending)
 
-    private fun albumsAsc(sortType: AlbumSortType): Flow<List<Album>> = when (sortType) {
-        AlbumSortType.CREATE_DATE -> albumsByCreateDateAsc()
-        AlbumSortType.NAME -> albumsByNameAsc()
-        AlbumSortType.ARTIST -> albumsByArtistAsc()
-        AlbumSortType.YEAR -> albumsByYearAsc()
-        AlbumSortType.SONG_COUNT -> albumsBySongCountAsc()
-        AlbumSortType.LENGTH -> albumsByLengthAsc()
-        AlbumSortType.PLAY_TIME -> albumsByPlayTimeAsc()
-    }
-
-    private fun albumsLikedAsc(sortType: AlbumSortType): Flow<List<Album>> = when (sortType) {
-        AlbumSortType.CREATE_DATE -> albumsLikedByCreateDateAsc()
-        AlbumSortType.NAME -> albumsLikedByNameAsc()
-        AlbumSortType.ARTIST -> albumsLikedByArtistAsc()
-        AlbumSortType.YEAR -> albumsLikedByYearAsc()
-        AlbumSortType.SONG_COUNT -> albumsLikedBySongCountAsc()
-        AlbumSortType.LENGTH -> albumsLikedByLengthAsc()
-        AlbumSortType.PLAY_TIME -> albumsLikedByPlayTimeAsc()
-    }
-
-    private fun albumsUploadedAsc(sortType: AlbumSortType): Flow<List<Album>> = when (sortType) {
-        AlbumSortType.CREATE_DATE -> albumsUploadedByCreateDateAsc()
-        AlbumSortType.NAME -> albumsUploadedByNameAsc()
-        AlbumSortType.ARTIST -> albumsUploadedByArtistAsc()
-        AlbumSortType.YEAR -> albumsUploadedByYearAsc()
-        AlbumSortType.SONG_COUNT -> albumsUploadedBySongCountAsc()
-        AlbumSortType.LENGTH -> albumsUploadedByLengthAsc()
-        AlbumSortType.PLAY_TIME -> albumsUploadedByPlayTimeAsc()
-    }
-
     fun playlists(sortType: PlaylistSortType, descending: Boolean): Flow<List<Playlist>> {
         val base = when (sortType) {
             PlaylistSortType.CREATE_DATE -> playlistsByCreateDateAsc()
@@ -198,9 +168,6 @@ interface DatabaseDao {
             pinned + rest
         }
     }
-
-    private fun <T> Flow<List<T>>.orderFlowed(descending: Boolean): Flow<List<T>> =
-        if (descending) map { it.asReversed() } else this
 
     // ------------------------------------------------------------------
     // Library songs
@@ -225,10 +192,9 @@ interface DatabaseDao {
     @Transaction
     @Query(
         "SELECT * FROM song WHERE inLibrary IS NOT NULL ORDER BY albumName ASC, " +
-            "(SELECT GROUP_CONCAT(name, ', ') FROM (" +
-            "SELECT artist.name AS name FROM song_artist_map " +
+            "(SELECT GROUP_CONCAT(artist.name, ', ') FROM song_artist_map " +
             "JOIN artist ON artist.id = song_artist_map.artistId " +
-            "WHERE song_artist_map.songId = song.id ORDER BY song_artist_map.position)) ASC, " +
+            "WHERE song_artist_map.songId = song.id) ASC, " +
             "title COLLATE NOCASE ASC",
     )
     fun songsByArtistAsc(): Flow<List<Song>>
@@ -1424,20 +1390,6 @@ interface DatabaseDao {
         )
     }
 
-    private suspend fun ensureArtist(artist: MediaMetadata.Artist): String {
-        val metadataId = artist.id
-        if (metadataId != null) {
-            if (getArtistById(metadataId) == null) {
-                insert(ArtistEntity(id = metadataId, name = artist.name, channelId = metadataId))
-            }
-            return metadataId
-        }
-        artistByName(artist.name)?.let { return it.id }
-        val generated = ArtistEntity.generateArtistId()
-        insert(ArtistEntity(id = generated, name = artist.name))
-        return generated
-    }
-
     // ------------------------------------------------------------------
     // Maintenance
     // ------------------------------------------------------------------
@@ -1497,4 +1449,51 @@ interface DatabaseDao {
 
     @Query("DELETE FROM album_artist_map WHERE albumId = :albumId")
     suspend fun deleteAlbumArtistMaps(albumId: String)
+}
+
+private fun <T> Flow<List<T>>.orderFlowed(descending: Boolean): Flow<List<T>> =
+    if (descending) map { it.asReversed() } else this
+
+private fun DatabaseDao.albumsAsc(sortType: AlbumSortType): Flow<List<Album>> = when (sortType) {
+    AlbumSortType.CREATE_DATE -> albumsByCreateDateAsc()
+    AlbumSortType.NAME -> albumsByNameAsc()
+    AlbumSortType.ARTIST -> albumsByArtistAsc()
+    AlbumSortType.YEAR -> albumsByYearAsc()
+    AlbumSortType.SONG_COUNT -> albumsBySongCountAsc()
+    AlbumSortType.LENGTH -> albumsByLengthAsc()
+    AlbumSortType.PLAY_TIME -> albumsByPlayTimeAsc()
+}
+
+private fun DatabaseDao.albumsLikedAsc(sortType: AlbumSortType): Flow<List<Album>> = when (sortType) {
+    AlbumSortType.CREATE_DATE -> albumsLikedByCreateDateAsc()
+    AlbumSortType.NAME -> albumsLikedByNameAsc()
+    AlbumSortType.ARTIST -> albumsLikedByArtistAsc()
+    AlbumSortType.YEAR -> albumsLikedByYearAsc()
+    AlbumSortType.SONG_COUNT -> albumsLikedBySongCountAsc()
+    AlbumSortType.LENGTH -> albumsLikedByLengthAsc()
+    AlbumSortType.PLAY_TIME -> albumsLikedByPlayTimeAsc()
+}
+
+private fun DatabaseDao.albumsUploadedAsc(sortType: AlbumSortType): Flow<List<Album>> = when (sortType) {
+    AlbumSortType.CREATE_DATE -> albumsUploadedByCreateDateAsc()
+    AlbumSortType.NAME -> albumsUploadedByNameAsc()
+    AlbumSortType.ARTIST -> albumsUploadedByArtistAsc()
+    AlbumSortType.YEAR -> albumsUploadedByYearAsc()
+    AlbumSortType.SONG_COUNT -> albumsUploadedBySongCountAsc()
+    AlbumSortType.LENGTH -> albumsUploadedByLengthAsc()
+    AlbumSortType.PLAY_TIME -> albumsUploadedByPlayTimeAsc()
+}
+
+private suspend fun DatabaseDao.ensureArtist(artist: MediaMetadata.Artist): String {
+    val metadataId = artist.id
+    if (metadataId != null) {
+        if (getArtistById(metadataId) == null) {
+            insert(ArtistEntity(id = metadataId, name = artist.name, channelId = metadataId))
+        }
+        return metadataId
+    }
+    artistByName(artist.name)?.let { return it.id }
+    val generated = ArtistEntity.generateArtistId()
+    insert(ArtistEntity(id = generated, name = artist.name))
+    return generated
 }

@@ -69,7 +69,7 @@ class DspControllerImpl @Inject constructor() : DspController {
             }
             retainedProfile != null -> {
                 val profile = retainedProfile!!
-                runCatching { processor.applyProfile(profile) }
+                runCatching { processor.applyProfile(profile.parametricEQ) }
                     .onFailure { Timber.e(it, "Failed to restore EQ profile") }
             }
         }
@@ -111,13 +111,14 @@ class DspControllerImpl @Inject constructor() : DspController {
 
         var firstFailure: Throwable? = null
         for (processor in equalizers) {
-            runCatching { processor.applyProfile(profile) }.onFailure { error ->
+            runCatching { processor.applyProfile(profile.parametricEQ) }.onFailure { error ->
                 Timber.e(error, "Failed to apply EQ profile")
                 if (firstFailure == null) firstFailure = error
             }
         }
-        return if (firstFailure != null) {
-            Result.failure(firstFailure!!)
+        val failure = firstFailure
+        return if (failure != null) {
+            Result.failure(failure)
         } else {
             Result.success(Unit)
         }

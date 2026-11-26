@@ -1,31 +1,25 @@
 package com.revenge.music.playback
 
-import java.util.Locale
-
+/** Device family shared by the GMS Cast handler and the picker UI. */
 enum class CastDeviceKind {
-    TV,
-    SPEAKER,
-    CHROMECAST,
-    UNKNOWN;
+  TV,
+  SPEAKER,
+  CHROMECAST,
+  UNKNOWN;
 
-    companion object {
-        private val speakerNameMarkers = arrayOf("speaker", "home", "nest")
-        private const val SPEAKER_MODEL_MARKER = "speaker"
-        private const val CHROMECAST_MARKER = "chromecast"
-        private const val TV_MARKER = "tv"
+  companion object {
+    private val TV_KEYWORDS = listOf("tv", "television", "google tv", "android tv")
+    private val SPEAKER_KEYWORDS =
+      listOf("speaker", "home", "nest", "soundbar", "audio", "mini", "max", "hub")
 
-        fun fromName(name: String, description: String?): CastDeviceKind {
-            val device = name.lowercase(Locale.ROOT)
-            val model = description.orEmpty().lowercase(Locale.ROOT)
-            return when {
-                device.contains(TV_MARKER) || model.contains(TV_MARKER) -> TV
-                isSpeaker(device, model) -> SPEAKER
-                device.contains(CHROMECAST_MARKER) || model.contains(CHROMECAST_MARKER) -> CHROMECAST
-                else -> UNKNOWN
-            }
-        }
-
-        private fun isSpeaker(device: String, model: String): Boolean =
-            speakerNameMarkers.any(device::contains) || model.contains(SPEAKER_MODEL_MARKER)
+    fun fromName(name: String, description: String?): CastDeviceKind {
+      val haystack = "${name.lowercase()} ${description.orEmpty().lowercase()}"
+      return when {
+        TV_KEYWORDS.any { haystack.contains(it) } -> TV
+        SPEAKER_KEYWORDS.any { haystack.contains(it) } -> SPEAKER
+        haystack.contains("chromecast") -> CHROMECAST
+        else -> UNKNOWN
+      }
     }
+  }
 }
