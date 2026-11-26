@@ -39,9 +39,9 @@ class LyricsHelperOrchestrationTest {
 
     private class FakeProvider(
         override val name: String,
-        private val lyrics: suspend () -> Result<String> = { Result.success("[00:01.00]line") },
         private val pages: List<String> = emptyList(),
         private val pageDelayMs: Long = 0,
+        private val lyrics: suspend () -> Result<String> = { Result.success("[00:01.00]line") },
     ) : LyricsProvider {
 
         var lyricCalls = 0

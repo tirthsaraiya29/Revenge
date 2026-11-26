@@ -41,8 +41,8 @@ class PersistQueueTest {
             items = listOf(metadata("a"), metadata("b")),
             mediaItemIndex = 1,
             position = 12_345L,
-            queueType = PersistQueue.QueueType.YOUTUBE_ALBUM_RADIO,
-            queueData = PersistQueue.QueueData.YouTubeAlbumRadioData(
+            queueType = QueueType.YOUTUBE_ALBUM_RADIO,
+            queueData = QueueData.YouTubeAlbumRadioData(
                 playlistId = "PL1",
                 albumSongCount = 9,
                 continuation = "cont",
@@ -57,10 +57,10 @@ class PersistQueueTest {
     @Test
     fun `all queue types and data variants round trip`() {
         for (type in listOf(
-            PersistQueue.QueueType.LIST,
-            PersistQueue.QueueType.YOUTUBE,
-            PersistQueue.QueueType.YOUTUBE_ALBUM_RADIO,
-            PersistQueue.QueueType.LOCAL_ALBUM_RADIO,
+            QueueType.LIST,
+            QueueType.YOUTUBE,
+            QueueType.YOUTUBE_ALBUM_RADIO,
+            QueueType.LOCAL_ALBUM_RADIO,
         )) {
             val queue = PersistQueue(
                 title = null,
@@ -73,11 +73,11 @@ class PersistQueueTest {
             assertNull(roundTrip(queue).queueData)
         }
 
-        val youtube = PersistQueue.QueueData.YouTubeData(endpoint = "endpoint")
+        val youtube = QueueData.YouTubeData(endpoint = "endpoint")
         assertEquals(youtube, roundTrip(youtube))
         assertEquals(
-            PersistQueue.QueueData.LocalAlbumRadioData(albumId = "alb", startIndex = 3),
-            roundTrip(PersistQueue.QueueData.LocalAlbumRadioData(albumId = "alb", startIndex = 3)),
+            QueueData.LocalAlbumRadioData(albumId = "alb", startIndex = 3),
+            roundTrip(QueueData.LocalAlbumRadioData(albumId = "alb", startIndex = 3)),
         )
     }
 

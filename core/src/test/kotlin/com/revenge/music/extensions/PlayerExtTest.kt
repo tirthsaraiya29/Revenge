@@ -36,6 +36,10 @@ private class FakeTimeline(
 
     override fun getPeriodCount(): Int = count
 
+    override fun getIndexOfPeriod(uid: Any): Int = uid as? Int ?: C.INDEX_UNSET
+
+    override fun getUidOfPeriod(periodIndex: Int): Any = periodIndex
+
     override fun getPeriod(
         periodIndex: Int,
         period: Timeline.Period,

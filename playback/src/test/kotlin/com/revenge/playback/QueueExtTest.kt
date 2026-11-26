@@ -2,8 +2,9 @@ package com.revenge.playback
 
 import androidx.media3.common.MediaItem
 import com.revenge.innertube.models.WatchEndpoint
-import com.revenge.music.db.AlbumEntity
-import com.revenge.music.db.AlbumWithSongs
+import com.revenge.music.db.entities.AlbumEntity
+import com.revenge.music.db.entities.AlbumWithSongs
+import com.revenge.music.extensions.toMediaItem
 import com.revenge.music.models.MediaMetadata
 import com.revenge.music.models.PersistPlayerState
 import com.revenge.music.models.PersistQueue
@@ -28,6 +29,7 @@ import java.io.ObjectOutputStream
 class QueueExtTest {
 
     private val items = listOf(metadata("a"), metadata("b"), metadata("c"))
+    private val mediaItems = items.map { it.toMediaItem() }
 
     @Test
     fun youtubeQueueSnapshotsAsYoutubeWithPlaceholderEndpoint() {
@@ -69,13 +71,13 @@ class QueueExtTest {
     @Test
     fun finiteAndUnknownQueuesSnapshotAsList() {
         val queues = listOf<Queue>(
-            ListQueue(items = items),
+            ListQueue(items = mediaItems),
             EmptyQueue,
             allocate(LocalMixQueue::class.java),
             object : Queue {
                 override val preloadItem: MediaMetadata? = null
                 override suspend fun getInitialStatus(): Queue.Status =
-                    Queue.Status(null, items, 0)
+                    Queue.Status(null, mediaItems, 0)
                 override fun hasNextPage(): Boolean = false
                 override suspend fun nextPage(): List<MediaItem> = emptyList()
             },
@@ -90,7 +92,7 @@ class QueueExtTest {
 
     @Test
     fun snapshotPreservesFieldsAndShuffleIndices() {
-        val persist = ListQueue(items = items).toPersistQueue(
+        val persist = ListQueue(items = mediaItems).toPersistQueue(
             title = "queue title",
             items = items,
             mediaItemIndex = 2,

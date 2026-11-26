@@ -9,6 +9,8 @@ import com.revenge.music.db.entities.AlbumEntity
 import com.revenge.music.db.entities.ArtistEntity
 import com.revenge.music.db.entities.Song
 import com.revenge.music.db.entities.SongEntity
+import com.revenge.music.extensions.metadata
+import com.revenge.music.extensions.toMediaItem
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -170,8 +172,8 @@ class MediaMetadataMappersTest {
         assertEquals("item", mediaItem.localConfiguration?.customCacheKey)
         assertEquals("item", (mediaItem.localConfiguration?.tag as MediaMetadata).id)
         assertEquals(Media3Metadata.MEDIA_TYPE_MUSIC, mediaItem.mediaMetadata.mediaType)
-        assertTrue(mediaItem.mediaMetadata.isPlayable)
-        assertFalse(mediaItem.mediaMetadata.isBrowsable)
+        assertTrue(mediaItem.mediaMetadata.isPlayable == true)
+        assertFalse(mediaItem.mediaMetadata.isBrowsable == true)
         assertEquals("One, Two", mediaItem.mediaMetadata.artist?.toString())
         assertEquals(
             "https://i.ytimg.com/vi/item/maxresdefault.jpg",

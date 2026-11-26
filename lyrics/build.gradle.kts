@@ -44,4 +44,7 @@ dependencies {
 
     coreLibraryDesugaring(libs.desugaring)
     testImplementation(libs.junit)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation("io.ktor:ktor-client-mock:3.6.1")
 }
