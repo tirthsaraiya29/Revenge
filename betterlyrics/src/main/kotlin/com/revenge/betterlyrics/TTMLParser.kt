@@ -80,8 +80,11 @@ object TTMLParser {
     val factory = DocumentBuilderFactory.newInstance()
     factory.isNamespaceAware = true
     // Untrusted input: never resolve external entities or DOCTYPEs (XXE hardening).
+    // nosemgrep: revenge-cleartext-endpoint -- XML feature identifier, not a request URL.
     factory.setFeatureQuietly("http://apache.org/xml/features/disallow-doctype-decl", true)
+    // nosemgrep: revenge-cleartext-endpoint -- XML feature identifier, not a request URL.
     factory.setFeatureQuietly("http://xml.org/sax/features/external-general-entities", false)
+    // nosemgrep: revenge-cleartext-endpoint -- XML feature identifier, not a request URL.
     factory.setFeatureQuietly("http://xml.org/sax/features/external-parameter-entities", false)
 
     return factory.newDocumentBuilder().parse(ttml.byteInputStream())
