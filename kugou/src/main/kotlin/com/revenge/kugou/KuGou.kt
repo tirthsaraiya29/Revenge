@@ -5,93 +5,156 @@ import com.revenge.kugou.models.Keyword
 import com.revenge.kugou.models.SearchLyricsResponse
 import com.revenge.kugou.models.SearchSongResponse
 import io.ktor.client.HttpClient
-import io.ktor.client.call.body
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.compression.ContentEncoding
-import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
-import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.get
-import io.ktor.client.request.parameter
-import io.ktor.http.ContentType
+import io.ktor.client.request.url
+import io.ktor.client.statement.bodyAsText
 import io.ktor.http.encodeURLParameter
-import io.ktor.serialization.kotlinx.json.json
 import java.util.Base64
-import kotlin.coroutines.cancellation.CancellationException
 import kotlin.math.abs
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.Json
 
 private const val SONG_SEARCH_URL = "https://mobileservice.kugou.com/api/v3/search/song"
 private const val LYRICS_SEARCH_URL = "https://lyrics.kugou.com/search"
 private const val LYRICS_DOWNLOAD_URL = "https://lyrics.kugou.com/download"
-
-private const val PAGE_SIZE = 8
-private const val DURATION_TOLERANCE_SECONDS = 8
+private const val PAGE_SIZE = "8"
+private const val DURATION_TOLERANCE = 8
 private const val CREDIT_SCAN_LIMIT = 30
+private const val DURATION_UNKNOWN = -1
 
-private val jsonFormat =
-  Json {
+private val TITLE_NOISE = listOf(
+  Regex("\\(.*\\)"),
+  Regex("（.*）"),
+  Regex("「.*」"),
+  Regex("『.*』"),
+  Regex("<.*>"),
+  Regex("《.*》"),
+  Regex("〈.*〉"),
+  Regex("＜.*＞"),
+)
+
+private val PAREN_NOISE = listOf(Regex("\\(.*\\)"), Regex("（.*）"))
+
+private val HEAD_CREDIT = Regex(".+].+[:：].+")
+
+internal val LRC_LINE_PATTERN = Regex("^\\[\\d\\d:\\d\\d\\.\\d{2,3}].*")
+
+internal val LRC_CREDIT_PATTERN = Regex(
+  "^\\[\\d\\d:\\d\\d\\.\\d{2,3}].*" +
+    "(作词|作曲|编曲|制作|监制|混音|母带|录音|和声|吉他|贝斯|出品|发行|策划|统筹|演唱|" +
+    "lyrics?\\s*by|compos|arrang|producer|mix|master|written|performed|music)",
+  RegexOption.IGNORE_CASE,
+)
+
+internal fun buildSearchQuery(keyword: Keyword): String = buildString {
+  append(keyword.title)
+  append(" - ")
+  append(keyword.artist)
+  val album = keyword.album
+  if (!album.isNullOrBlank()) {
+    append(' ')
+    append(album)
+  }
+}
+
+internal fun String.normalizeLyrics(): String {
+  val lines = lineSequence().filter { LRC_LINE_PATTERN.matches(it) }.toList()
+  if (lines.isEmpty()) return ""
+
+  var retained = lines
+  val headLimit = minOf(CREDIT_SCAN_LIMIT, retained.lastIndex)
+  var headCut = -1
+  for (index in headLimit downTo 0) {
+    if (HEAD_CREDIT.containsMatchIn(retained[index])) {
+      headCut = index
+      break
+    }
+  }
+  if (headCut >= 0) retained = retained.drop(headCut + 1)
+  if (retained.isEmpty()) return ""
+
+  val lastIndex = retained.lastIndex
+  val tailStart = lastIndex - minOf(retained.size - CREDIT_SCAN_LIMIT, lastIndex)
+  var tailCut = -1
+  for (index in tailStart..lastIndex) {
+    if (LRC_CREDIT_PATTERN.containsMatchIn(retained[index])) {
+      tailCut = index
+      break
+    }
+  }
+  if (tailCut >= 0) retained = retained.take(tailCut)
+  return retained.joinToString("\n")
+}
+
+object KuGou {
+  var useTraditionalChinese: Boolean = false
+
+  private val json = Json {
     ignoreUnknownKeys = true
     isLenient = true
   }
 
-private val client by lazy {
-  HttpClient(OkHttp) {
-    expectSuccess = true
+  internal var testClient: HttpClient? = null
 
-    install(ContentNegotiation) {
-      json(jsonFormat)
-      json(jsonFormat, ContentType.Text.Html)
-      json(jsonFormat, ContentType.Text.Plain)
-    }
-
-    install(ContentEncoding) {
-      gzip()
-      deflate()
-    }
-
-    install(HttpTimeout) {
-      requestTimeoutMillis = 20_000
-      connectTimeoutMillis = 15_000
-      socketTimeoutMillis = 20_000
+  private val defaultClient: HttpClient by lazy {
+    HttpClient(OkHttp) {
+      expectSuccess = true
+      install(ContentEncoding) {
+        gzip()
+        deflate()
+      }
+      install(HttpTimeout) {
+        requestTimeoutMillis = 20_000
+        connectTimeoutMillis = 15_000
+        socketTimeoutMillis = 20_000
+      }
     }
   }
-}
 
-/**
- * Lyrics client for the KuGou service, originally ported from
- * [ViMusic](https://github.com/vfsfitvnm/ViMusic).
- *
- * Lookup order: search songs by `title - artist [album]`, try the lyric candidates attached to each
- * matching hash, then fall back to a direct lyric search by keyword. Every public entry point either
- * returns a [Result] or a nullable value; coroutine cancellation is always rethrown.
- */
-object KuGou {
-  /**
-   * Exposed for the app's zh-TW locale toggle. The reference service protocol returns the same
-   * simplified-Chinese document regardless, so results are not converted without an OpenCC-style
-   * dependency.
-   */
-  var useTraditionalChinese: Boolean = false
+  private fun client(): HttpClient = testClient ?: defaultClient
 
-  /** Resolves and decodes the best matching lyric document, normalized to plain LRC lines. */
+  fun generateKeyword(title: String, artist: String, album: String? = null): Keyword {
+    var cleanTitle = title
+    for (pattern in TITLE_NOISE) cleanTitle = cleanTitle.replace(pattern, "")
+
+    var cleanArtist = artist
+      .replace(", ", "、")
+      .replace(" & ", "、")
+      .replace(".", "")
+      .replace("和", "、")
+    for (pattern in PAREN_NOISE) cleanArtist = cleanArtist.replace(pattern, "")
+
+    return Keyword(cleanTitle, cleanArtist, album)
+  }
+
   suspend fun getLyrics(
     title: String,
     artist: String,
     duration: Int,
     album: String? = null,
-  ): Result<String> = runCatchingResult {
-    val keyword = generateKeyword(title, artist, album)
-    val candidate =
-      getLyricsCandidate(keyword, duration)
-        ?: throw IllegalStateException("No lyrics candidate for ${keyword.title} - ${keyword.artist}")
-    downloadAndDecode(candidate)
+  ): Result<String> {
+    return try {
+      val keyword = generateKeyword(title, artist, album)
+      val candidate = getLyricsCandidate(keyword, duration)
+      if (candidate == null) {
+        Result.failure(
+          IllegalStateException("No lyrics candidate for ${keyword.title} - ${keyword.artist}"),
+        )
+      } else {
+        val content = download(candidate)
+        val decoded = String(Base64.getMimeDecoder().decode(content), Charsets.UTF_8)
+        Result.success(decoded.normalizeLyrics())
+      }
+    } catch (e: CancellationException) {
+      throw e
+    } catch (e: Exception) {
+      Result.failure(e)
+    }
   }
 
-  /**
-   * Emits every distinct matching lyric document through [callback]: first the lyrics linked to the
-   * individual song hashes, then the lyrics found by a direct keyword search.
-   */
   suspend fun getAllPossibleLyricsOptions(
     title: String,
     artist: String,
@@ -100,179 +163,89 @@ object KuGou {
     callback: (String) -> Unit,
   ) {
     val keyword = generateKeyword(title, artist, album)
-
-    searchSongs(keyword).data.info.forEach { song ->
-      if (duration == -1 || abs(song.duration - duration) <= DURATION_TOLERANCE_SECONDS) {
-        searchLyricsByHash(song.hash).candidates.firstOrNull()?.let { candidate ->
-          callback(downloadAndDecode(candidate))
-        }
+    val songs = searchSongs(keyword)
+    for (song in songs.data.info) {
+      if (duration == DURATION_UNKNOWN || abs(song.duration - duration) <= DURATION_TOLERANCE) {
+        val candidate = searchLyricsByHash(song.hash).candidates.firstOrNull() ?: continue
+        callback(decodeCandidate(candidate))
       }
     }
-
-    searchLyricsByKeyword(keyword, duration).candidates.forEach { candidate ->
-      callback(downloadAndDecode(candidate))
+    for (candidate in searchLyricsByKeyword(keyword, duration).candidates) {
+      callback(decodeCandidate(candidate))
     }
   }
 
-  /** Returns the first lyric candidate whose song duration is within the tolerance, if any. */
   suspend fun getLyricsCandidate(
     keyword: Keyword,
     duration: Int,
   ): SearchLyricsResponse.Candidate? {
-    searchSongs(keyword).data.info.forEach { song ->
-      if (duration == -1 || abs(song.duration - duration) <= DURATION_TOLERANCE_SECONDS) {
-        searchLyricsByHash(song.hash).candidates.firstOrNull()?.let { return it }
+    val songs = searchSongs(keyword)
+    for (song in songs.data.info) {
+      if (duration == DURATION_UNKNOWN || abs(song.duration - duration) <= DURATION_TOLERANCE) {
+        val candidate = searchLyricsByHash(song.hash).candidates.firstOrNull()
+        if (candidate != null) return candidate
       }
     }
     return searchLyricsByKeyword(keyword, duration).candidates.firstOrNull()
   }
 
-  suspend fun searchSongs(keyword: Keyword): SearchSongResponse =
-    client
-      .get(SONG_SEARCH_URL) {
-        parameter("version", 9108)
-        parameter("plat", 0)
-        parameter("pagesize", PAGE_SIZE)
-        parameter("showtype", 0)
-        appendKeyword(keyword)
+  suspend fun searchSongs(keyword: Keyword): SearchSongResponse {
+    val response = client().get(SONG_SEARCH_URL) {
+      url {
+        encodedParameters.append("version", "9108")
+        encodedParameters.append("plat", "0")
+        encodedParameters.append("pagesize", PAGE_SIZE)
+        encodedParameters.append("showtype", "0")
+        encodedParameters.append("keyword", buildSearchQuery(keyword).encodeURLParameter(spaceToPlus = false))
       }
-      .body()
-
-  private suspend fun searchLyricsByKeyword(
-    keyword: Keyword,
-    duration: Int,
-  ): SearchLyricsResponse =
-    client
-      .get(LYRICS_SEARCH_URL) {
-        parameter("ver", 1)
-        parameter("man", "yes")
-        parameter("client", "pc")
-        // -1 means the caller does not know (or does not care about) the duration.
-        parameter("duration", duration.takeIf { it != -1 }?.times(1000))
-        appendKeyword(keyword)
-      }
-      .body()
-
-  private suspend fun searchLyricsByHash(hash: String): SearchLyricsResponse =
-    client
-      .get(LYRICS_SEARCH_URL) {
-        parameter("ver", 1)
-        parameter("man", "yes")
-        parameter("client", "pc")
-        parameter("hash", hash)
-      }
-      .body()
-
-  private suspend fun downloadLyrics(id: Long, accessKey: String): DownloadLyricsResponse =
-    client
-      .get(LYRICS_DOWNLOAD_URL) {
-        parameter("fmt", "lrc")
-        parameter("charset", "utf8")
-        parameter("client", "pc")
-        parameter("ver", 1)
-        parameter("id", id)
-        parameter("accesskey", accessKey)
-      }
-      .body()
-
-  private suspend fun downloadAndDecode(candidate: SearchLyricsResponse.Candidate): String {
-    val encoded = downloadLyrics(candidate.id, candidate.accesskey).content
-    return Base64.getMimeDecoder().decode(encoded).decodeToString().normalizeLyrics()
-  }
-
-  fun generateKeyword(
-    title: String,
-    artist: String,
-    album: String? = null,
-  ): Keyword = Keyword(normalizeTitle(title), normalizeArtist(artist), album)
-}
-
-private fun HttpRequestBuilder.appendKeyword(keyword: Keyword) {
-  // KuGou expects literal spaces in the keyword, not '+'.
-  url.encodedParameters.append(
-    "keyword",
-    buildSearchQuery(keyword).encodeURLParameter(spaceToPlus = false),
-  )
-}
-
-/** @return the raw `title - artist [album]` search phrase before URL encoding. */
-internal fun buildSearchQuery(keyword: Keyword): String =
-  buildString {
-    append(keyword.title)
-    append(" - ")
-    append(keyword.artist)
-    if (!keyword.album.isNullOrBlank()) {
-      append(' ')
-      append(keyword.album)
     }
+    return json.decodeFromString<SearchSongResponse>(response.bodyAsText())
   }
 
-private val TITLE_NOISE_PATTERNS =
-  listOf(
-    Regex("\\(.*\\)"),
-    Regex("（.*）"),
-    Regex("「.*」"),
-    Regex("『.*』"),
-    Regex("<.*>"),
-    Regex("《.*》"),
-    Regex("〈.*〉"),
-    Regex("＜.*＞"),
-  )
-
-private val ARTIST_NOISE_PATTERNS = listOf(Regex("\\(.*\\)"), Regex("（.*）"))
-
-private fun normalizeTitle(title: String): String =
-  TITLE_NOISE_PATTERNS.fold(title) { value, pattern -> value.replace(pattern, "") }
-
-private fun normalizeArtist(artist: String): String =
-  ARTIST_NOISE_PATTERNS
-    .fold(
-      artist
-        .replace(", ", "、")
-        .replace(" & ", "、")
-        .replace(".", "")
-        .replace("和", "、"),
-    ) { value, pattern -> value.replace(pattern, "") }
-
-/** Matches a timestamped LRC line, e.g. `[01:23.45]text` or `[01:23.456]text`. */
-internal val LRC_LINE_PATTERN = Regex("""^\[\d\d:\d\d\.\d{2,3}].*""")
-
-/** Matches credit metadata such as `[00:00.00]作词:某某`. */
-internal val LRC_CREDIT_PATTERN = Regex(""".+].+[:：].+""")
-
-/**
- * Keeps only timestamped lines and strips the leading/trailing credit block (composer, lyricist,
- * producer and similar) that KuGou attaches to the document.
- */
-internal fun String.normalizeLyrics(): String {
-  val lines = lines().filter { LRC_LINE_PATTERN.matches(it) }
-  if (lines.isEmpty()) return ""
-
-  var headCut = 0
-  for (i in minOf(CREDIT_SCAN_LIMIT, lines.lastIndex) downTo 0) {
-    if (LRC_CREDIT_PATTERN.matches(lines[i])) {
-      headCut = i + 1
-      break
+  private suspend fun searchLyricsByHash(hash: String): SearchLyricsResponse {
+    val response = client().get(LYRICS_SEARCH_URL) {
+      url {
+        encodedParameters.append("ver", "1")
+        encodedParameters.append("man", "yes")
+        encodedParameters.append("client", "pc")
+        encodedParameters.append("hash", hash)
+      }
     }
+    return json.decodeFromString<SearchLyricsResponse>(response.bodyAsText())
   }
 
-  var tailCut = 0
-  for (i in minOf(lines.size - CREDIT_SCAN_LIMIT, lines.lastIndex) downTo 0) {
-    if (LRC_CREDIT_PATTERN.matches(lines[lines.lastIndex - i])) {
-      tailCut = i + 1
-      break
+  private suspend fun searchLyricsByKeyword(keyword: Keyword, duration: Int): SearchLyricsResponse {
+    val response = client().get(LYRICS_SEARCH_URL) {
+      url {
+        encodedParameters.append("ver", "1")
+        encodedParameters.append("man", "yes")
+        encodedParameters.append("client", "pc")
+        if (duration != DURATION_UNKNOWN) {
+          encodedParameters.append("duration", (duration * 1000).toString())
+        }
+        encodedParameters.append("keyword", buildSearchQuery(keyword).encodeURLParameter(spaceToPlus = false))
+      }
     }
+    return json.decodeFromString<SearchLyricsResponse>(response.bodyAsText())
   }
 
-  return lines.drop(headCut).dropLast(tailCut).joinToString("\n")
+  private suspend fun download(candidate: SearchLyricsResponse.Candidate): String {
+    val response = client().get(LYRICS_DOWNLOAD_URL) {
+      url {
+        encodedParameters.append("fmt", "lrc")
+        encodedParameters.append("charset", "utf8")
+        encodedParameters.append("client", "pc")
+        encodedParameters.append("ver", "1")
+        encodedParameters.append("id", candidate.id.toString())
+        encodedParameters.append("accesskey", candidate.accesskey)
+      }
+    }
+    return json.decodeFromString<DownloadLyricsResponse>(response.bodyAsText()).content
+  }
+
+  private suspend fun decodeCandidate(candidate: SearchLyricsResponse.Candidate): String {
+    val content = download(candidate)
+    val decoded = String(Base64.getMimeDecoder().decode(content), Charsets.UTF_8)
+    return decoded.normalizeLyrics()
+  }
 }
-
-/** [runCatching] that does not swallow coroutine cancellation. */
-private suspend inline fun <T> runCatchingResult(block: suspend () -> T): Result<T> =
-  try {
-    Result.success(block())
-  } catch (cancellation: CancellationException) {
-    throw cancellation
-  } catch (error: Exception) {
-    Result.failure(error)
-  }
