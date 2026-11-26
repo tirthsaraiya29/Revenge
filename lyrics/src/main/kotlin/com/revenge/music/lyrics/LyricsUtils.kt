@@ -295,7 +295,7 @@ object LyricsUtils {
             if (text.isEmpty()) continue
             entries.add(
                 LyricsEntry(
-                    time = (lineStart * 1000.0).toLong(),
+                    time = millisOf(match.groupValues[1], match.groupValues[2], match.groupValues[3]),
                     text = text,
                     words = words,
                     agent = agent,

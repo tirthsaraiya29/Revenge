@@ -109,7 +109,7 @@ constructor(
                                 }
                             } catch (cancellation: CancellationException) {
                                 throw cancellation
-                            } catch (error: Exception) {
+                            } catch (error: Throwable) {
                                 reportSafely(error)
                             }
                         }
@@ -191,7 +191,7 @@ constructor(
         ProviderResult(ProviderOutcome.FAILED, null)
     } catch (cancellation: CancellationException) {
         throw cancellation
-    } catch (error: Exception) {
+    } catch (error: Throwable) {
         reportSafely(error)
         ProviderResult(ProviderOutcome.FAILED, null)
     }

@@ -101,7 +101,7 @@ class LyricsTranslationHelperTest {
         assertTrue(LyricsTranslationHelper.hasActiveTranslations.value)
         assertEquals(TranslationStatus.Success, LyricsTranslationHelper.status.value)
 
-        advanceTimeBy(3_000)
+        advanceTimeBy(3_001)
         runCurrent()
         assertEquals(TranslationStatus.Idle, LyricsTranslationHelper.status.value)
     }

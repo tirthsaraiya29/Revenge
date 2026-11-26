@@ -205,7 +205,7 @@ class TTMLParserTest {
   @Test
   fun `getLyrics rejects non-200 responses`() = runBlocking {
     val engine = FakeEngine { data -> reply(data, HttpStatusCode.Forbidden, "") }
-    BetterLyrics.testClient = HttpClient(engine)
+    BetterLyrics.testClient = HttpClient(engine) { }
 
     val result = BetterLyrics.getLyrics("Song", "Artist", 100)
 
@@ -218,7 +218,7 @@ class TTMLParserTest {
     val engine = FakeEngine { data ->
       reply(data, HttpStatusCode.OK, """{"ttml":"<tt/>"}""")
     }
-    BetterLyrics.testClient = HttpClient(engine)
+    BetterLyrics.testClient = HttpClient(engine) { }
 
     val result = BetterLyrics.getLyrics("Song", "Artist", 100)
 
@@ -229,7 +229,7 @@ class TTMLParserTest {
   @Test
   fun `getLyrics survives malformed json`() = runBlocking {
     val engine = FakeEngine { data -> reply(data, HttpStatusCode.OK, "not json at all") }
-    BetterLyrics.testClient = HttpClient(engine)
+    BetterLyrics.testClient = HttpClient(engine) { }
 
     val result = BetterLyrics.getLyrics("Song", "Artist", 100)
 
@@ -241,7 +241,7 @@ class TTMLParserTest {
     val engine = FakeEngine { data ->
       reply(data, HttpStatusCode.OK, """{"ttml":"<tt/>"}""")
     }
-    BetterLyrics.testClient = HttpClient(engine)
+    BetterLyrics.testClient = HttpClient(engine) { }
 
     BetterLyrics.getLyrics("Song", "Artist", 100, "Album")
 

@@ -140,7 +140,7 @@ class LyricsSelectionTest {
         reply(request, HttpStatusCode.OK, """{"type":"success","data":[{"songTitle":"x","durationSeconds":100,"plainLyric":"fallback"}]}""")
       }
     }
-    SimpMusicLyrics.testClient = HttpClient(engine)
+    SimpMusicLyrics.testClient = HttpClient(engine) { }
 
     val tracks = SimpMusicLyrics.getLyricsByVideoId("v1")
 
@@ -154,7 +154,7 @@ class LyricsSelectionTest {
     val engine = FakeEngine { request ->
       reply(request, HttpStatusCode.OK, """{"type":"error","data":[{"songTitle":"x"}]}""")
     }
-    SimpMusicLyrics.testClient = HttpClient(engine)
+    SimpMusicLyrics.testClient = HttpClient(engine) { }
 
     val tracks = SimpMusicLyrics.getLyricsByVideoId("v1")
 
@@ -165,7 +165,7 @@ class LyricsSelectionTest {
   @Test
   fun `transport failures on both endpoints yield an empty list`() = runBlocking {
     val engine = FakeEngine { request -> reply(request, HttpStatusCode.InternalServerError, "") }
-    SimpMusicLyrics.testClient = HttpClient(engine)
+    SimpMusicLyrics.testClient = HttpClient(engine) { }
 
     val tracks = SimpMusicLyrics.getLyricsByVideoId("v1")
 
@@ -178,7 +178,7 @@ class LyricsSelectionTest {
     val engine = FakeEngine { request ->
       reply(request, HttpStatusCode.OK, """{"type":"success","data":[{"songTitle":"x","durationSeconds":500,"plainLyric":"far"}]}""")
     }
-    SimpMusicLyrics.testClient = HttpClient(engine)
+    SimpMusicLyrics.testClient = HttpClient(engine) { }
 
     val result = SimpMusicLyrics.getLyrics("v1", 100)
 
@@ -191,7 +191,7 @@ class LyricsSelectionTest {
     val engine = FakeEngine { request ->
       reply(request, HttpStatusCode.OK, """{"type":"success","data":[{"songTitle":"x","durationSeconds":100,"plainLyric":"plain text"}]}""")
     }
-    SimpMusicLyrics.testClient = HttpClient(engine)
+    SimpMusicLyrics.testClient = HttpClient(engine) { }
 
     val result = SimpMusicLyrics.getLyrics("v1", 100)
 

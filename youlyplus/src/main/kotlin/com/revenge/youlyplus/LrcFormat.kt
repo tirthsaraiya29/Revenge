@@ -26,7 +26,7 @@ private fun LyricsItem.toLrcLine(): String {
   if (syllables != null && syllables.any { it.isBackground == true }) {
     builder.append("{bg}")
   }
-  if (syllables.isNullOrEmpty()) {
+  if (syllables == null || syllables.isEmpty()) {
     builder.append(text.orEmpty())
     return builder.toString()
   }
