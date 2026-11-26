@@ -5,6 +5,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -76,10 +77,13 @@ class AppleMusicTokenProviderTest {
         val nearlyExpired = jwt("AMPWebPlay", expSecondsAhead(120))
         installBundle(nearlyExpired)
 
-        val token = AppleMusicTokenProvider.getToken()
-
-        assertTrue(token.isNotEmpty())
-        assertNotEquals(nearlyExpired, token)
+        var failure: Throwable? = null
+        try {
+            AppleMusicTokenProvider.getToken()
+        } catch (e: IllegalStateException) {
+            failure = e
+        }
+        assertNotNull("a token inside the headroom must not be served", failure)
     }
 
     @Test
@@ -87,7 +91,13 @@ class AppleMusicTokenProviderTest {
         val foreign = jwt("SomeOtherIssuer", expSecondsAhead(7200))
         installBundle(foreign)
 
-        assertNotEquals(foreign, AppleMusicTokenProvider.getToken())
+        var failure: Throwable? = null
+        try {
+            AppleMusicTokenProvider.getToken()
+        } catch (e: IllegalStateException) {
+            failure = e
+        }
+        assertNotNull("a foreign-issuer token must not be served", failure)
     }
 
     @Test
@@ -100,17 +110,26 @@ class AppleMusicTokenProviderTest {
             }
         }
 
-        assertTrue(AppleMusicTokenProvider.getToken().isNotEmpty())
+        var failure: Throwable? = null
+        try {
+            AppleMusicTokenProvider.getToken()
+        } catch (e: IllegalStateException) {
+            failure = e
+        }
+        assertNotNull("malformed-only discovery must not yield a token", failure)
     }
 
     @Test
-    fun tk5_discoveryFailureUsesFallback() = runBlocking {
+    fun tk5_discoveryFailureIsReportedNotFaked() = runBlocking {
         transport.handler = { throw IOException("offline") }
 
-        val token = AppleMusicTokenProvider.getToken()
-
-        assertTrue(token.isNotEmpty())
-        assertEquals(token, AppleMusicTokenProvider.getToken())
+        var failure: Throwable? = null
+        try {
+            AppleMusicTokenProvider.getToken()
+        } catch (e: IllegalStateException) {
+            failure = e
+        }
+        assertNotNull("discovery failure must not return a synthetic token", failure)
     }
 
     @Test
@@ -130,6 +149,7 @@ class AppleMusicTokenProviderTest {
         AppleMusicTokenProvider.getToken()
 
         now += 3_500_000L
+        installBundle(jwt("AMPWebPlay", expSecondsAhead(7200)))
         AppleMusicTokenProvider.getToken()
 
         assertEquals(2, transport.targets.count { it == "https://music.apple.com/us/browse" })

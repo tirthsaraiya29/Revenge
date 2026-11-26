@@ -16,16 +16,10 @@ import java.util.Base64
  */
 object AppleMusicTokenProvider {
     private const val HEADROOM_MS = 300_000L
-    private const val FALLBACK_TTL_MS = 86_400_000L
     private const val DESKTOP_UA =
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
     private const val AMP_ISSUER = "AMPWebPlay"
 
-    // Deployment fallback: a static AMPWebPlay JWT used only when live discovery yields nothing.
-    private const val FALLBACK_TOKEN =
-        "eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9." +
-            "eyJpc3MiOiJBTVBXZWJQbGF5IiwiZXhwIjoxOTAwMDAwMDAwLCJpYXQiOjE2MDAwMDAwMDB9." +
-            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 
     private val discoveryLock = Mutex()
     private val json = Json {
@@ -58,9 +52,9 @@ object AppleMusicTokenProvider {
             return discovered.first
         }
 
-        cachedToken = FALLBACK_TOKEN
-        cachedExpiryMs = clock() + FALLBACK_TTL_MS
-        FALLBACK_TOKEN
+        // No valid deployment token is available: a synthetic JWT would only produce
+        // guaranteed 401s and a clear/retry loop. Callers catch this and degrade to null.
+        throw IllegalStateException("Apple Music bearer token discovery failed")
     }
 
     suspend fun clearToken() {
