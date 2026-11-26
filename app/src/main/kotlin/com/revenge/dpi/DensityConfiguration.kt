@@ -1,61 +1,55 @@
 package com.revenge.dpi
 
-import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
-import android.content.res.Configuration
 import android.content.res.Resources
 import android.util.Log
 import kotlin.math.roundToInt
-import timber.log.Timber
 
+/**
+ * Applies a fixed density ratio to the process resources and re-applies it to every new
+ * activity. All recalculation derives from the captured original density, so repeated
+ * invocations are idempotent.
+ */
 internal class DensityConfiguration(private val densityScale: Float) : ActivityLifecycleManager() {
 
-  private var originalDensityDpi: Int = 0
+    private var originalDensityDpi: Int = 0
 
-  @SuppressLint("LogNotTimber")
-  fun applyDensityScaling(context: Context) {
-    if (densityScale == 1.0f) return
-
-    try {
-      onCreate()
-      val resources = context.resources
-      val config = Configuration(resources.configuration)
-      originalDensityDpi = config.densityDpi
-      updateDensityDpi(config, resources)
-    } catch (e: Exception) {
-      Log.w(TAG, "Failed to apply configuration", e)
+    fun applyDensityScaling(context: Context) {
+        if (densityScale == 1.0f) return
+        try {
+            onCreate()
+            val resources = context.resources
+            originalDensityDpi = resources.configuration.densityDpi
+            applyTo(resources)
+        } catch (t: Throwable) {
+            Log.w(TAG, "Unable to apply density scaling", t)
+        }
     }
-  }
 
-  private fun updateDensityDpi(config: Configuration, resources: Resources) {
-    val newDensityDpi = (originalDensityDpi * densityScale).roundToInt()
-    config.densityDpi = newDensityDpi
-    Timber.tag(TAG).i("Updated densityDpi to: $newDensityDpi")
-    @Suppress("DEPRECATION") resources.updateConfiguration(config, resources.displayMetrics)
-  }
+    override fun onActivityCreated(activity: Activity) = reapply(activity)
 
-  override fun onActivityCreated(activity: Activity) {
-    applyDensityToActivity(activity)
-  }
+    override fun onActivityStarted(activity: Activity) = reapply(activity)
 
-  override fun onActivityResumed(activity: Activity) {
-    applyDensityToActivity(activity)
-  }
+    override fun onActivityResumed(activity: Activity) = reapply(activity)
 
-  override fun onActivityStarted(activity: Activity) {
-    applyDensityToActivity(activity)
-  }
-
-  private fun applyDensityToActivity(activity: Activity) {
-    try {
-      updateDensityDpi(activity.resources.configuration, activity.resources)
-    } catch (e: Exception) {
-      Timber.tag(TAG).w(e, "Failed to update density for activity")
+    private fun reapply(activity: Activity) {
+        if (originalDensityDpi <= 0) return
+        try {
+            applyTo(activity.resources)
+        } catch (t: Throwable) {
+            Log.w(TAG, "Unable to re-apply density scaling", t)
+        }
     }
-  }
 
-  companion object {
-    private val TAG = DensityConfiguration::class.java.simpleName
-  }
+    @Suppress("DEPRECATION")
+    private fun applyTo(resources: Resources) {
+        val configuration = resources.configuration
+        configuration.densityDpi = (originalDensityDpi * densityScale).roundToInt()
+        resources.updateConfiguration(configuration, resources.displayMetrics)
+    }
+
+    private companion object {
+        const val TAG = "DensityConfiguration"
+    }
 }

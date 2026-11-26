@@ -3,97 +3,78 @@ package com.revenge.music.utils
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.util.Log
 import com.revenge.music.BuildConfig
-import com.revenge.music.ui.screens.CrashActivity
 import java.io.PrintWriter
 import java.io.StringWriter
-import kotlin.system.exitProcess
-import timber.log.Timber
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.concurrent.atomic.AtomicBoolean
 
-class CrashHandler private constructor(private val applicationContext: Context) :
-  Thread.UncaughtExceptionHandler {
+/**
+ * Process-wide uncaught exception handler. It serialises the crash, launches [CrashActivity]
+ * in the dedicated `:crash` process and then terminates the current process. Every step is
+ * best-effort so a failure inside the handler can never recurse or mask the original crash.
+ */
+object CrashHandler {
 
-  private val defaultHandler: Thread.UncaughtExceptionHandler? =
-    Thread.getDefaultUncaughtExceptionHandler()
-
-  override fun uncaughtException(thread: Thread, throwable: Throwable) {
-    if (
-      Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-        throwable is android.app.ForegroundServiceStartNotAllowedException
-    ) {
-      Timber.e(throwable, "Suppressed ForegroundServiceStartNotAllowedException in CrashHandler")
-      if (thread == android.os.Looper.getMainLooper().thread) {
-        while (true) {
-          try {
-            android.os.Looper.loop()
-          } catch (e: Throwable) {
-            if (
-              Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-                e is android.app.ForegroundServiceStartNotAllowedException
-            ) {
-              Timber.e(
-                e,
-                "Suppressed another ForegroundServiceStartNotAllowedException in CrashHandler",
-              )
-            } else {
-              uncaughtException(thread, e)
-              break
-            }
-          }
-        }
-        return
-      }
-      return
-    }
-
-    try {
-      val crashLog = buildCrashLog(throwable)
-      Timber.e(throwable, "App crashed")
-
-      val intent =
-        Intent(applicationContext, CrashActivity::class.java).apply {
-          putExtra(EXTRA_CRASH_LOG, crashLog)
-          addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
-        }
-      applicationContext.startActivity(intent)
-
-      android.os.Process.killProcess(android.os.Process.myPid())
-      exitProcess(1)
-    } catch (e: Exception) {
-
-      Timber.e(e, "Error handling crash")
-      defaultHandler?.uncaughtException(thread, throwable)
-    }
-  }
-
-  private fun buildCrashLog(throwable: Throwable): String {
-    val stackTrace =
-      StringWriter().apply { throwable.printStackTrace(PrintWriter(this)) }.toString()
-
-    return buildString {
-      appendLine("revenge Crash Report")
-      appendLine("=".repeat(50))
-      appendLine()
-      appendLine("Manufacturer: ${Build.MANUFACTURER}")
-      appendLine("Device: ${Build.MODEL}")
-      appendLine("Android version: ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})")
-      appendLine("App version: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
-      appendLine()
-      appendLine("=".repeat(50))
-      appendLine("Stacktrace:")
-      appendLine("=".repeat(50))
-      appendLine()
-      append(stackTrace)
-    }
-  }
-
-  companion object {
+    /** Intent extra read by `CrashActivity` to render the captured log. */
     const val EXTRA_CRASH_LOG = "crash_log"
 
+    private const val TAG = "CrashHandler"
+    private const val CRASH_ACTIVITY_CLASS = "com.revenge.music.ui.screens.CrashActivity"
+
+    private val installed = AtomicBoolean(false)
+    private val handlingCrash = AtomicBoolean(false)
+
     fun install(context: Context) {
-      val handler = CrashHandler(context.applicationContext)
-      Thread.setDefaultUncaughtExceptionHandler(handler)
-      Timber.d("CrashHandler installed")
+        if (!installed.compareAndSet(false, true)) return
+        val appContext = context.applicationContext ?: context
+        val previousHandler = Thread.getDefaultUncaughtExceptionHandler()
+
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            // A second thread crashing while we are already reporting must not start a second
+            // crash screen; the first reporter terminates the process.
+            if (!handlingCrash.compareAndSet(false, true)) return@setDefaultUncaughtExceptionHandler
+
+            try {
+                launchCrashScreen(appContext, buildCrashLog(thread, throwable))
+            } catch (t: Throwable) {
+                Log.e(TAG, "Unable to show the crash screen", t)
+                try {
+                    previousHandler?.uncaughtException(thread, throwable)
+                } catch (ignored: Throwable) {
+                    Log.e(TAG, "The previous uncaught exception handler also failed", ignored)
+                }
+            }
+
+            android.os.Process.killProcess(android.os.Process.myPid())
+            kotlin.system.exitProcess(10)
+        }
     }
-  }
+
+    private fun launchCrashScreen(context: Context, crashLog: String) {
+        val intent = Intent().apply {
+            setClassName(context.packageName, CRASH_ACTIVITY_CLASS)
+            putExtra(EXTRA_CRASH_LOG, crashLog)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+        }
+        context.startActivity(intent)
+    }
+
+    private fun buildCrashLog(thread: Thread, throwable: Throwable): String {
+        val stackTrace = StringWriter().also { writer ->
+            PrintWriter(writer).use { throwable.printStackTrace(it) }
+        }.toString()
+
+        return buildString {
+            appendLine("Time: ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(Date())}")
+            appendLine("App: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
+            appendLine("Device: ${Build.MANUFACTURER} ${Build.MODEL}, API ${Build.VERSION.SDK_INT}")
+            appendLine("Thread: ${thread.name}")
+            appendLine()
+            append(stackTrace)
+        }
+    }
 }

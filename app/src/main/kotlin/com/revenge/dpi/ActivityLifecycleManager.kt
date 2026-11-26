@@ -1,116 +1,161 @@
 package com.revenge.dpi
 
-import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.Application
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import java.util.Collections
-import java.util.concurrent.ConcurrentHashMap
-import timber.log.Timber
+import android.util.Log
+import java.util.concurrent.CopyOnWriteArraySet
 
+/**
+ * Provider-based lifecycle observer. Once [onCreate] resolves the process [Application],
+ * it registers for activity lifecycle events and drives a periodic timer while at least
+ * one activity is resumed.
+ */
 abstract class ActivityLifecycleManager : BaseLifecycleContentProvider() {
 
-  private val activeActivities: MutableSet<Activity> =
-    Collections.newSetFromMap(ConcurrentHashMap())
+    private val resumedActivities = CopyOnWriteArraySet<Activity>()
+    private val mainHandler by lazy { Handler(Looper.getMainLooper()) }
 
-  private val handler = Handler(Looper.getMainLooper())
+    private var timerScheduled = false
+    private var callbacksRegistered = false
 
-  private val activityTimerRunnable: Runnable =
-    object : Runnable {
-      override fun run() {
-        try {
-          activeActivities.forEach { activity ->
-            try {
-              onActivityTimer(activity)
-            } catch (e: Exception) {
-              Timber.tag(TAG).w(e, "Error in activity timer")
+    private val timer = object : Runnable {
+        override fun run() {
+            if (!timerScheduled) return
+            for (activity in resumedActivities) {
+                try {
+                    onActivityTimer(activity)
+                } catch (t: Throwable) {
+                    Log.w(TAG, "Activity timer callback failed", t)
+                }
             }
-          }
-          handler.postDelayed(this, activityTimerDelayMillis.toLong())
-        } catch (e: Exception) {
-          Timber.tag(TAG).w(e, "Error in activity timer runnable")
+            if (timerScheduled && resumedActivities.isNotEmpty()) {
+                scheduleNextTick()
+            } else {
+                timerScheduled = false
+            }
         }
-      }
     }
 
-  protected open val activityTimerDelayMillis: Int
-    get() = 3000
-
-  protected open fun onActivityTimer(activity: Activity) {}
-
-  override fun onCreate(): Boolean {
-    val application = getApplication() ?: return true
-
-    if (!onInit(application)) {
-      return true
-    }
-
-    application.registerActivityLifecycleCallbacks(
-      object : Application.ActivityLifecycleCallbacks {
+    private val lifecycleCallbacks = object : Application.ActivityLifecycleCallbacks {
         override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {
-          this@ActivityLifecycleManager.onActivityCreated(activity)
+            safeHook { this@ActivityLifecycleManager.onActivityCreated(activity) }
         }
 
         override fun onActivityStarted(activity: Activity) {
-          this@ActivityLifecycleManager.onActivityStarted(activity)
+            safeHook { this@ActivityLifecycleManager.onActivityStarted(activity) }
         }
 
         override fun onActivityResumed(activity: Activity) {
-          activeActivities.add(activity)
-          handler.removeCallbacksAndMessages(null)
-          handler.post(activityTimerRunnable)
-          this@ActivityLifecycleManager.onActivityResumed(activity)
+            resumedActivities.add(activity)
+            startTimer()
+            safeHook { this@ActivityLifecycleManager.onActivityResumed(activity) }
         }
 
         override fun onActivityPaused(activity: Activity) {
-          activeActivities.remove(activity)
-          this@ActivityLifecycleManager.onActivityPaused(activity)
+            safeHook { this@ActivityLifecycleManager.onActivityPaused(activity) }
+            resumedActivities.remove(activity)
+            if (resumedActivities.isEmpty()) stopTimer()
         }
 
         override fun onActivityStopped(activity: Activity) {
-          this@ActivityLifecycleManager.onActivityStopped(activity)
+            safeHook { this@ActivityLifecycleManager.onActivityStopped(activity) }
+            resumedActivities.remove(activity)
+            if (resumedActivities.isEmpty()) stopTimer()
         }
-
-        override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
 
         override fun onActivityDestroyed(activity: Activity) {
-          this@ActivityLifecycleManager.onActivityDestroyed(activity)
+            safeHook { this@ActivityLifecycleManager.onActivityDestroyed(activity) }
+            resumedActivities.remove(activity)
+            if (resumedActivities.isEmpty()) stopTimer()
         }
-      },
-    )
 
-    return true
-  }
-
-  protected open fun onInit(application: Application): Boolean = true
-
-  protected open fun onActivityCreated(activity: Activity) {}
-
-  protected open fun onActivityStarted(activity: Activity) {}
-
-  protected open fun onActivityResumed(activity: Activity) {}
-
-  protected open fun onActivityPaused(activity: Activity) {}
-
-  protected open fun onActivityStopped(activity: Activity) {}
-
-  protected open fun onActivityDestroyed(activity: Activity) {}
-
-  companion object {
-    private val TAG = ActivityLifecycleManager::class.java.simpleName
-
-    @SuppressLint("PrivateApi")
-    private fun getApplication(): Application? {
-      return try {
-        val activityThreadClass = Class.forName("android.app.ActivityThread")
-        val activityThread = activityThreadClass.getMethod("currentActivityThread").invoke(null)
-        activityThreadClass.getMethod("getApplication").invoke(activityThread) as? Application
-      } catch (e: Exception) {
-        Timber.tag("AppUtils").w(e, "Failed to get Application instance")
-        null
-      }
+        override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
     }
-  }
+
+    override fun onCreate(): Boolean {
+        if (callbacksRegistered) return true
+        try {
+            val application = currentApplication()
+            if (application != null && onInit(application)) {
+                application.registerActivityLifecycleCallbacks(lifecycleCallbacks)
+                callbacksRegistered = true
+            }
+        } catch (t: Throwable) {
+            Log.w(TAG, "Unable to register activity lifecycle callbacks", t)
+        }
+        return true
+    }
+
+    protected open fun onInit(application: Application): Boolean = true
+
+    protected open fun onActivityCreated(activity: Activity) = Unit
+
+    protected open fun onActivityStarted(activity: Activity) = Unit
+
+    protected open fun onActivityResumed(activity: Activity) = Unit
+
+    protected open fun onActivityPaused(activity: Activity) = Unit
+
+    protected open fun onActivityStopped(activity: Activity) = Unit
+
+    protected open fun onActivityDestroyed(activity: Activity) = Unit
+
+    protected open fun onActivityTimer(activity: Activity) = Unit
+
+    protected open val activityTimerDelayMillis: Long = 3_000L
+
+    private fun safeHook(block: () -> Unit) {
+        try {
+            block()
+        } catch (t: Throwable) {
+            Log.w(TAG, "Activity lifecycle callback failed", t)
+        }
+    }
+
+    private fun startTimer() {
+        if (timerScheduled) return
+        timerScheduled = true
+        scheduleNextTick()
+    }
+
+    private fun scheduleNextTick() {
+        try {
+            mainHandler.postDelayed(timer, activityTimerDelayMillis)
+        } catch (t: Throwable) {
+            timerScheduled = false
+            Log.w(TAG, "Unable to schedule the activity timer", t)
+        }
+    }
+
+    private fun stopTimer() {
+        timerScheduled = false
+        try {
+            mainHandler.removeCallbacks(timer)
+        } catch (t: Throwable) {
+            Log.w(TAG, "Unable to cancel the activity timer", t)
+        }
+    }
+
+    /**
+     * Resolves the process Application through the hidden ActivityThread API. Returns null
+     * (instead of throwing) when reflection is unavailable, e.g. on heavily restricted runtimes.
+     */
+    private fun currentApplication(): Application? {
+        return try {
+            val activityThread = Class.forName("android.app.ActivityThread")
+            val instance = activityThread.getMethod("currentActivityThread").invoke(null)
+                ?: return null
+            activityThread.getMethod("getApplication").invoke(instance) as? Application
+        } catch (t: Throwable) {
+            Log.w(TAG, "Unable to resolve the Application instance", t)
+            null
+        }
+    }
+
+    private companion object {
+        const val TAG = "ActivityLifecycleManager"
+    }
 }
