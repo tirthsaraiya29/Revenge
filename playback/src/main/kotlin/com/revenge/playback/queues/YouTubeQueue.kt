@@ -107,7 +107,7 @@ class YouTubeQueue(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
-                Result.failure(e)
+                Result.failure<NextResult>(e)
             }
 
             if (result.isSuccess) {
@@ -140,7 +140,7 @@ class YouTubeQueue(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
-                Result.failure(e)
+                Result.failure<NextResult>(e)
             }
 
             if (result.isSuccess) {

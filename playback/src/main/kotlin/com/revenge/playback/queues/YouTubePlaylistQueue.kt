@@ -73,7 +73,7 @@ class YouTubePlaylistQueue(
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Throwable) {
-                    Result.failure(e)
+                    Result.failure<PlaylistContinuationPage>(e)
                 }
 
                 if (result.isSuccess) {

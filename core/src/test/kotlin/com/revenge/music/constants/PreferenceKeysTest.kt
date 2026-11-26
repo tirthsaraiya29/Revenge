@@ -316,10 +316,10 @@ class PreferenceKeysTest {
         val generic = field.genericType as ParameterizedType
         val argument = generic.actualTypeArguments.single()
         return when {
-            argument === java.lang.Boolean::class.javaObjectType -> "B"
-            argument === java.lang.Integer::class.javaObjectType -> "I"
-            argument === java.lang.Long::class.javaObjectType -> "L"
-            argument === java.lang.Float::class.javaObjectType -> "F"
+            argument === java.lang.Boolean::class.java -> "B"
+            argument === java.lang.Integer::class.java -> "I"
+            argument === java.lang.Long::class.java -> "L"
+            argument === java.lang.Float::class.java -> "F"
             argument === String::class.java -> "S"
             argument is ParameterizedType && argument.rawType === Set::class.java -> "SS"
             else -> argument.typeName

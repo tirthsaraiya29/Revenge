@@ -1,7 +1,7 @@
 package com.revenge.music.db.entities
 
-import com.revenge.metadata.CleanedMetadata
-import com.revenge.metadata.MetadataCleaner
+import com.revenge.metadata.cleaner.MetadataCleaner
+import com.revenge.metadata.models.CleanedMetadata
 
 val SongEntity.cleanedMetadata: CleanedMetadata
     get() = MetadataCleaner.clean(title, "")
