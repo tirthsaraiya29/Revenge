@@ -1,0 +1,82 @@
+# License & Notice Register — Revenge (`11ae6207`)
+
+**Project License:** `GPL-3.0-only` (`LICENSE` at repository root)
+**Distribution Policy:** `foss` (default, F-Droid/GPL-3.0 compliant once leaks fixed) vs `gms` (proprietary Google Play Services — **NOT GPL-3.0 distributable as prebuilt APK**)
+
+---
+
+## 1. Critical License, Policy & Notice Violations
+
+| ID | Severity | Finding | Exact Evidence | Required Remediation |
+|---|---|---|---|---|
+| **CRIT-1** | **CRITICAL** | **Proprietary `google_sans_flex.ttf` v2.003 bundled & wired into UI** | `app/src/main/res/font/google_sans_flex.ttf` (`4,607,592` B) TTF `name` table: `"Google offers many fonts on open source terms. Google Sans Flex is not one of them."` Wired in `Type.kt:17,27,37`; 6 `speed_*.xml` comments falsely claim SIL OFL. Meanwhile `sans_flex.ttf` v3.007 is verified **SIL OFL 1.1**. | **REMOVE** `google_sans_flex.ttf` in Wave 0; rebind `Type.kt` to verified OFL-1.1 `sans_flex.ttf`; rewrite `speed_*.xml` clean-room without false comment. |
+| **CRIT-2** | **CRITICAL** | **`play-services-cronet:18.0.1` leaked into FOSS flavor** | `app/build.gradle.kts:308` declares `implementation("com.google.android.gms:play-services-cronet:18.0.1")` unconditionally (not `gmsImplementation`). `MusicService.kt:4272` hardcodes `val useCronet = false`. Violates `docs/LICENSING.md:57-59` & `PRIVACY.md:4`. | Move strictly to `gmsImplementation` (or remove unused Cronet dep altogether) in Wave 0; verify zero `com.google.android.gms` classes in FOSS APK. |
+| **CRIT-3** | **HIGH** | **GMS flavor GPL-3.0 incompatibility + `ReconnectionService` FOSS leak** | `app/build.gradle.kts:258-263,311-312` (`gmsImplementation`): Firebase BOM `34.19.0`, `play-services-location`, `play-services-cast-framework`, `mediarouter` linked with GPL-3.0 `NewPipeExtractor`, `PipePipeExtractor`, `innertubex-android`. Also `app/src/foss/AndroidManifest.xml` omits `tools:node="remove"` for `com.google.android.gms.cast.framework.ReconnectionService` (`AndroidManifest.xml:564-567`). | Never distribute prebuilt `gms` APKs (document build-from-source only + GPL-3.0 notice); add `tools:node="remove"` for `ReconnectionService` in `foss/AndroidManifest.xml`. |
+| **CRIT-4** | **HIGH** | **ONNX Models (`32.19` MB) have 0 embedded license/provenance** | `beat_this_final0_q8.onnx` (`23.14` MB) & `vocals_umxhq_int8.onnx` (`9.05` MB) have `domain=null`, `doc_string=null`, no license props in `ModelProto`. `vocals_umxhq_int8.onnx` has **0 code refs** anywhere. | Both `BLOCKED` per R2. Approve `REMOVE` for dead `vocals_umxhq_int8.onnx`; re-export `beat_this` from `CPJKU/beat_this` (MIT) with notice or replace. |
+| **CRIT-5** | **HIGH** | **`org.json:json:20260814` GPL-incompatible JSON License misreported** | `lyrics/build.gradle.kts:46` uses `testImplementation(libs.json)` (JSON License "used for Good, not Evil", FSF non-free). `docs/LICENSING.md:43` falsely lists it as runtime & GPL-compatible (`Yes`). | Replace `libs.json` in `:lyrics` tests with `kotlinx.serialization.json` (Apache-2.0) and correct `docs/LICENSING.md`. |
+| **CRIT-6** | **HIGH** | **`autoeq_index.json` corrupted in 11 entries** | `app/src/main/res/raw/autoeq_index.json` (`8,850` entries): naive `Echo`->`Revenge` replace broke `Amazon Echo Buds`, `Echobox Finder X1`, `Tanchjim Echo` names & upstream URLs. | Replace cleanly from `jaakkopasanen/AutoEq` (MIT) + preserve MIT notice. |
+| **CRIT-7** | **MEDIUM** | **Missing root `THIRD_PARTY_NOTICES.md` / `OFL.txt` & stripped JS headers** | Repository root has `LICENSE` only — zero `NOTICE` / `THIRD_PARTY_NOTICES.md` / `OFL.txt`. Minified `astring.js` (MIT) & `meriyah.js` (ISC) stripped upstream license headers. `docs/LICENSING.md` (`18 M`) wrongly called `meriyah.js` MIT. | Create root `THIRD_PARTY_NOTICES.md` + `OFL.txt` in Wave 0; replace JS bundles with clean upstream header-intact copies. |
+| **CRIT-8** | **MEDIUM** | **Retired `ffmpeg-kit-audio:6.0-2` & dead GPL-2.0+ `fftw-3.3.10.tar.gz`** | `com.arthenica:ffmpeg-kit-audio:6.0-2` (LGPL-3.0) archived/retired in early 2025 (official binaries deleted). `app/src/main/cpp/vibrafp/third_party/fftw-3.3.10.tar.gz` (GPL-2.0+) is 100% unbuilt dead weight. | `REMOVE` `vibrafp/` in Wave 0; migrate `ffmpeg-kit-audio` to maintained LGPL/Apache media export (e.g., Media3 Transformer or audited maintained fork) in M3–M4. |
+
+---
+
+## 2. Embedded Copyright, License & Attribution Headers Across Source & Resource Files
+
+| Upstream / Attribution | File Count | License | Where Found | R2 / Notice Disposition |
+|---|---:|---|---|---|
+| `Kyant0/backdrop` v2.0.0 | 30 | Apache-2.0 | `app/src/main/kotlin/com/revenge/music/ui/component/backdrop/**/*.kt` (`Copyright 2025 Kyant0`) | `REPLACE WITH VERIFIED THIRD-PARTY COMPONENT` (Maven `io.github.kyant0:backdrop` or verified notice in `THIRD_PARTY_NOTICES.md`) |
+| `elyesmansour/compose-floating-tab-bar` v1.0.1 | 1 | Apache-2.0 | `app/src/main/kotlin/com/revenge/music/ui/component/floatingtabbar/FloatingTabBar.kt` (with Echo-matched local edits) | `REPLACE WITH VERIFIED THIRD-PARTY COMPONENT` (clean upstream Apache-2.0 or clean Compose M3 tab bar + notice) |
+| `vivimusic Project (C) 2026` | 15 | GPL-3.0 | `app/` (`SpotifyAuth.kt`, `SpotifySession*.kt`, `SpotifyImport*.kt`, `ColorPicker.kt`, `FloatingNavBar.kt`, `GlassEffect.kt`, `AnimatedRadioButton.kt`, `FloatingMiniPlayer.kt`, `DetailedListeningHistory*`, `Spotify*Screen.kt`, `FontSelectionScreen.kt`, `ListeningSummaryViewModel.kt`) | `REIMPLEMENT` (R2 forbids retaining Echo/vivimusic implementation) |
+| `Metrolist Project (C) 2026` | 28 (+styles/manifest) | GPL-3.0 | `app/` (`widget/*` incl. `RevengeWidgetManager.kt`, `YTPlayerUtils.kt`, `LastFM.kt`, `cipher/*`, `sabr/*`) + `styles.xml` (`Theme.Metrolist.*`) + `AndroidManifest.xml:724` (`Theme.Metrolist.Transparent`) | `REIMPLEMENT` code / `REFACTOR` manifest & styles (zero Echo/Metrolist code or theme names retained) |
+| `InnerTune` Weblate locale headers | 4 | GPL-3.0 | `app/src/main/res/values-{es,fa,fr,tr}/strings.xml` (`<!-- Upstream InnerTune strings -->`) | `REIMPLEMENT` clean Revenge localization files without Echo/InnerTune artifacts |
+| Gradle Wrapper (`gradlew`, `gradlew.bat`, `gradle-wrapper.jar`) | 3 | Apache-2.0 | Root `gradlew`, `gradlew.bat` (`Copyright 2015`, `SPDX-License-Identifier: Apache-2.0`), `gradle/wrapper/gradle-wrapper.jar` | `RETAIN` (standard build tooling; document in `THIRD_PARTY_NOTICES.md`) |
+| `yt-dlp/ejs` (`yt.solver.core.js`) | 1 | Unlicense | `app/src/main/assets/solver/yt.solver.core.js` (`SPDX-License-Identifier: Unlicense`) | `REPLACE WITH VERIFIED THIRD-PARTY COMPONENT` (pin upstream release + record Unlicense notice) |
+
+---
+
+## 3. Complete Gradle Dependency License Register (All 21 Modules, `34` Groups)
+
+| # | Maven / Git Coordinate | Version | Declared In | Scope | License | GPL-3.0 Compatible | Classification | Notes |
+|---:|---|---|---|---|---|---|---|---|
+| 1 | `org.jetbrains.kotlin:kotlin-stdlib / org.jetbrains.kotlinx:kotlinx-coroutines-*` | `2.3.10 / 1.10.2 (coroutinesGuava 1.11.0)` | `gradle/libs.versions.toml, app, domain, audio-dsp, core` | `runtime` | Apache-2.0 | Yes | `RETAIN` | Standard Kotlin runtime & coroutines. |
+| 2 | `androidx.* (activity, appcompat, core-ktx, datastore, lifecycle, media3, palette, room, work, adaptive, material3, compose, core-splashscreen, concurrent-futures, mediarouter)` | `catalog (media3 1.7.1, room 2.8.5, compose 1.10.2, material3 1.5.0-alpha18)` | `gradle/libs.versions.toml, app, core, playback, audio-dsp, lyrics, artistvideo, usbaudio` | `runtime (mediarouter is gmsImplementation)` | Apache-2.0 | Yes | `RETAIN` | Standard AndroidX Jetpack libraries. Note: androidx.compose.material:material-icons-extended:1.7.8 is hardcoded in app/build.gradle.kts:356 outside libs.versions.toml. |
+| 3 | `com.google.dagger:hilt-android / com.google.dagger:hilt-android-compiler / javax.inject:javax.inject:1` | `2.60.1 / 1` | `gradle/libs.versions.toml, app, core, playback, audio-dsp, lyrics` | `runtime + ksp` | Apache-2.0 | Yes | `RETAIN` | javax.inject:javax.inject:1 hardcoded in core/build.gradle.kts:34. |
+| 4 | `io.ktor:ktor-client-* / ktor-serialization-kotlinx-json` | `3.6.1` | `gradle/libs.versions.toml, app, core, innertube, lyrics, lrclib, kugou, betterlyrics, simpmusic, youlyplus, paxsenixlyrics, unison, canvas, applecanvas, artistvideo, shazamkit` | `runtime` | Apache-2.0 | Yes | `RETAIN` |  |
+| 5 | `com.squareup.retrofit2:retrofit / converter-gson` | `3.0.0` | `gradle/libs.versions.toml, app` | `runtime` | Apache-2.0 | Yes | `RETAIN` |  |
+| 6 | `io.coil-kt.coil3:coil-compose / coil-network-okhttp` | `3.3.0` | `gradle/libs.versions.toml, app` | `runtime` | Apache-2.0 | Yes | `RETAIN` |  |
+| 7 | `com.github.yalantis:ucrop` | `2.2.11` | `gradle/libs.versions.toml, app` | `runtime` | Apache-2.0 | Yes | `RETAIN` | Include Apache-2.0 notice in THIRD_PARTY_NOTICES.md. |
+| 8 | `com.google.guava:guava / org.apache.commons:commons-lang3 / com.jakewharton.timber:timber` | `33.8.0-jre / 3.21.0 / 5.0.1` | `gradle/libs.versions.toml, app, core, audio-dsp, paxsenixlyrics` | `runtime` | Apache-2.0 | Yes | `RETAIN` |  |
+| 9 | `org.jetbrains.kotlinx:kotlinx-serialization-json` | `1.6.3` | `gradle/libs.versions.toml, dsp-core, audio-dsp` | `runtime` | Apache-2.0 | Yes | `RETAIN` |  |
+| 10 | `com.google.protobuf:protobuf-javalite / protobuf-kotlin-lite` | `4.36.2` | `gradle/libs.versions.toml, app, core` | `runtime` | BSD-3-Clause | Yes | `RETAIN` | Preserve BSD-3-Clause notice. |
+| 11 | `org.brotli:dec` | `0.1.2` | `gradle/libs.versions.toml, innertube` | `runtime` | MIT | Yes | `RETAIN` | Preserve MIT notice. |
+| 12 | `com.github.TeamNewPipe:NewPipeExtractor` | `v0.26.1` | `gradle/libs.versions.toml, innertube` | `runtime` | GPL-3.0-or-later (GPL-3.0) | Yes | `RETAIN` | Copyleft GPL-3.0; incompatible with proprietary GMS binary redistribution. |
+| 13 | `com.github.maxrave-dev:PipePipeExtractor` | `f8982ca9e7` | `gradle/libs.versions.toml, innertube` | `runtime` | GPL-3.0 | Yes | `RETAIN` | Verify pinned commit provenance (maxrave-dev JitPack fork of PipePipeExtractor); copyleft GPL-3.0. |
+| 14 | `com.github.MetrolistGroup.innertubex:innertubex-android` | `v0.7.0` | `app/build.gradle.kts:326` | `runtime` | GPL-3.0 | Yes | `RETAIN` | Hardcoded in app/build.gradle.kts outside libs.versions.toml; copyleft GPL-3.0. |
+| 15 | `com.atilika.kuromoji:kuromoji-ipadic` | `0.9.0` | `gradle/libs.versions.toml, app, lyrics` | `runtime` | Apache-2.0 | Yes | `RETAIN` | Includes IPADIC dictionary (NAIST-jdic / ICOT permissive terms); preserve notices. |
+| 16 | `com.github.promeG:tinypinyin` | `2.0.3` | `gradle/libs.versions.toml, app, lyrics` | `runtime` | Apache-2.0 | Yes | `RETAIN` |  |
+| 17 | `dev.chrisbanes.haze:haze` | `1.0.2` | `gradle/libs.versions.toml, app` | `runtime` | Apache-2.0 | Yes | `RETAIN` |  |
+| 18 | `sh.calvin.reorderable:reorderable` | `3.1.0` | `gradle/libs.versions.toml, app` | `runtime` | Apache-2.0 | Yes | `RETAIN` |  |
+| 19 | `com.valentinilk.shimmer:compose-shimmer` | `1.5.0` | `gradle/libs.versions.toml, app` | `runtime` | Apache-2.0 | Yes | `RETAIN` |  |
+| 20 | `com.github.racra:smooth-corner-rect-android-compose` | `v1.0.0` | `gradle/libs.versions.toml, app` | `runtime` | MIT | Yes | `RETAIN` | Preserve MIT copyright (2021 Rodrigo Alves). |
+| 21 | `com.materialkolor:material-kolor` | `4.1.1` | `gradle/libs.versions.toml, app` | `runtime` | Apache-2.0 | Yes | `RETAIN` |  |
+| 22 | `nl.dionsegijn:konfetti-compose` | `2.0.4` | `gradle/libs.versions.toml, app/build.gradle.kts:249` | `runtime` | ISC | Yes | `RETAIN` | Note: docs/LICENSING.md lists Konfetti as Apache-2.0, verify actual ISC/Apache-2.0 POM license; hardcoded in app/build.gradle.kts:249. |
+| 23 | `com.airbnb.android:lottie-compose` | `6.7.1` | `gradle/libs.versions.toml, app` | `runtime` | Apache-2.0 | Yes | `RETAIN` |  |
+| 24 | `com.mocharealm.accompanist:lyrics-core` | `0.5.0` | `gradle/libs.versions.toml, lyrics` | `runtime` | Apache-2.0 | Yes | `RETAIN` |  |
+| 25 | `io.github.dokar3:quickjs-kt-android` | `1.0.14` | `gradle/libs.versions.toml, app/build.gradle.kts:360` | `runtime` | Apache-2.0 | Yes | `RETAIN` | Bundles QuickJS C engine (MIT); hardcoded in app/build.gradle.kts:360. |
+| 26 | `com.microsoft.onnxruntime:onnxruntime-android` | `1.28.0` | `gradle/libs.versions.toml, app/build.gradle.kts:361` | `runtime` | MIT | Yes | `RETAIN` | Runtime engine is MIT; however bundled .onnx model files are BLOCKED pending model provenance verification. |
+| 27 | `com.arthenica:ffmpeg-kit-audio` | `6.0-2` | `gradle/libs.versions.toml, app/build.gradle.kts:359` | `runtime` | LGPL-3.0 | Yes | `REFACTOR` | LGPL-3.0 is GPL-3 compatible, but arthenica/ffmpeg-kit was retired/archived in early 2025 and official GitHub binaries removed (supply-chain risk; plan migration or maintained fork/Media3 Transformer). |
+| 28 | `com.google.android.gms:play-services-cronet` | `18.0.1` | `gradle/libs.versions.toml, app/build.gradle.kts:308` | `runtime (ALL flavors incl. FOSS!)` | Proprietary (Google Android SDK License) | **NO** | `REMOVE` | CRITICAL GPL/FOSS VIOLATION: Declared via `implementation` (not `gmsImplementation`), contaminating FOSS APKs with proprietary GMS client library despite `MusicService.kt:4272` hardcoding `useCronet = false` and `docs/LICENSING.md` claiming FOSS has zero GMS libs. |
+| 29 | `com.google.firebase:firebase-bom / firebase-analytics / firebase-crashlytics` | `34.19.0` | `gradle/libs.versions.toml, app/build.gradle.kts:258-260` | `gmsImplementation` | Proprietary (Google Firebase Terms / Android SDK License) | **NO** | `BLOCKED` | GMS-only flavor; binary distribution alongside GPL-3.0-only code (including NewPipeExtractor/PipePipeExtractor/innertubex) violates GPL-3.0 Section 10/12. Never distribute prebuilt GMS APKs. |
+| 30 | `com.google.android.gms:play-services-location` | `21.4.0` | `gradle/libs.versions.toml, app/build.gradle.kts:263` | `gmsImplementation` | Proprietary (Google Android SDK License) | **NO** | `BLOCKED` | GMS-only flavor; proprietary GMS binary incompatible with GPL-3.0 binary distribution. |
+| 31 | `com.google.android.gms:play-services-cast-framework` | `22.3.1` | `gradle/libs.versions.toml, app/build.gradle.kts:312` | `gmsImplementation` | Proprietary (Google Android SDK License) | **NO** | `BLOCKED` | GMS-only flavor; proprietary Cast SDK incompatible with GPL-3.0 binary distribution. |
+| 32 | `org.json:json` | `20260814` | `gradle/libs.versions.toml, lyrics/build.gradle.kts:46` | `testImplementation only` | JSON License ('Good, not Evil') | **NO** | `REPLACE WITH VERIFIED THIRD-PARTY COMPONENT` | JSON License is FSF/OSI non-free & GPL-3.0 incompatible. docs/LICENSING.md:43 erroneously marked it runtime & GPL-compatible. Replace in :lyrics tests with kotlinx.serialization.json. |
+| 33 | `junit:junit / org.jetbrains.kotlinx:kotlinx-coroutines-test / org.robolectric:robolectric` | `4.13.2 / 1.11.0 / 4.14.1` | `gradle/libs.versions.toml, all test modules` | `testImplementation` | EPL-1.0 / Apache-2.0 / MIT | Yes | `RETAIN` | Test-only scope; not shipped in APK. |
+| 34 | `com.android.tools.build:gradle / spotless / ktfmt / ksp / protobuf-gradle-plugin / desugar_jdk_libs_nio` | `9.0.0 / 8.11.0 / 2.3.13 / 0.10.0 / 2.1.5` | `build.gradle.kts, gradle/libs.versions.toml` | `buildscript / plugins / desugaring (GPL-2.0-with-classpath-exception for desugar)` | Apache-2.0 / GPL-2.0-with-classpath-exception (desugar) | Yes | `RETAIN` | Build plugins not shipped in APK (except desugaring runtime which has GPL-2.0+CPE, compatible with GPL-3.0). |
+
+---
+
+## 4. Required Notice Artifacts to Create in Wave 0 (M3)
+
+1. **`THIRD_PARTY_NOTICES.md` (repo root):** Consolidated attributions and full license texts/notices for all retained/replaced Apache-2.0, MIT, BSD-3-Clause, ISC, Unlicense, SIL OFL 1.1, LGPL-3.0, and EPL-1.0 components (Gradle deps, `Kyant0/backdrop`, `FloatingTabBar`, Material Symbols, AutoEq, `astring`, `meriyah`, `yt-dlp/ejs`, Kuromoji/IPADIC, TinyPinyin, ONNX Runtime, QuickJS).
+2. **`OFL.txt` (or `licenses/OFL-1.1.txt`):** Full SIL Open Font License 1.1 text covering `sans_flex.ttf`, `outfit.ttf`, `plus_jakarta_sans.ttf`, and `bbh_bartle_regular.ttf` with exact Reserved Font Name declarations.
+3. **Corrected `docs/LICENSING.md`:** Remove `org.json` runtime falsehood, reflect `meriyah.js` (ISC) and `po_token.html` (`REIMPLEMENT`), remove dead `vocals_umxhq_int8.onnx` usage claim, enforce strict FOSS vs GMS separation.
