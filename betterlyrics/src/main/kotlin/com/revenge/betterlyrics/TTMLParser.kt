@@ -118,7 +118,8 @@ private fun agentOf(element: Element): String? {
 
 private fun followedByWhitespace(span: Element): Boolean {
   val next = span.nextSibling ?: return false
-  return next.nodeType == Node.TEXT_NODE && (next.nodeValue ?: "").isNotBlank()
+  val data = next.nodeValue ?: ""
+  return next.nodeType == Node.TEXT_NODE && data.isNotEmpty() && data.isBlank()
 }
 
 private fun directText(element: Element): String {

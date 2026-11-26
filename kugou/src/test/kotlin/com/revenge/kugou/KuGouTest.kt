@@ -15,6 +15,7 @@ import io.ktor.util.date.GMTDate
 import io.ktor.utils.io.ByteReadChannel
 import io.ktor.utils.io.InternalAPI
 import java.util.Base64
+import java.util.Locale
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
@@ -114,7 +115,7 @@ class KuGouTest {
   @Test
   fun `normalizeLyrics keeps thirty-four body lines and drops a trailing credit`() {
     val body = (0..33).joinToString("\n") { index ->
-      String.format("[00:%02d.00]line %d", index, index)
+      String.format(Locale.ROOT, "[00:%02d.00]line %d", index, index)
     }
     val raw = body + "\n[00:33.00]作词: Someone"
 

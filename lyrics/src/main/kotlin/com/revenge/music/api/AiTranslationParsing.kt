@@ -12,7 +12,8 @@ internal val aiJson: Json = Json {
     ignoreUnknownKeys = true
 }
 
-internal fun JsonElement.stringOrNull(): String? = (this as? JsonPrimitive)?.contentOrNull
+internal fun JsonElement.stringOrNull(): String? =
+    (this as? JsonPrimitive)?.takeIf { it.isString }?.content
 
 internal fun JsonElement.lineOrEmpty(): String = (this as? JsonPrimitive)?.contentOrNull ?: ""
 

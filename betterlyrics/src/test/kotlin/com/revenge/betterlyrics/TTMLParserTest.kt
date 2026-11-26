@@ -16,6 +16,8 @@ import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -104,12 +106,12 @@ class TTMLParserTest {
     val line = TTMLParser.parseTTML(xml).single()
 
     assertEquals("main", line.text)
-    assertEquals(false, line.isBackground)
+    assertFalse(line.isBackground)
     val background = line.backgroundLines.single()
     assertEquals("echo", background.text)
     assertEquals(1.0, background.startTime, 0.0)
     assertTrue(background.isBackground)
-    assertEquals(null, background.agent)
+    assertNull(background.agent)
   }
 
   @Test
