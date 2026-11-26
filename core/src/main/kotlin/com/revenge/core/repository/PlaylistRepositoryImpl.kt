@@ -4,8 +4,8 @@ import com.revenge.core.mapping.toDomain
 import com.revenge.domain.models.Playlist as DomainPlaylist
 import com.revenge.domain.models.Song as DomainSong
 import com.revenge.domain.repositories.PlaylistRepository
-import com.revenge.music.db.MusicDatabase
-import com.revenge.music.db.entities.PlaylistSongMap
+import com.revenge.core.db.MusicDatabase
+import com.revenge.core.db.entities.PlaylistSongMap
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject

@@ -15,7 +15,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.revenge.music.LocalDatabase
 import com.revenge.music.R
-import com.revenge.music.db.entities.Playlist
+import com.revenge.core.db.entities.Playlist
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext

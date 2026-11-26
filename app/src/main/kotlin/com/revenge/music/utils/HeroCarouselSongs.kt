@@ -6,7 +6,7 @@ import com.revenge.innertube.models.SongItem
 import com.revenge.innertube.models.filterBlockedArtists
 import com.revenge.innertube.models.filterExplicit
 import com.revenge.innertube.models.filterVideoSongs
-import com.revenge.music.db.entities.Song
+import com.revenge.core.db.entities.Song
 
 fun Song.toCarouselSong() =
   SongItem(

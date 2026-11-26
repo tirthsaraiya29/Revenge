@@ -12,7 +12,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.revenge.music.R
-import com.revenge.music.constants.*
+import com.revenge.core.constants.*
 import com.revenge.music.ui.component.*
 import com.revenge.music.utils.rememberEnumPreference
 import com.revenge.music.utils.rememberPreference

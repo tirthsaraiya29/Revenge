@@ -2,8 +2,8 @@ package com.revenge.music.viewmodels
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.revenge.music.db.daos.RecommendationExclusionDao
-import com.revenge.music.db.daos.SongPlayStatsDao
+import com.revenge.core.db.daos.RecommendationExclusionDao
+import com.revenge.core.db.daos.SongPlayStatsDao
 import com.revenge.music.generate.GenerationState
 import com.revenge.music.generate.GenerationStatus
 import com.revenge.music.generate.LocalTasteEngine

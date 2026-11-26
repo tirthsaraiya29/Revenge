@@ -1,7 +1,7 @@
 package com.revenge.music.generate
 
-import com.revenge.music.db.daos.SongPlayStatsDao
-import com.revenge.music.db.entities.SongPlayStatsEntity
+import com.revenge.core.db.daos.SongPlayStatsDao
+import com.revenge.core.db.entities.SongPlayStatsEntity
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest

@@ -30,8 +30,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.revenge.music.lyrics.LyricsEntry
-import com.revenge.music.lyrics.WordTimestamp
+import com.revenge.lyrics.lyrics.LyricsEntry
+import com.revenge.lyrics.lyrics.WordTimestamp
 import kotlin.math.PI
 import kotlin.math.sin
 

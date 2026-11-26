@@ -182,33 +182,33 @@ import com.revenge.music.LocalDownloadUtil
 import com.revenge.music.LocalListenTogetherManager
 import com.revenge.music.LocalPlayerConnection
 import com.revenge.music.R
-import com.revenge.music.constants.CanvasThumbnailAnimationKey
-import com.revenge.music.constants.CropAlbumArtKey
-import com.revenge.music.constants.DarkModeKey
-import com.revenge.music.constants.DislikedSongsKey
-import com.revenge.music.constants.EnableLyricsThumbnailPlayPauseKey
-import com.revenge.music.constants.HidePlayerThumbnailKey
-import com.revenge.music.constants.HideStatusBarOnFullscreenKey
-import com.revenge.music.constants.KeepScreenOn
-import com.revenge.music.constants.MusicFlowEnabledKey
-import com.revenge.music.constants.PlayerBackgroundStyle
-import com.revenge.music.constants.PlayerBackgroundStyleKey
-import com.revenge.music.constants.PlayerButtonsStyle
-import com.revenge.music.constants.PlayerButtonsStyleKey
-import com.revenge.music.constants.PlayerHorizontalPadding
-import com.revenge.music.constants.QueuePeekHeight
-import com.revenge.music.constants.ShowLyricsOnPlayerKey
-import com.revenge.music.constants.SliderStyle
-import com.revenge.music.constants.SliderStyleKey
-import com.revenge.music.constants.SquigglySliderKey
-import com.revenge.music.constants.SwipeLyricsKey
-import com.revenge.music.constants.ThumbnailCornerRadius
-import com.revenge.music.constants.UseNewPlayerDesignKey
-import com.revenge.music.constants.WavyPlayPauseKey
-import com.revenge.music.db.entities.LyricsEntity
+import com.revenge.core.constants.CanvasThumbnailAnimationKey
+import com.revenge.core.constants.CropAlbumArtKey
+import com.revenge.core.constants.DarkModeKey
+import com.revenge.core.constants.DislikedSongsKey
+import com.revenge.core.constants.EnableLyricsThumbnailPlayPauseKey
+import com.revenge.core.constants.HidePlayerThumbnailKey
+import com.revenge.core.constants.HideStatusBarOnFullscreenKey
+import com.revenge.core.constants.KeepScreenOn
+import com.revenge.core.constants.MusicFlowEnabledKey
+import com.revenge.core.constants.PlayerBackgroundStyle
+import com.revenge.core.constants.PlayerBackgroundStyleKey
+import com.revenge.core.constants.PlayerButtonsStyle
+import com.revenge.core.constants.PlayerButtonsStyleKey
+import com.revenge.core.constants.PlayerHorizontalPadding
+import com.revenge.core.constants.QueuePeekHeight
+import com.revenge.core.constants.ShowLyricsOnPlayerKey
+import com.revenge.core.constants.SliderStyle
+import com.revenge.core.constants.SliderStyleKey
+import com.revenge.core.constants.SquigglySliderKey
+import com.revenge.core.constants.SwipeLyricsKey
+import com.revenge.core.constants.ThumbnailCornerRadius
+import com.revenge.core.constants.UseNewPlayerDesignKey
+import com.revenge.core.constants.WavyPlayPauseKey
+import com.revenge.core.db.entities.LyricsEntity
 import com.revenge.music.extensions.SwipeGesture
-import com.revenge.music.extensions.togglePlayPause
-import com.revenge.music.models.MediaMetadata
+import com.revenge.core.extensions.togglePlayPause
+import com.revenge.core.models.MediaMetadata
 import com.revenge.music.playback.ExoDownloadService
 import com.revenge.music.playback.audio.bluetooth.BluetoothAudioTracker
 import com.revenge.music.spotify.Spotify
@@ -236,7 +236,7 @@ import com.revenge.music.updates.getConnectedBluetoothDeviceName
 import com.revenge.music.updates.isBuds
 import com.revenge.music.updates.isSpeaker
 import com.revenge.music.utils.PodcastProgress
-import com.revenge.music.utils.dataStore
+import com.revenge.core.utils.dataStore
 import com.revenge.music.utils.isLocalMediaId
 import com.revenge.music.utils.makeTimeString
 import com.revenge.music.utils.rememberEnumPreference
@@ -312,11 +312,11 @@ fun BottomSheetPlayer(
     rememberPreference(UseNewPlayerDesignKey, defaultValue = true)
   val (musicFlowEnabled) = rememberPreference(MusicFlowEnabledKey, defaultValue = true)
   val showCodecOnPlayer by
-    rememberPreference(com.revenge.music.constants.ShowCodecOnPlayerKey, false)
-  val hidePlayerSlider by rememberPreference(com.revenge.music.constants.HidePlayerSliderKey, false)
+    rememberPreference(com.revenge.core.constants.ShowCodecOnPlayerKey, false)
+  val hidePlayerSlider by rememberPreference(com.revenge.core.constants.HidePlayerSliderKey, false)
   val (hidePlayerThumbnail, onHidePlayerThumbnailChange) =
     rememberPreference(HidePlayerThumbnailKey, false)
-  val showSeekButtons by rememberPreference(com.revenge.music.constants.ShowSeekButtonsKey, false)
+  val showSeekButtons by rememberPreference(com.revenge.core.constants.ShowSeekButtonsKey, false)
   val cropAlbumArt by rememberPreference(CropAlbumArtKey, false)
   val showLyricsOnPlayer by rememberPreference(ShowLyricsOnPlayerKey, false)
   val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
@@ -348,7 +348,7 @@ fun BottomSheetPlayer(
     }
 
   val dataSaverEnabled by
-    rememberPreference(key = com.revenge.music.constants.DataSaverEnabledKey, defaultValue = false)
+    rememberPreference(key = com.revenge.core.constants.DataSaverEnabledKey, defaultValue = false)
   val enableCanvasPref by rememberPreference(CanvasThumbnailAnimationKey, defaultValue = false)
   val enableCanvas = if (dataSaverEnabled || isEpisode) false else enableCanvasPref
 
@@ -369,7 +369,7 @@ fun BottomSheetPlayer(
   val isAutomixing by playerConnection.isAutomixing.collectAsState()
   val automixDebug by playerConnection.automixDebugInfo.collectAsState()
   val automixDebugOverlayEnabled by
-    rememberPreference(com.revenge.music.constants.AutomixDebugOverlayKey, false)
+    rememberPreference(com.revenge.core.constants.AutomixDebugOverlayKey, false)
 
   var currentAudioFormat by remember { mutableStateOf<androidx.media3.common.Format?>(null) }
   DisposableEffect(playerConnection, isCrossfading) {
@@ -1078,7 +1078,7 @@ fun BottomSheetPlayer(
         if (sliderPosition == null) {
           position = playerConnection.player.currentPosition
           duration =
-            com.revenge.music.playback.PlaybackCutoffGuard.computeEffectiveDuration(
+            com.revenge.playback.PlaybackCutoffGuard.computeEffectiveDuration(
               mediaMetadata?.duration,
               playerConnection.player.duration,
             )
@@ -1091,7 +1091,7 @@ fun BottomSheetPlayer(
     if (!isCasting) {
       position = playerConnection.player.currentPosition
       duration =
-        com.revenge.music.playback.PlaybackCutoffGuard.computeEffectiveDuration(
+        com.revenge.playback.PlaybackCutoffGuard.computeEffectiveDuration(
           mediaMetadata?.duration,
           playerConnection.player.duration,
         )
@@ -2761,7 +2761,7 @@ fun BottomSheetPlayer(
               color = TextBackgroundColor,
               onSeek = { offsetMs ->
                 playerConnection.seekTo(
-                  com.revenge.music.playback.seekButtonTarget(
+                  com.revenge.playback.seekButtonTarget(
                     if (isCasting) castPosition else playerConnection.player.currentPosition,
                     if (isCasting) castDuration else playerConnection.player.duration,
                     offsetMs,
@@ -2782,7 +2782,7 @@ fun BottomSheetPlayer(
                 val currentDuration =
                   if (isCasting) castDuration else playerConnection.player.duration
                 playerConnection.seekTo(
-                  com.revenge.music.playback.seekButtonTarget(
+                  com.revenge.playback.seekButtonTarget(
                     currentPosition,
                     currentDuration,
                     offsetMs,
@@ -2802,7 +2802,7 @@ fun BottomSheetPlayer(
               val currentDuration =
                 if (isCasting) castDuration else playerConnection.player.duration
               playerConnection.seekTo(
-                com.revenge.music.playback.seekButtonTarget(
+                com.revenge.playback.seekButtonTarget(
                   currentPosition,
                   currentDuration,
                   offsetMs,

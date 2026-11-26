@@ -38,10 +38,10 @@ import com.revenge.music.LocalDownloadUtil
 import com.revenge.music.LocalPlayerConnection
 import com.revenge.music.LocalSyncUtils
 import com.revenge.music.R
-import com.revenge.music.extensions.toMediaItem
-import com.revenge.music.models.toMediaMetadata
+import com.revenge.core.extensions.toMediaItem
+import com.revenge.core.models.toMediaMetadata
 import com.revenge.music.playback.ExoDownloadService
-import com.revenge.music.playback.queues.ListQueue
+import com.revenge.playback.queues.ListQueue
 import com.revenge.music.ui.component.DefaultDialog
 import com.revenge.music.ui.component.Material3MenuGroup
 import com.revenge.music.ui.component.Material3MenuItemData
@@ -118,9 +118,9 @@ fun YouTubeSelectionSongMenu(
         songSelection
           .map { song ->
             val metadata = song.toMediaMetadata()
-            com.revenge.music.db.entities.Song(
+            com.revenge.core.db.entities.Song(
               song =
-                com.revenge.music.db.entities.SongEntity(
+                com.revenge.core.db.entities.SongEntity(
                   id = metadata.id,
                   title = metadata.title,
                   duration = metadata.duration,
@@ -136,14 +136,14 @@ fun YouTubeSelectionSongMenu(
                 ),
               artists =
                 metadata.artists.map { artist ->
-                  com.revenge.music.db.entities.ArtistEntity(
+                  com.revenge.core.db.entities.ArtistEntity(
                     id = artist.id ?: "",
                     name = artist.name,
                   )
                 },
               album =
                 metadata.album?.let { album ->
-                  com.revenge.music.db.entities.AlbumEntity(
+                  com.revenge.core.db.entities.AlbumEntity(
                     id = album.id,
                     title = album.title,
                     thumbnailUrl = metadata.thumbnailUrl,
@@ -386,7 +386,7 @@ fun YouTubeSelectionSongMenu(
                       insert(metadata)
 
                       val songEntity =
-                        com.revenge.music.db.entities.SongEntity(
+                        com.revenge.core.db.entities.SongEntity(
                           id = metadata.id,
                           title = metadata.title,
                           duration = metadata.duration,

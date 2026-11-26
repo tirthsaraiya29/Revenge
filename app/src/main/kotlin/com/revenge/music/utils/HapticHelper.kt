@@ -20,13 +20,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
-import com.revenge.music.constants.EnableClickHapticsKey
-import com.revenge.music.constants.EnableHapticsKey
-import com.revenge.music.constants.EnableLongPressHapticsKey
-import com.revenge.music.constants.EnableScrollEdgeHapticsKey
-import com.revenge.music.constants.EnableSliderHapticsKey
-import com.revenge.music.constants.HapticIntensity
-import com.revenge.music.constants.HapticIntensityKey
+import com.revenge.core.constants.EnableClickHapticsKey
+import com.revenge.core.constants.EnableHapticsKey
+import com.revenge.core.constants.EnableLongPressHapticsKey
+import com.revenge.core.constants.EnableScrollEdgeHapticsKey
+import com.revenge.core.constants.EnableSliderHapticsKey
+import com.revenge.core.constants.HapticIntensity
+import com.revenge.core.constants.HapticIntensityKey
 import kotlinx.coroutines.flow.distinctUntilChanged
 
 enum class HapticType {

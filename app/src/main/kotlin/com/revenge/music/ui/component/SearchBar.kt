@@ -57,7 +57,7 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.revenge.music.constants.AppBarHeight
+import com.revenge.core.constants.AppBarHeight
 
 @ExperimentalMaterial3Api
 @Composable

@@ -2,13 +2,13 @@ package com.revenge.music.listentogether
 
 import android.content.Context
 import androidx.datastore.preferences.core.edit
-import com.revenge.music.constants.ListenTogetherSyncVolumeKey
-import com.revenge.music.extensions.metadata
-import com.revenge.music.extensions.toMediaItem
-import com.revenge.music.models.MediaMetadata
+import com.revenge.core.constants.ListenTogetherSyncVolumeKey
+import com.revenge.core.extensions.metadata
+import com.revenge.core.extensions.toMediaItem
+import com.revenge.core.models.MediaMetadata
 import com.revenge.music.playback.PlayerConnection
-import com.revenge.music.utils.dataStore
-import com.revenge.music.utils.get
+import com.revenge.core.utils.dataStore
+import com.revenge.core.utils.get
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.util.Base64
 import kotlin.math.abs

@@ -52,7 +52,7 @@ import androidx.navigation.NavController
 import coil3.compose.AsyncImage
 import com.revenge.innertube.YouTube
 import com.revenge.music.R
-import com.revenge.music.models.MediaMetadata
+import com.revenge.core.models.MediaMetadata
 import com.revenge.music.utils.Wikipedia
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch

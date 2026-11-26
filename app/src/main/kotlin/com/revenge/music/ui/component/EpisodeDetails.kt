@@ -18,9 +18,9 @@ import androidx.compose.ui.unit.dp
 import com.revenge.innertube.models.SongItem
 import com.revenge.music.LocalPlayerConnection
 import com.revenge.music.R
-import com.revenge.music.extensions.toMediaItem
-import com.revenge.music.models.toMediaMetadata
-import com.revenge.music.playback.queues.ListQueue
+import com.revenge.core.extensions.toMediaItem
+import com.revenge.core.models.toMediaMetadata
+import com.revenge.playback.queues.ListQueue
 import com.revenge.music.utils.makeTimeString
 
 /** A chapter from an episode's description: a line such as "12:23 Title". */

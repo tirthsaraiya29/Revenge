@@ -2,8 +2,8 @@ package com.revenge.playback.queues
 
 import androidx.media3.common.MediaItem
 import com.revenge.innertube.models.WatchEndpoint.WatchEndpointMusicSupportedConfigs.WatchEndpointMusicConfig.Companion.MUSIC_VIDEO_TYPE_PODCAST_EPISODE
-import com.revenge.music.extensions.metadata
-import com.revenge.music.models.MediaMetadata
+import com.revenge.core.extensions.metadata
+import com.revenge.core.models.MediaMetadata
 
 interface Queue {
 

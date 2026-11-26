@@ -99,19 +99,19 @@ import com.revenge.music.LocalListenTogetherManager
 import com.revenge.music.LocalPlayerAwareWindowInsets
 import com.revenge.music.LocalPlayerConnection
 import com.revenge.music.R
-import com.revenge.music.constants.AppBarHeight
-import com.revenge.music.constants.BlockedArtistsKey
-import com.revenge.music.constants.HideExplicitKey
-import com.revenge.music.constants.ShowArtistBackgroundVideoKey
-import com.revenge.music.constants.ShowArtistDescriptionKey
-import com.revenge.music.constants.ShowArtistSubscriberCountKey
-import com.revenge.music.constants.ShowArtistVideoKey
-import com.revenge.music.constants.ShowMonthlyListenersKey
-import com.revenge.music.db.entities.ArtistEntity
-import com.revenge.music.extensions.toMediaItem
-import com.revenge.music.models.toMediaMetadata
-import com.revenge.music.playback.queues.ListQueue
-import com.revenge.music.playback.queues.YouTubeQueue
+import com.revenge.core.constants.AppBarHeight
+import com.revenge.core.constants.BlockedArtistsKey
+import com.revenge.core.constants.HideExplicitKey
+import com.revenge.core.constants.ShowArtistBackgroundVideoKey
+import com.revenge.core.constants.ShowArtistDescriptionKey
+import com.revenge.core.constants.ShowArtistSubscriberCountKey
+import com.revenge.core.constants.ShowArtistVideoKey
+import com.revenge.core.constants.ShowMonthlyListenersKey
+import com.revenge.core.db.entities.ArtistEntity
+import com.revenge.core.extensions.toMediaItem
+import com.revenge.core.models.toMediaMetadata
+import com.revenge.playback.queues.ListQueue
+import com.revenge.playback.queues.YouTubeQueue
 import com.revenge.music.ui.component.AlbumGridItem
 import com.revenge.music.ui.component.ExpandableText
 import com.revenge.music.ui.component.HideOnScrollFAB
@@ -135,8 +135,8 @@ import com.revenge.music.ui.menu.YouTubeSongMenu
 import com.revenge.music.ui.utils.backToMain
 import com.revenge.music.ui.utils.fadingEdge
 import com.revenge.music.ui.utils.isScrollingUp
-import com.revenge.music.ui.utils.resize
-import com.revenge.music.utils.dataStore
+import com.revenge.core.ui.utils.resize
+import com.revenge.core.utils.dataStore
 import com.revenge.music.utils.listItemShape
 import com.revenge.music.utils.rememberPreference
 import com.revenge.music.viewmodels.ArtistViewModel
@@ -180,7 +180,7 @@ fun ArtistScreen(
     rememberPreference(key = ShowArtistSubscriberCountKey, defaultValue = true)
   val showMonthlyListeners by rememberPreference(key = ShowMonthlyListenersKey, defaultValue = true)
   val dataSaverEnabled by
-    rememberPreference(key = com.revenge.music.constants.DataSaverEnabledKey, defaultValue = false)
+    rememberPreference(key = com.revenge.core.constants.DataSaverEnabledKey, defaultValue = false)
   val showArtistVideoPref by rememberPreference(key = ShowArtistVideoKey, defaultValue = true)
   val showArtistVideo = if (dataSaverEnabled) false else showArtistVideoPref
   val showArtistBackgroundVideoPref by

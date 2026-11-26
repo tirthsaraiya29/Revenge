@@ -11,21 +11,21 @@ import androidx.media3.common.Player.REPEAT_MODE_OFF
 import androidx.media3.common.Player.STATE_ENDED
 import androidx.media3.common.Timeline
 import androidx.media3.exoplayer.ExoPlayer
-import com.revenge.music.constants.SponsorBlockEnabledKey
+import com.revenge.core.constants.SponsorBlockEnabledKey
 import com.revenge.music.data.SponsorBlockRepository
-import com.revenge.music.db.MusicDatabase
-import com.revenge.music.extensions.currentMetadata
-import com.revenge.music.extensions.getCurrentQueueIndex
-import com.revenge.music.extensions.getQueueWindows
-import com.revenge.music.extensions.metadata
-import com.revenge.music.extensions.togglePlayPause
-import com.revenge.music.models.SponsorBlockSegment
+import com.revenge.core.db.MusicDatabase
+import com.revenge.core.extensions.currentMetadata
+import com.revenge.core.extensions.getCurrentQueueIndex
+import com.revenge.core.extensions.getQueueWindows
+import com.revenge.core.extensions.metadata
+import com.revenge.core.extensions.togglePlayPause
+import com.revenge.core.models.SponsorBlockSegment
 import com.revenge.music.playback.MusicService.MusicBinder
-import com.revenge.music.playback.queues.Queue
-import com.revenge.music.utils.PlaybackLogLevel
-import com.revenge.music.utils.PlaybackLogManager
-import com.revenge.music.utils.dataStore
-import com.revenge.music.utils.reportException
+import com.revenge.playback.queues.Queue
+import com.revenge.core.utils.PlaybackLogLevel
+import com.revenge.core.utils.PlaybackLogManager
+import com.revenge.core.utils.dataStore
+import com.revenge.core.utils.reportException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -148,7 +148,7 @@ class PlayerConnection(
           } catch (_: Exception) {
             androidx.media3.common.C.TIME_UNSET
           }
-        com.revenge.music.playback.PlaybackCutoffGuard.computeEffectiveDuration(
+        com.revenge.playback.PlaybackCutoffGuard.computeEffectiveDuration(
           meta?.duration,
           playerDur,
         )

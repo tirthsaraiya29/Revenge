@@ -30,7 +30,7 @@ import coil3.request.crossfade
 import coil3.toBitmap
 import com.revenge.music.MainActivity
 import com.revenge.music.R
-import com.revenge.music.db.MusicDatabase
+import com.revenge.core.db.MusicDatabase
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton

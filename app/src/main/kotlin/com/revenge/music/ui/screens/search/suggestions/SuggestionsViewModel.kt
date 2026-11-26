@@ -9,7 +9,7 @@ import com.revenge.innertube.models.ArtistItem
 import com.revenge.innertube.models.SongItem
 import com.revenge.innertube.models.WatchEndpoint
 import com.revenge.music.playback.PlayerConnection
-import com.revenge.music.playback.queues.YouTubeQueue
+import com.revenge.playback.queues.YouTubeQueue
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers

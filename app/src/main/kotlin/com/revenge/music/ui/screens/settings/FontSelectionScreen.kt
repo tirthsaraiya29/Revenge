@@ -36,9 +36,9 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.revenge.music.LocalPlayerAwareWindowInsets
 import com.revenge.music.R
-import com.revenge.music.constants.AppFont
-import com.revenge.music.constants.CustomFontPathKey
-import com.revenge.music.constants.SelectedFontKey
+import com.revenge.core.constants.AppFont
+import com.revenge.core.constants.CustomFontPathKey
+import com.revenge.core.constants.SelectedFontKey
 import com.revenge.music.ui.component.IconButton
 import com.revenge.music.ui.component.Material3SettingsGroup
 import com.revenge.music.ui.component.Material3SettingsItem

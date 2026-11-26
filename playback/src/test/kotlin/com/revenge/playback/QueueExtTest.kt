@@ -2,14 +2,14 @@ package com.revenge.playback
 
 import androidx.media3.common.MediaItem
 import com.revenge.innertube.models.WatchEndpoint
-import com.revenge.music.db.entities.AlbumEntity
-import com.revenge.music.db.entities.AlbumWithSongs
-import com.revenge.music.extensions.toMediaItem
-import com.revenge.music.models.MediaMetadata
-import com.revenge.music.models.PersistPlayerState
-import com.revenge.music.models.PersistQueue
-import com.revenge.music.models.QueueData
-import com.revenge.music.models.QueueType
+import com.revenge.core.db.entities.AlbumEntity
+import com.revenge.core.db.entities.AlbumWithSongs
+import com.revenge.core.extensions.toMediaItem
+import com.revenge.core.models.MediaMetadata
+import com.revenge.core.models.PersistPlayerState
+import com.revenge.core.models.PersistQueue
+import com.revenge.core.models.QueueData
+import com.revenge.core.models.QueueType
 import com.revenge.playback.queues.EmptyQueue
 import com.revenge.playback.queues.ListQueue
 import com.revenge.playback.queues.LocalAlbumRadio

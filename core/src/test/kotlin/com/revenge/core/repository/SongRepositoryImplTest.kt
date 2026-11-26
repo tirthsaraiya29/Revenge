@@ -1,10 +1,10 @@
 package com.revenge.core.repository
 
 import androidx.room.Room
-import com.revenge.music.db.InternalDatabase
-import com.revenge.music.db.MusicDatabase
-import com.revenge.music.db.entities.Event
-import com.revenge.music.db.entities.SongEntity
+import com.revenge.core.db.InternalDatabase
+import com.revenge.core.db.MusicDatabase
+import com.revenge.core.db.entities.Event
+import com.revenge.core.db.entities.SongEntity
 import java.time.LocalDateTime
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors

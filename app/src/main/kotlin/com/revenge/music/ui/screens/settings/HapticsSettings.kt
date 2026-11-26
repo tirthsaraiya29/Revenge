@@ -33,12 +33,12 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.revenge.music.LocalPlayerAwareWindowInsets
 import com.revenge.music.R
-import com.revenge.music.constants.EnableClickHapticsKey
-import com.revenge.music.constants.EnableLongPressHapticsKey
-import com.revenge.music.constants.EnableScrollEdgeHapticsKey
-import com.revenge.music.constants.EnableSliderHapticsKey
-import com.revenge.music.constants.HapticIntensity
-import com.revenge.music.constants.HapticIntensityKey
+import com.revenge.core.constants.EnableClickHapticsKey
+import com.revenge.core.constants.EnableLongPressHapticsKey
+import com.revenge.core.constants.EnableScrollEdgeHapticsKey
+import com.revenge.core.constants.EnableSliderHapticsKey
+import com.revenge.core.constants.HapticIntensity
+import com.revenge.core.constants.HapticIntensityKey
 import com.revenge.music.ui.component.EnumDialog
 import com.revenge.music.ui.component.IconButton
 import com.revenge.music.ui.component.Material3SettingsGroup
@@ -58,7 +58,7 @@ fun HapticsSettings(
   val scrollState = rememberScrollState()
 
   val (enableHaptics, onEnableHapticsChange) =
-    rememberPreference(com.revenge.music.constants.EnableHapticsKey, defaultValue = false)
+    rememberPreference(com.revenge.core.constants.EnableHapticsKey, defaultValue = false)
   val (hapticIntensityName, onHapticIntensityChange) =
     rememberPreference(HapticIntensityKey, defaultValue = HapticIntensity.MEDIUM.name)
   val (enableClickHaptics, onEnableClickHapticsChange) =

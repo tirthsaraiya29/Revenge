@@ -67,12 +67,12 @@ import androidx.compose.ui.unit.dp
 import androidx.media3.exoplayer.offline.Download
 import coil3.compose.AsyncImage
 import com.revenge.music.R
-import com.revenge.music.lyrics.LyricsUtils.parseLyrics
+import com.revenge.lyrics.lyrics.LyricsUtils.parseLyrics
 import com.revenge.music.musicflow.MusicFlowItem
 import com.revenge.music.ui.component.shimmer.ShimmerHost
 import com.revenge.music.ui.component.shimmer.TextPlaceholder
 import com.revenge.music.ui.screens.ambient.AmbientCanvasBackground
-import com.revenge.music.ui.utils.resize
+import com.revenge.core.ui.utils.resize
 
 data class MusicFlowPageActions(
   val onTogglePlay: () -> Unit,

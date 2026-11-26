@@ -4,7 +4,7 @@ package com.revenge.music.viewmodels
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.revenge.music.db.MusicDatabase
+import com.revenge.core.db.MusicDatabase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.SharingStarted

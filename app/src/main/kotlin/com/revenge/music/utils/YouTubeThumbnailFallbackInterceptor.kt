@@ -4,7 +4,7 @@ import coil3.intercept.Interceptor
 import coil3.network.HttpException
 import coil3.request.ErrorResult
 import coil3.request.ImageResult
-import com.revenge.music.ui.utils.ytimgFallbackUrl
+import com.revenge.core.ui.utils.ytimgFallbackUrl
 
 /**
  * Retries a missing YouTube video thumbnail with the next larger variant that exists.

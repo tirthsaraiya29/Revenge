@@ -49,7 +49,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.revenge.music.R
-import com.revenge.music.ui.screens.OptionStats
+import com.revenge.core.ui.screens.OptionStats
 
 @Composable
 fun <E> ChipsRow(

@@ -3,7 +3,7 @@ package com.revenge.music.spotify
 import androidx.media3.common.MediaItem
 import com.revenge.innertube.models.Artist
 import com.revenge.innertube.models.SongItem
-import com.revenge.music.models.MediaMetadata
+import com.revenge.core.models.MediaMetadata
 import com.revenge.music.spotify.models.SpotifySimpleArtist
 import com.revenge.music.spotify.models.SpotifyTrack
 import kotlinx.coroutines.test.runTest

@@ -19,34 +19,34 @@ import com.revenge.innertube.pages.ExplorePage
 import com.revenge.innertube.pages.HomePage
 import com.revenge.innertube.utils.completed
 import com.revenge.music.R
-import com.revenge.music.constants.BlockedArtistsKey
-import com.revenge.music.constants.DislikedSongsKey
-import com.revenge.music.constants.HideExplicitKey
-import com.revenge.music.constants.HideVideoSongsKey
-import com.revenge.music.constants.HideYoutubeShortsKey
-import com.revenge.music.constants.InnerTubeCookieKey
-import com.revenge.music.constants.QuickPicks
-import com.revenge.music.constants.QuickPicksKey
-import com.revenge.music.constants.RecommendationSource
-import com.revenge.music.constants.RecommendationSourceKey
-import com.revenge.music.constants.ShowHomeCommunityKey
-import com.revenge.music.constants.ShowHomeHeroCarouselKey
-import com.revenge.music.constants.SongSortType
-import com.revenge.music.db.MusicDatabase
-import com.revenge.music.db.entities.Album
-import com.revenge.music.db.entities.LocalItem
-import com.revenge.music.db.entities.Song
-import com.revenge.music.db.entities.SpeedDialItem
-import com.revenge.music.extensions.filterVideoSongs
-import com.revenge.music.extensions.toEnum
-import com.revenge.music.models.SimilarRecommendation
+import com.revenge.core.constants.BlockedArtistsKey
+import com.revenge.core.constants.DislikedSongsKey
+import com.revenge.core.constants.HideExplicitKey
+import com.revenge.core.constants.HideVideoSongsKey
+import com.revenge.core.constants.HideYoutubeShortsKey
+import com.revenge.core.constants.InnerTubeCookieKey
+import com.revenge.core.constants.QuickPicks
+import com.revenge.core.constants.QuickPicksKey
+import com.revenge.core.constants.RecommendationSource
+import com.revenge.core.constants.RecommendationSourceKey
+import com.revenge.core.constants.ShowHomeCommunityKey
+import com.revenge.core.constants.ShowHomeHeroCarouselKey
+import com.revenge.core.constants.SongSortType
+import com.revenge.core.db.MusicDatabase
+import com.revenge.core.db.entities.Album
+import com.revenge.core.db.entities.LocalItem
+import com.revenge.core.db.entities.Song
+import com.revenge.core.db.entities.SpeedDialItem
+import com.revenge.core.extensions.filterVideoSongs
+import com.revenge.core.extensions.toEnum
+import com.revenge.core.models.SimilarRecommendation
 import com.revenge.music.spotify.LoadSpotifyRecommendationsUseCase
 import com.revenge.music.utils.PodcastProgress
 import com.revenge.music.utils.SyncUtils
-import com.revenge.music.utils.dataStore
+import com.revenge.core.utils.dataStore
 import com.revenge.music.utils.QuickPickSongs
-import com.revenge.music.utils.get
-import com.revenge.music.utils.reportException
+import com.revenge.core.utils.get
+import com.revenge.core.utils.reportException
 import com.revenge.music.utils.selectHeroCarouselSongs
 import com.revenge.music.utils.toCarouselSong
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -349,7 +349,7 @@ constructor(
   private fun isListenAgain(section: com.revenge.innertube.pages.HomePage.Section): Boolean {
     val label = section.label?.trim().orEmpty()
     if (label.isEmpty()) return false
-    val name = context.dataStore.get(com.revenge.music.constants.AccountNameKey, "").trim()
+    val name = context.dataStore.get(com.revenge.core.constants.AccountNameKey, "").trim()
     return name.isNotEmpty() && label.equals(name, ignoreCase = true)
   }
 

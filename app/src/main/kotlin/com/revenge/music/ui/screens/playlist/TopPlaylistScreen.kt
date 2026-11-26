@@ -85,12 +85,12 @@ import com.revenge.music.LocalDownloadUtil
 import com.revenge.music.LocalPlayerAwareWindowInsets
 import com.revenge.music.LocalPlayerConnection
 import com.revenge.music.R
-import com.revenge.music.constants.MyTopFilter
-import com.revenge.music.db.entities.Song
-import com.revenge.music.extensions.toMediaItem
+import com.revenge.core.constants.MyTopFilter
+import com.revenge.core.db.entities.Song
+import com.revenge.core.extensions.toMediaItem
 import com.revenge.music.playback.DownloadUtil
 import com.revenge.music.playback.ExoDownloadService
-import com.revenge.music.playback.queues.ListQueue
+import com.revenge.playback.queues.ListQueue
 import com.revenge.music.ui.component.DefaultDialog
 import com.revenge.music.ui.component.DraggableScrollbar
 import com.revenge.music.ui.component.EmptyPlaceholder

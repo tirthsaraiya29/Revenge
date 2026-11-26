@@ -15,9 +15,12 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 import org.junit.rules.TemporaryFolder
 import java.io.IOException
 
+@RunWith(RobolectricTestRunner::class)
 @UnstableApi
 class BeatAnalyzerContractTest {
 

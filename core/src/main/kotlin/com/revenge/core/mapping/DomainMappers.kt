@@ -4,10 +4,10 @@ import com.revenge.domain.models.AlbumRef
 import com.revenge.domain.models.ArtistRef
 import com.revenge.domain.models.Playlist as DomainPlaylist
 import com.revenge.domain.models.Song as DomainSong
-import com.revenge.music.db.entities.Playlist
-import com.revenge.music.db.entities.PlaylistEntity
-import com.revenge.music.db.entities.Song
-import com.revenge.music.db.entities.SongEntity
+import com.revenge.core.db.entities.Playlist
+import com.revenge.core.db.entities.PlaylistEntity
+import com.revenge.core.db.entities.Song
+import com.revenge.core.db.entities.SongEntity
 
 private const val LOCAL_ALBUM_PREFIX = "LOCAL_ALBUM_"
 private const val LOCAL_ALBUM_ART_URI = "content://media/external/audio/albumart/"

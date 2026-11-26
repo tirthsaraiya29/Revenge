@@ -27,8 +27,8 @@ import androidx.navigation.NavController
 import com.revenge.innertube.models.PlaylistItem
 import com.revenge.music.LocalPlayerAwareWindowInsets
 import com.revenge.music.R
-import com.revenge.music.constants.CONTENT_TYPE_HEADER
-import com.revenge.music.constants.CONTENT_TYPE_PLAYLIST
+import com.revenge.core.constants.CONTENT_TYPE_HEADER
+import com.revenge.core.constants.CONTENT_TYPE_PLAYLIST
 import com.revenge.music.ui.component.EmptyPlaceholder
 import com.revenge.music.ui.component.NavigationTitle
 import com.revenge.music.ui.component.YouTubeListItem

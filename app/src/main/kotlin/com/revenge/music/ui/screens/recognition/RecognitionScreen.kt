@@ -83,9 +83,9 @@ import com.revenge.music.LocalDatabase
 import com.revenge.music.LocalPlayerAwareWindowInsets
 import com.revenge.music.LocalPlayerConnection
 import com.revenge.music.R
-import com.revenge.music.db.entities.RecognitionHistory
-import com.revenge.music.models.toMediaMetadata
-import com.revenge.music.playback.queues.YouTubeQueue
+import com.revenge.core.db.entities.RecognitionHistory
+import com.revenge.core.models.toMediaMetadata
+import com.revenge.playback.queues.YouTubeQueue
 import com.revenge.music.ui.component.IconButton
 import com.revenge.shazamkit.models.RecognitionResult
 import com.revenge.shazamkit.models.RecognitionStatus

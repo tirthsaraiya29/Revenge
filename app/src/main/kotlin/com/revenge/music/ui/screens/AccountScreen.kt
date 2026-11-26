@@ -26,9 +26,9 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.revenge.music.LocalPlayerAwareWindowInsets
 import com.revenge.music.R
-import com.revenge.music.constants.GridItemSize
-import com.revenge.music.constants.GridItemsSizeKey
-import com.revenge.music.constants.GridThumbnailHeight
+import com.revenge.core.constants.GridItemSize
+import com.revenge.core.constants.GridItemsSizeKey
+import com.revenge.core.constants.GridThumbnailHeight
 import com.revenge.music.ui.component.ChipsRow
 import com.revenge.music.ui.component.IconButton
 import com.revenge.music.ui.component.LocalMenuState

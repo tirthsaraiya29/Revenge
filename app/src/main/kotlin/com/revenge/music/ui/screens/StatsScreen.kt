@@ -40,12 +40,12 @@ import com.revenge.innertube.models.WatchEndpoint
 import com.revenge.music.LocalPlayerAwareWindowInsets
 import com.revenge.music.LocalPlayerConnection
 import com.revenge.music.R
-import com.revenge.music.constants.RevengeWrappedBannerDismissedKey
+import com.revenge.core.constants.RevengeWrappedBannerDismissedKey
 import com.revenge.music.constants.StatPeriod
-import com.revenge.music.extensions.toMediaItem
-import com.revenge.music.models.toMediaMetadata
-import com.revenge.music.playback.queues.ListQueue
-import com.revenge.music.playback.queues.YouTubeQueue
+import com.revenge.core.extensions.toMediaItem
+import com.revenge.core.models.toMediaMetadata
+import com.revenge.playback.queues.ListQueue
+import com.revenge.playback.queues.YouTubeQueue
 import com.revenge.music.ui.component.ChoiceChipsRow
 import com.revenge.music.ui.component.HideOnScrollFAB
 import com.revenge.music.ui.component.IconButton

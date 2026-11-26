@@ -2,12 +2,12 @@ package com.revenge.music.cloud
 
 import android.content.Context
 import androidx.core.content.edit
-import com.revenge.music.db.MusicDatabase
-import com.revenge.music.db.entities.ArtistEntity
-import com.revenge.music.db.entities.PlaylistEntity
-import com.revenge.music.db.entities.PlaylistSongMap
-import com.revenge.music.db.entities.SongArtistMap
-import com.revenge.music.db.entities.SongEntity
+import com.revenge.core.db.MusicDatabase
+import com.revenge.core.db.entities.ArtistEntity
+import com.revenge.core.db.entities.PlaylistEntity
+import com.revenge.core.db.entities.PlaylistSongMap
+import com.revenge.core.db.entities.SongArtistMap
+import com.revenge.core.db.entities.SongEntity
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.time.LocalDateTime
 import javax.inject.Inject

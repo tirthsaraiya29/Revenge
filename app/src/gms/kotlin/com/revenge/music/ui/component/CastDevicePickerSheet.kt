@@ -23,7 +23,7 @@ import androidx.mediarouter.media.MediaControlIntent
 import androidx.mediarouter.media.MediaRouteSelector
 import androidx.mediarouter.media.MediaRouter
 import com.google.android.gms.cast.CastMediaControlIntent
-import com.revenge.music.playback.CastDeviceKind
+import com.revenge.core.playback.CastDeviceKind
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

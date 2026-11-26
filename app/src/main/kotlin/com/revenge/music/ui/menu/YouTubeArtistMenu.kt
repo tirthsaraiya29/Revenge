@@ -31,9 +31,9 @@ import com.revenge.music.LocalDatabase
 import com.revenge.music.LocalListenTogetherManager
 import com.revenge.music.LocalPlayerConnection
 import com.revenge.music.R
-import com.revenge.music.db.entities.ArtistEntity
-import com.revenge.music.db.entities.SpeedDialItem
-import com.revenge.music.playback.queues.YouTubeQueue
+import com.revenge.core.db.entities.ArtistEntity
+import com.revenge.core.db.entities.SpeedDialItem
+import com.revenge.playback.queues.YouTubeQueue
 import com.revenge.music.ui.component.Material3MenuGroup
 import com.revenge.music.ui.component.Material3MenuItemData
 import com.revenge.music.ui.component.NewAction

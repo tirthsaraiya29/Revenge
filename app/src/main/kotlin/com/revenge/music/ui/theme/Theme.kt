@@ -23,8 +23,8 @@ import com.materialkolor.PaletteStyle
 import com.materialkolor.dynamiccolor.ColorSpec
 import com.materialkolor.rememberDynamicColorScheme
 import com.materialkolor.score.Score
-import com.revenge.music.constants.AppFont
-import com.revenge.music.constants.SelectedFontKey
+import com.revenge.core.constants.AppFont
+import com.revenge.core.constants.SelectedFontKey
 import com.revenge.music.utils.rememberPreference
 
 /** Sentinel that asks the theme screen to follow the Android system palette. */
@@ -43,7 +43,7 @@ fun revengeTheme(
 ) {
   val context = LocalContext.current
   val selectedFontValue by rememberPreference(SelectedFontKey, AppFont.PLUS_JAKARTA_SANS.value)
-  val customFontPathValue by rememberPreference(com.revenge.music.constants.CustomFontPathKey, "")
+  val customFontPathValue by rememberPreference(com.revenge.core.constants.CustomFontPathKey, "")
 
   val brandFont =
     remember(selectedFontValue, customFontPathValue) {

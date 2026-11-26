@@ -2,12 +2,12 @@ package com.revenge.core.mapping
 
 import com.revenge.domain.models.AlbumRef
 import com.revenge.domain.models.ArtistRef
-import com.revenge.music.db.entities.AlbumEntity
-import com.revenge.music.db.entities.ArtistEntity
-import com.revenge.music.db.entities.Playlist
-import com.revenge.music.db.entities.PlaylistEntity
-import com.revenge.music.db.entities.Song
-import com.revenge.music.db.entities.SongEntity
+import com.revenge.core.db.entities.AlbumEntity
+import com.revenge.core.db.entities.ArtistEntity
+import com.revenge.core.db.entities.Playlist
+import com.revenge.core.db.entities.PlaylistEntity
+import com.revenge.core.db.entities.Song
+import com.revenge.core.db.entities.SongEntity
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue

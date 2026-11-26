@@ -1,7 +1,7 @@
 package com.revenge.music.di
 
 import android.content.Context
-import com.revenge.music.utils.NetworkConnectivityObserver
+import com.revenge.core.utils.NetworkConnectivityObserver
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn

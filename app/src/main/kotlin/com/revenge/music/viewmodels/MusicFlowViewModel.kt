@@ -4,12 +4,12 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.Player
-import com.revenge.music.db.MusicDatabase
-import com.revenge.music.db.entities.LyricsEntity
-import com.revenge.music.db.entities.RecommendationExclusionEntity
-import com.revenge.music.lyrics.LyricsHelper
-import com.revenge.music.models.MediaMetadata
-import com.revenge.music.models.toMediaMetadata
+import com.revenge.core.db.MusicDatabase
+import com.revenge.core.db.entities.LyricsEntity
+import com.revenge.core.db.entities.RecommendationExclusionEntity
+import com.revenge.lyrics.lyrics.LyricsHelper
+import com.revenge.core.models.MediaMetadata
+import com.revenge.core.models.toMediaMetadata
 import com.revenge.music.musicflow.MusicFlowCoordinator
 import com.revenge.music.musicflow.MusicFlowItem
 import com.revenge.music.musicflow.MusicFlowPlaybackStatus
@@ -21,7 +21,7 @@ import com.revenge.music.musicflow.PlayerConnectionMusicFlowPlayer
 import com.revenge.music.musicflow.toMusicFlowSongItem
 import com.revenge.music.musicflow.trackKeyOf
 import com.revenge.music.playback.PlayerConnection
-import com.revenge.music.utils.dataStore
+import com.revenge.core.utils.dataStore
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject

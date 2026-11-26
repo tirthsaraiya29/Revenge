@@ -1,12 +1,12 @@
 package com.revenge.core.repository
 
 import androidx.room.Room
-import com.revenge.music.db.InternalDatabase
-import com.revenge.music.db.MusicDatabase
-import com.revenge.music.db.entities.Event
-import com.revenge.music.db.entities.PlaylistEntity
-import com.revenge.music.db.entities.PlaylistSongMap
-import com.revenge.music.db.entities.SongEntity
+import com.revenge.core.db.InternalDatabase
+import com.revenge.core.db.MusicDatabase
+import com.revenge.core.db.entities.Event
+import com.revenge.core.db.entities.PlaylistEntity
+import com.revenge.core.db.entities.PlaylistSongMap
+import com.revenge.core.db.entities.SongEntity
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking

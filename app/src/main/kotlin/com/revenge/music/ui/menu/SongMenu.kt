@@ -65,22 +65,22 @@ import com.revenge.music.LocalListenTogetherManager
 import com.revenge.music.LocalPlayerConnection
 import com.revenge.music.LocalSyncUtils
 import com.revenge.music.R
-import com.revenge.music.constants.EnableExportAsMp3Key
-import com.revenge.music.constants.ExportDirectoryUriKey
-import com.revenge.music.constants.ExportedSongIdsKey
-import com.revenge.music.constants.ExportingSongIdsKey
-import com.revenge.music.constants.ListItemHeight
-import com.revenge.music.constants.ListThumbnailSize
-import com.revenge.music.db.entities.ArtistEntity
-import com.revenge.music.db.entities.Event
-import com.revenge.music.db.entities.PlaylistSong
-import com.revenge.music.db.entities.Song
-import com.revenge.music.db.entities.SpeedDialItem
-import com.revenge.music.extensions.toMediaItem
+import com.revenge.core.constants.EnableExportAsMp3Key
+import com.revenge.core.constants.ExportDirectoryUriKey
+import com.revenge.core.constants.ExportedSongIdsKey
+import com.revenge.core.constants.ExportingSongIdsKey
+import com.revenge.core.constants.ListItemHeight
+import com.revenge.core.constants.ListThumbnailSize
+import com.revenge.core.db.entities.ArtistEntity
+import com.revenge.core.db.entities.Event
+import com.revenge.core.db.entities.PlaylistSong
+import com.revenge.core.db.entities.Song
+import com.revenge.core.db.entities.SpeedDialItem
+import com.revenge.core.extensions.toMediaItem
 import com.revenge.music.generate.trackKeyOf
-import com.revenge.music.models.toMediaMetadata
+import com.revenge.core.models.toMediaMetadata
 import com.revenge.music.playback.ExoDownloadService
-import com.revenge.music.playback.queues.YouTubeQueue
+import com.revenge.playback.queues.YouTubeQueue
 import com.revenge.music.ui.component.HeartBurstIcon
 import com.revenge.music.ui.component.ListDialog
 import com.revenge.music.ui.component.LocalBottomSheetPageState
@@ -125,7 +125,7 @@ fun SongMenu(
   val (exportingSongIds) = rememberPreference(key = ExportingSongIdsKey, defaultValue = "")
   val (exportedSongIds) = rememberPreference(key = ExportedSongIdsKey, defaultValue = "")
   val (exportProgressRaw) =
-    rememberPreference(key = com.revenge.music.constants.ExportProgressKey, defaultValue = "")
+    rememberPreference(key = com.revenge.core.constants.ExportProgressKey, defaultValue = "")
 
   val isExporting =
     remember(exportingSongIds, song.id) { exportingSongIds.split(",").contains(song.id) }
@@ -664,7 +664,7 @@ fun SongMenu(
                       database.recommendationExclusionDao.delete(trackKey)
                     } else {
                       database.recommendationExclusionDao.upsert(
-                        com.revenge.music.db.entities.RecommendationExclusionEntity(
+                        com.revenge.core.db.entities.RecommendationExclusionEntity(
                           trackKey = trackKey,
                           excludedAtMillis = System.currentTimeMillis(),
                           trackName = song.song.title,

@@ -1,7 +1,7 @@
 package com.revenge.playback.queues
 
 import androidx.media3.common.MediaItem
-import com.revenge.music.models.MediaMetadata
+import com.revenge.core.models.MediaMetadata
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse

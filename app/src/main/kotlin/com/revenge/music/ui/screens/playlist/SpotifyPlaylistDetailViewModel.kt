@@ -4,13 +4,13 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.revenge.innertube.models.SongItem
-import com.revenge.music.models.toMediaMetadata
+import com.revenge.core.models.toMediaMetadata
 import com.revenge.music.spotify.Spotify
 import com.revenge.music.spotify.SpotifyPlaybackResolver
 import com.revenge.music.spotify.SpotifyQueue
 import com.revenge.music.spotify.models.SpotifyTrack
 import com.revenge.music.spotifyimport.SpotifyImportRepository
-import com.revenge.music.utils.reportException
+import com.revenge.core.utils.reportException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers

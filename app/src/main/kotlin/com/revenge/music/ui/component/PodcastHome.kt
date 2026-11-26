@@ -26,11 +26,11 @@ import coil3.compose.AsyncImage
 import com.revenge.innertube.models.SongItem
 import com.revenge.music.LocalPlayerConnection
 import com.revenge.music.R
-import com.revenge.music.constants.ThumbnailCornerRadius
-import com.revenge.music.db.entities.Playlist
-import com.revenge.music.extensions.toMediaItem
-import com.revenge.music.models.toMediaMetadata
-import com.revenge.music.playback.queues.ListQueue
+import com.revenge.core.constants.ThumbnailCornerRadius
+import com.revenge.core.db.entities.Playlist
+import com.revenge.core.extensions.toMediaItem
+import com.revenge.core.models.toMediaMetadata
+import com.revenge.playback.queues.ListQueue
 import com.revenge.music.utils.EpisodeProgress
 import com.revenge.music.utils.listItemShape
 

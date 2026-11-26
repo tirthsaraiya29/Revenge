@@ -30,7 +30,7 @@ import com.revenge.music.ui.theme.RevengeColor
 import com.revenge.music.ui.theme.RevengeRadius
 import com.revenge.music.ui.theme.RevengeSize
 import com.revenge.music.ui.theme.RevengeSpacing
-import com.revenge.music.ui.utils.resize
+import com.revenge.core.ui.utils.resize
 
 /** Compact tile for the shortcut grid at the top of Home: cover on the left, title on the right. */
 @Composable

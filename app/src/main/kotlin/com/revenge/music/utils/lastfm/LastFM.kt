@@ -1,8 +1,8 @@
 package com.revenge.music.utils.lastfm
 
-import com.revenge.music.models.lastfm.Authentication
-import com.revenge.music.models.lastfm.LastFmError
-import com.revenge.music.models.lastfm.TokenResponse
+import com.revenge.core.models.lastfm.Authentication
+import com.revenge.core.models.lastfm.LastFmError
+import com.revenge.core.models.lastfm.TokenResponse
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import java.net.HttpURLConnection

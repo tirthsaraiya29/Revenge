@@ -41,29 +41,29 @@ import com.revenge.innertube.pages.HomePage
 import com.revenge.innertube.pages.PlaylistPage
 import com.revenge.innertube.pages.PodcastPage
 import com.revenge.music.R
-import com.revenge.music.constants.AutoplayOnAutomotiveConnectKey
-import com.revenge.music.constants.DataSyncIdKey
-import com.revenge.music.constants.HideExplicitKey
-import com.revenge.music.constants.HideVideoSongsKey
-import com.revenge.music.constants.MediaSessionConstants
-import com.revenge.music.constants.PodcastHidePlayedKey
-import com.revenge.music.constants.SongSortType
-import com.revenge.music.db.MusicDatabase
-import com.revenge.music.db.entities.PlaylistEntity
-import com.revenge.music.db.entities.Song
-import com.revenge.music.extensions.toMediaItem
-import com.revenge.music.extensions.toggleRepeatMode
-import com.revenge.music.models.toMediaMetadata
-import com.revenge.music.playback.queues.Queue
-import com.revenge.music.playback.queues.YouTubeQueue
+import com.revenge.core.constants.AutoplayOnAutomotiveConnectKey
+import com.revenge.core.constants.DataSyncIdKey
+import com.revenge.core.constants.HideExplicitKey
+import com.revenge.core.constants.HideVideoSongsKey
+import com.revenge.core.constants.MediaSessionConstants
+import com.revenge.core.constants.PodcastHidePlayedKey
+import com.revenge.core.constants.SongSortType
+import com.revenge.core.db.MusicDatabase
+import com.revenge.core.db.entities.PlaylistEntity
+import com.revenge.core.db.entities.Song
+import com.revenge.core.extensions.toMediaItem
+import com.revenge.core.extensions.toggleRepeatMode
+import com.revenge.core.models.toMediaMetadata
+import com.revenge.playback.queues.Queue
+import com.revenge.playback.queues.YouTubeQueue
 import com.revenge.music.ui.component.toSongItem
 import com.revenge.music.utils.withAutomotiveArtworkUri
 import com.revenge.music.utils.EpisodeDates
 import com.revenge.music.utils.PodcastProgress
 import com.revenge.music.utils.PodcastShowStore
-import com.revenge.music.utils.dataStore
-import com.revenge.music.utils.get
-import com.revenge.music.utils.reportException
+import com.revenge.core.utils.dataStore
+import com.revenge.core.utils.get
+import com.revenge.core.utils.reportException
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.IOException
 import java.security.MessageDigest
@@ -703,7 +703,7 @@ constructor(
                       ?.filterVideoSongs(
                         context.dataStore.get(HideVideoSongsKey, false) ||
                           context.dataStore.get(
-                            com.revenge.music.constants.DataSaverEnabledKey,
+                            com.revenge.core.constants.DataSaverEnabledKey,
                             false,
                           ),
                       ) ?: emptyList()
@@ -872,7 +872,7 @@ constructor(
     filterExplicit(context.dataStore.get(HideExplicitKey, false))
       .filterVideoSongs(
         context.dataStore.get(HideVideoSongsKey, false) ||
-          context.dataStore.get(com.revenge.music.constants.DataSaverEnabledKey, false),
+          context.dataStore.get(com.revenge.core.constants.DataSaverEnabledKey, false),
       )
 
   /** [search] again when its first answer is empty: the first request after a start can be. */
@@ -961,7 +961,7 @@ constructor(
     val hideExplicit = context.dataStore.get(HideExplicitKey, false)
     val hideVideos =
       context.dataStore.get(HideVideoSongsKey, false) ||
-        context.dataStore.get(com.revenge.music.constants.DataSaverEnabledKey, false)
+        context.dataStore.get(com.revenge.core.constants.DataSaverEnabledKey, false)
     return database
       .allSongs()
       .first()
@@ -1859,7 +1859,7 @@ constructor(
           ?.filterExplicit(context.dataStore.get(HideExplicitKey, false))
           ?.filterVideoSongs(
             context.dataStore.get(HideVideoSongsKey, false) ||
-              context.dataStore.get(com.revenge.music.constants.DataSaverEnabledKey, false),
+              context.dataStore.get(com.revenge.core.constants.DataSaverEnabledKey, false),
           )
       home?.sections.orEmpty().flatMap { section ->
         val parentId = "${MusicService.HOME_SECTION}/${homeSectionKey(section)}"
@@ -1924,7 +1924,7 @@ constructor(
   private fun isListenAgain(section: HomePage.Section): Boolean {
     val label = section.label?.trim().orEmpty()
     if (label.isEmpty()) return false
-    val name = context.dataStore.get(com.revenge.music.constants.AccountNameKey, "").trim()
+    val name = context.dataStore.get(com.revenge.core.constants.AccountNameKey, "").trim()
     return name.isNotEmpty() && label.equals(name, ignoreCase = true)
   }
 
@@ -2199,7 +2199,7 @@ constructor(
           ?.filterExplicit(context.dataStore.get(HideExplicitKey, false))
           ?.filterVideoSongs(
             context.dataStore.get(HideVideoSongsKey, false) ||
-              context.dataStore.get(com.revenge.music.constants.DataSaverEnabledKey, false),
+              context.dataStore.get(com.revenge.core.constants.DataSaverEnabledKey, false),
           ) ?: return emptyList()
       home.sections.mapNotNull { section ->
         val artwork = sectionArtwork(section)
@@ -2245,7 +2245,7 @@ constructor(
       val hideExplicit = context.dataStore.get(HideExplicitKey, false)
       val hideVideos =
         context.dataStore.get(HideVideoSongsKey, false) ||
-          context.dataStore.get(com.revenge.music.constants.DataSaverEnabledKey, false)
+          context.dataStore.get(com.revenge.core.constants.DataSaverEnabledKey, false)
       // Filter video songs on the YTItem list (same predicate as elsewhere);
       // filtering MediaItems afterwards would be a no-op.
       section.items
@@ -2279,7 +2279,7 @@ constructor(
           ?.filterExplicit(context.dataStore.get(HideExplicitKey, false))
           ?.filterVideoSongs(
             context.dataStore.get(HideVideoSongsKey, false) ||
-              context.dataStore.get(com.revenge.music.constants.DataSaverEnabledKey, false),
+              context.dataStore.get(com.revenge.core.constants.DataSaverEnabledKey, false),
           ) ?: return emptyList()
       val songs = home.sections.flatMap { it.items }.filterIsInstance<SongItem>().take(50)
       songs.forEach { item ->
@@ -2511,7 +2511,7 @@ constructor(
       singleItemStyle = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_CATEGORY_LIST_ITEM,
     )
 
-  private fun com.revenge.music.db.entities.Playlist.toBrowsableMediaItem() =
+  private fun com.revenge.core.db.entities.Playlist.toBrowsableMediaItem() =
     browsableMediaItem(
       "${MusicService.PLAYLIST}/$id",
       playlist.name,

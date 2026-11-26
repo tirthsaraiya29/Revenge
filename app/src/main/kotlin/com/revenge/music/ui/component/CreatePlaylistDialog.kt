@@ -24,9 +24,9 @@ import androidx.compose.ui.unit.dp
 import com.revenge.innertube.YouTube
 import com.revenge.music.LocalDatabase
 import com.revenge.music.R
-import com.revenge.music.constants.InnerTubeCookieKey
-import com.revenge.music.db.entities.PlaylistEntity
-import com.revenge.music.extensions.isSyncEnabled
+import com.revenge.core.constants.InnerTubeCookieKey
+import com.revenge.core.db.entities.PlaylistEntity
+import com.revenge.core.extensions.isSyncEnabled
 import com.revenge.music.utils.rememberPreference
 import java.time.LocalDateTime
 import java.util.logging.Logger

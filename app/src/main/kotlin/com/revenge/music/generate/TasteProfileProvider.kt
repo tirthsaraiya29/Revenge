@@ -1,10 +1,10 @@
 package com.revenge.music.generate
 
 import android.content.Context
-import com.revenge.music.constants.LastFMUsernameKey
-import com.revenge.music.db.MusicDatabase
-import com.revenge.music.db.entities.TasteProfileEntity
-import com.revenge.music.utils.dataStore
+import com.revenge.core.constants.LastFMUsernameKey
+import com.revenge.core.db.MusicDatabase
+import com.revenge.core.db.entities.TasteProfileEntity
+import com.revenge.core.utils.dataStore
 import com.revenge.music.utils.lastfm.LastFmTasteApi
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject

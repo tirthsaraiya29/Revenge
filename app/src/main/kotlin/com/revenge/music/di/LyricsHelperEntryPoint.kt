@@ -1,6 +1,6 @@
 package com.revenge.music.di
 
-import com.revenge.music.lyrics.LyricsHelper
+import com.revenge.lyrics.lyrics.LyricsHelper
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent

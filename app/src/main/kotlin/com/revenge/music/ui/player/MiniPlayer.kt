@@ -106,20 +106,20 @@ import com.revenge.music.LocalDatabase
 import com.revenge.music.LocalListenTogetherManager
 import com.revenge.music.LocalPlayerConnection
 import com.revenge.music.R
-import com.revenge.music.constants.CropAlbumArtKey
-import com.revenge.music.constants.DarkModeKey
-import com.revenge.music.constants.MiniPlayerBackgroundStyleKey
-import com.revenge.music.constants.MiniPlayerHeight
-import com.revenge.music.constants.PlayerBackgroundStyle
-import com.revenge.music.constants.PureBlackKey
-import com.revenge.music.constants.PureBlackMiniPlayerKey
-import com.revenge.music.constants.SwipeSensitivityKey
-import com.revenge.music.constants.SwipeThumbnailKey
-import com.revenge.music.constants.ThumbnailCornerRadius
-import com.revenge.music.constants.UseFloatingNavBarKey
-import com.revenge.music.constants.UseNewMiniPlayerDesignKey
+import com.revenge.core.constants.CropAlbumArtKey
+import com.revenge.core.constants.DarkModeKey
+import com.revenge.core.constants.MiniPlayerBackgroundStyleKey
+import com.revenge.core.constants.MiniPlayerHeight
+import com.revenge.core.constants.PlayerBackgroundStyle
+import com.revenge.core.constants.PureBlackKey
+import com.revenge.core.constants.PureBlackMiniPlayerKey
+import com.revenge.core.constants.SwipeSensitivityKey
+import com.revenge.core.constants.SwipeThumbnailKey
+import com.revenge.core.constants.ThumbnailCornerRadius
+import com.revenge.core.constants.UseFloatingNavBarKey
+import com.revenge.core.constants.UseNewMiniPlayerDesignKey
 import com.revenge.music.listentogether.ListenTogetherManager
-import com.revenge.music.models.MediaMetadata
+import com.revenge.core.models.MediaMetadata
 import com.revenge.music.playback.CastConnectionHandler
 import com.revenge.music.playback.PlayerConnection
 import com.revenge.music.ui.component.GlassComponent
@@ -188,7 +188,7 @@ private fun NewMiniPlayer(progressState: ProgressState, modifier: Modifier = Mod
     )
 
   val pureBlackGlobalPref by
-    rememberPreference(com.revenge.music.constants.PureBlackKey, defaultValue = false)
+    rememberPreference(com.revenge.core.constants.PureBlackKey, defaultValue = false)
   val globalPureBlack = pureBlackGlobalPref && useDarkTheme
   val isFollowTheme = miniPlayerBackground == PlayerBackgroundStyle.DEFAULT
   val pureBlack = if (isFollowTheme) globalPureBlack else pureBlackMini

@@ -17,9 +17,12 @@ import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 import java.io.IOException
 import java.io.InterruptedIOException
 
+@RunWith(RobolectricTestRunner::class)
 @UnstableApi
 class ChunkingDataSourceTest {
 

@@ -35,8 +35,8 @@ import coil3.compose.AsyncImage
 import com.revenge.innertube.utils.parseCookieString
 import com.revenge.music.BuildConfig
 import com.revenge.music.R
-import com.revenge.music.constants.AccountEmailKey
-import com.revenge.music.constants.InnerTubeCookieKey
+import com.revenge.core.constants.AccountEmailKey
+import com.revenge.core.constants.InnerTubeCookieKey
 import com.revenge.music.ui.component.Material3SettingsGroup
 import com.revenge.music.ui.component.Material3SettingsItem
 import com.revenge.music.utils.rememberPreference

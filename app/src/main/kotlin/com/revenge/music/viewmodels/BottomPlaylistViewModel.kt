@@ -4,10 +4,10 @@ import android.content.Context
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.revenge.music.constants.HideVideoSongsKey
-import com.revenge.music.constants.MyTopFilter
-import com.revenge.music.db.MusicDatabase
-import com.revenge.music.utils.dataStore
+import com.revenge.core.constants.HideVideoSongsKey
+import com.revenge.core.constants.MyTopFilter
+import com.revenge.core.db.MusicDatabase
+import com.revenge.core.utils.dataStore
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject

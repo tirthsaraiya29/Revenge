@@ -37,7 +37,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.revenge.music.LocalPlayerAwareWindowInsets
 import com.revenge.music.R
-import com.revenge.music.db.entities.Song
+import com.revenge.core.db.entities.Song
 import com.revenge.music.ui.component.IconButton
 import com.revenge.music.ui.component.Material3SettingsGroup
 import com.revenge.music.ui.component.Material3SettingsItem

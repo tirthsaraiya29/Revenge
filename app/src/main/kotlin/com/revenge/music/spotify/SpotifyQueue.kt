@@ -2,9 +2,9 @@ package com.revenge.music.spotify
 
 import androidx.media3.common.MediaItem
 import com.revenge.innertube.models.SongItem
-import com.revenge.music.extensions.toMediaItem
-import com.revenge.music.models.MediaMetadata
-import com.revenge.music.playback.queues.Queue
+import com.revenge.core.extensions.toMediaItem
+import com.revenge.core.models.MediaMetadata
+import com.revenge.playback.queues.Queue
 import com.revenge.music.spotify.models.SpotifyTrack
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext

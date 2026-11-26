@@ -8,17 +8,17 @@ import androidx.media3.database.StandaloneDatabaseProvider
 import androidx.media3.datasource.cache.NoOpCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
 import androidx.room.Room
-import com.revenge.music.constants.MaxSongCacheSizeKey
-import com.revenge.music.db.InternalDatabase
-import com.revenge.music.db.MusicDatabase
+import com.revenge.core.constants.MaxSongCacheSizeKey
+import com.revenge.core.db.InternalDatabase
+import com.revenge.core.db.MusicDatabase
 import com.revenge.music.generate.GenerationStatus
 import com.revenge.music.generate.LocalTasteEngine
 import com.revenge.music.generate.RealGenerationStatus
 import com.revenge.music.generate.RecommendationEngine
 import com.revenge.music.listentogether.ListenTogetherClient
 import com.revenge.music.listentogether.ListenTogetherManager
-import com.revenge.music.utils.dataStore
-import com.revenge.music.utils.get
+import com.revenge.core.utils.dataStore
+import com.revenge.core.utils.get
 import com.revenge.music.utils.lastfm.LastFmTasteApi
 import com.revenge.music.utils.lastfm.RealLastFmTasteApi
 import dagger.Module
@@ -103,24 +103,24 @@ object AppModule {
   ): InternalDatabase =
     Room.databaseBuilder(context, InternalDatabase::class.java, InternalDatabase.DB_NAME)
       .addMigrations(
-        com.revenge.music.db.MIGRATION_1_2,
-        com.revenge.music.db.MIGRATION_21_24,
-        com.revenge.music.db.MIGRATION_22_24,
-        com.revenge.music.db.MIGRATION_24_25,
-        com.revenge.music.db.MIGRATION_27_28,
-        com.revenge.music.db.MIGRATION_28_29,
-        com.revenge.music.db.MIGRATION_29_30,
-        com.revenge.music.db.MIGRATION_31_32,
-        com.revenge.music.db.MIGRATION_36_37,
-        com.revenge.music.db.MIGRATION_37_38,
-        com.revenge.music.db.MIGRATION_38_39,
-        com.revenge.music.db.MIGRATION_39_40,
-        com.revenge.music.db.MIGRATION_40_41,
-        com.revenge.music.db.MIGRATION_41_42,
-        com.revenge.music.db.MIGRATION_42_43,
-        com.revenge.music.db.MIGRATION_43_44,
-        com.revenge.music.db.MIGRATION_44_45,
-        com.revenge.music.db.MIGRATION_45_46,
+        com.revenge.core.db.MIGRATION_1_2,
+        com.revenge.core.db.MIGRATION_21_24,
+        com.revenge.core.db.MIGRATION_22_24,
+        com.revenge.core.db.MIGRATION_24_25,
+        com.revenge.core.db.MIGRATION_27_28,
+        com.revenge.core.db.MIGRATION_28_29,
+        com.revenge.core.db.MIGRATION_29_30,
+        com.revenge.core.db.MIGRATION_31_32,
+        com.revenge.core.db.MIGRATION_36_37,
+        com.revenge.core.db.MIGRATION_37_38,
+        com.revenge.core.db.MIGRATION_38_39,
+        com.revenge.core.db.MIGRATION_39_40,
+        com.revenge.core.db.MIGRATION_40_41,
+        com.revenge.core.db.MIGRATION_41_42,
+        com.revenge.core.db.MIGRATION_42_43,
+        com.revenge.core.db.MIGRATION_43_44,
+        com.revenge.core.db.MIGRATION_44_45,
+        com.revenge.core.db.MIGRATION_45_46,
       )
       .setJournalMode(androidx.room.RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
       .setTransactionExecutor(java.util.concurrent.Executors.newFixedThreadPool(4))

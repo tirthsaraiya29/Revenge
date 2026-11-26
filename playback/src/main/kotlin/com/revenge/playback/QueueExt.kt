@@ -1,10 +1,10 @@
 package com.revenge.playback
 
-import com.revenge.music.models.MediaMetadata
-import com.revenge.music.extensions.toMediaItem
-import com.revenge.music.models.PersistQueue
-import com.revenge.music.models.QueueData
-import com.revenge.music.models.QueueType
+import com.revenge.core.models.MediaMetadata
+import com.revenge.core.extensions.toMediaItem
+import com.revenge.core.models.PersistQueue
+import com.revenge.core.models.QueueData
+import com.revenge.core.models.QueueType
 import com.revenge.playback.queues.ListQueue
 import com.revenge.playback.queues.LocalAlbumRadio
 import com.revenge.playback.queues.Queue

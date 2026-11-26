@@ -1,11 +1,11 @@
 package com.revenge.music.spotify
 
 import com.revenge.innertube.models.SongItem
-import com.revenge.music.db.MusicDatabase
-import com.revenge.music.db.entities.Artist
-import com.revenge.music.db.entities.ArtistEntity
-import com.revenge.music.db.entities.Song
-import com.revenge.music.models.SimilarRecommendation
+import com.revenge.core.db.MusicDatabase
+import com.revenge.core.db.entities.Artist
+import com.revenge.core.db.entities.ArtistEntity
+import com.revenge.core.db.entities.Song
+import com.revenge.core.models.SimilarRecommendation
 import com.revenge.music.spotifyimport.SpotifyImportRepository
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -59,7 +59,7 @@ constructor(
   }
 
   private data class Seed(
-    val local: com.revenge.music.db.entities.LocalItem,
+    val local: com.revenge.core.db.entities.LocalItem,
     val query: String,
     val spotifyId: String? = null,
   )

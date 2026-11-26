@@ -5,11 +5,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.revenge.innertube.YouTube
 import com.revenge.innertube.pages.HistoryPage
-import com.revenge.music.constants.HideVideoSongsKey
-import com.revenge.music.constants.HistorySource
-import com.revenge.music.db.MusicDatabase
-import com.revenge.music.utils.dataStore
-import com.revenge.music.utils.reportException
+import com.revenge.core.constants.HideVideoSongsKey
+import com.revenge.core.constants.HistorySource
+import com.revenge.core.db.MusicDatabase
+import com.revenge.core.utils.dataStore
+import com.revenge.core.utils.reportException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.time.DayOfWeek

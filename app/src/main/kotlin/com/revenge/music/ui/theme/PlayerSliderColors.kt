@@ -5,7 +5,7 @@ import androidx.compose.material3.SliderColors
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
-import com.revenge.music.constants.PlayerBackgroundStyle
+import com.revenge.core.constants.PlayerBackgroundStyle
 
 object PlayerSliderColors {
 

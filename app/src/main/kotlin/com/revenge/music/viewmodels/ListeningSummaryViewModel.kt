@@ -3,7 +3,7 @@ package com.revenge.music.viewmodels
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.revenge.music.db.MusicDatabase
+import com.revenge.core.db.MusicDatabase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.DayOfWeek
 import java.time.Instant

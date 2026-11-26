@@ -5,10 +5,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.revenge.innertube.YouTube
 import com.revenge.innertube.models.AlbumItem
-import com.revenge.music.db.MusicDatabase
+import com.revenge.core.db.MusicDatabase
 import com.revenge.music.utils.AppleMusicAboutAlbum
 import com.revenge.music.utils.Wikipedia
-import com.revenge.music.utils.reportException
+import com.revenge.core.utils.reportException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers

@@ -10,10 +10,10 @@ import com.google.android.gms.cast.framework.CastSession
 import com.google.android.gms.cast.framework.Session
 import com.google.android.gms.cast.framework.SessionManagerListener
 import com.google.android.gms.cast.framework.media.RemoteMediaClient
-import com.revenge.music.extensions.metadata
-import com.revenge.music.models.MediaMetadata as AppMediaMetadata
+import com.revenge.core.extensions.metadata
+import com.revenge.core.models.MediaMetadata as AppMediaMetadata
 import com.revenge.music.playback.MusicService
-import com.revenge.music.ui.utils.resize
+import com.revenge.core.ui.utils.resize
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay

@@ -1,7 +1,7 @@
 package com.revenge.music.generate
 
-import com.revenge.music.db.daos.SongPlayStatsDao
-import com.revenge.music.db.entities.SongPlayStatsEntity
+import com.revenge.core.db.daos.SongPlayStatsDao
+import com.revenge.core.db.entities.SongPlayStatsEntity
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CancellationException

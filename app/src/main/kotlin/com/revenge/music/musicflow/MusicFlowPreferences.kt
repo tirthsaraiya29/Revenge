@@ -1,15 +1,15 @@
 package com.revenge.music.musicflow
 
 import androidx.datastore.preferences.core.Preferences
-import com.revenge.music.constants.CanvasThumbnailAnimationKey
-import com.revenge.music.constants.DataSaverEnabledKey
-import com.revenge.music.constants.MusicFlowAnimatedBackgroundKey
-import com.revenge.music.constants.MusicFlowAutoNextKey
-import com.revenge.music.constants.MusicFlowAutoplayKey
-import com.revenge.music.constants.MusicFlowCellularPrefetchKey
-import com.revenge.music.constants.MusicFlowEnabledKey
-import com.revenge.music.constants.MusicFlowHideRecentKey
-import com.revenge.music.constants.MusicFlowLyricsKey
+import com.revenge.core.constants.CanvasThumbnailAnimationKey
+import com.revenge.core.constants.DataSaverEnabledKey
+import com.revenge.core.constants.MusicFlowAnimatedBackgroundKey
+import com.revenge.core.constants.MusicFlowAutoNextKey
+import com.revenge.core.constants.MusicFlowAutoplayKey
+import com.revenge.core.constants.MusicFlowCellularPrefetchKey
+import com.revenge.core.constants.MusicFlowEnabledKey
+import com.revenge.core.constants.MusicFlowHideRecentKey
+import com.revenge.core.constants.MusicFlowLyricsKey
 
 data class MusicFlowPreferences(
     val enabled: Boolean,

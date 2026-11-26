@@ -37,9 +37,9 @@ import coil3.compose.AsyncImage
 import com.revenge.innertube.models.WatchEndpoint
 import com.revenge.music.LocalPlayerConnection
 import com.revenge.music.R
-import com.revenge.music.db.entities.Song
-import com.revenge.music.models.toMediaMetadata
-import com.revenge.music.playback.queues.YouTubeQueue
+import com.revenge.core.db.entities.Song
+import com.revenge.core.models.toMediaMetadata
+import com.revenge.playback.queues.YouTubeQueue
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch

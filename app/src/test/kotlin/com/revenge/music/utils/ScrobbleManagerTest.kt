@@ -1,6 +1,6 @@
 package com.revenge.music.utils
 
-import com.revenge.music.models.MediaMetadata
+import com.revenge.core.models.MediaMetadata
 import com.revenge.music.utils.lastfm.LastFM
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceTimeBy

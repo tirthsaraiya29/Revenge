@@ -2,7 +2,7 @@ package com.revenge.music.generate
 
 import com.revenge.innertube.YouTube
 import com.revenge.innertube.models.SongItem
-import com.revenge.music.db.MusicDatabase
+import com.revenge.core.db.MusicDatabase
 import com.revenge.music.utils.lastfm.LastFmTasteApi
 import java.util.Calendar
 import javax.inject.Inject

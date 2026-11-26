@@ -1,6 +1,6 @@
 package com.revenge.music.generate
 
-import com.revenge.music.db.entities.SongPlayStatsEntity
+import com.revenge.core.db.entities.SongPlayStatsEntity
 import kotlin.math.ln
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse

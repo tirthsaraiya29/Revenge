@@ -36,9 +36,9 @@ import com.revenge.innertube.YouTube
 import com.revenge.innertube.utils.parseCookieString
 import com.revenge.music.LocalPlayerAwareWindowInsets
 import com.revenge.music.R
-import com.revenge.music.constants.*
-import com.revenge.music.constants.SavedAccountsKey
-import com.revenge.music.models.AccountData
+import com.revenge.core.constants.*
+import com.revenge.core.constants.SavedAccountsKey
+import com.revenge.core.models.AccountData
 import com.revenge.music.ui.component.*
 import com.revenge.music.ui.utils.backToMain
 import com.revenge.music.utils.rememberPreference

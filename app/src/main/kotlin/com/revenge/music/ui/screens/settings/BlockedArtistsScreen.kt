@@ -26,8 +26,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.datastore.preferences.core.edit
 import androidx.navigation.NavController
-import com.revenge.music.constants.BlockedArtistsKey
-import com.revenge.music.utils.dataStore
+import com.revenge.core.constants.BlockedArtistsKey
+import com.revenge.core.utils.dataStore
 import com.revenge.music.utils.rememberPreference
 import kotlinx.coroutines.launch
 

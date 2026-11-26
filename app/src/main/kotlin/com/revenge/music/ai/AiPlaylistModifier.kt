@@ -3,9 +3,9 @@ package com.revenge.music.ai
 import android.content.Context
 import com.revenge.innertube.YouTube
 import com.revenge.innertube.models.SongItem
-import com.revenge.music.db.MusicDatabase
-import com.revenge.music.db.entities.PlaylistSong
-import com.revenge.music.db.entities.PlaylistSongMap
+import com.revenge.core.db.MusicDatabase
+import com.revenge.core.db.entities.PlaylistSong
+import com.revenge.core.db.entities.PlaylistSongMap
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers

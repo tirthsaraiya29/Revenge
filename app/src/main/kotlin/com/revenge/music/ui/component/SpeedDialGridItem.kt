@@ -22,9 +22,9 @@ import com.revenge.innertube.models.YTItem
 import com.revenge.music.LocalDatabase
 import com.revenge.music.LocalPlayerConnection
 import com.revenge.music.R
-import com.revenge.music.constants.ThumbnailCornerRadius
-import com.revenge.music.playback.queues.LocalAlbumRadio
-import com.revenge.music.utils.reportException
+import com.revenge.core.constants.ThumbnailCornerRadius
+import com.revenge.playback.queues.LocalAlbumRadio
+import com.revenge.core.utils.reportException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch

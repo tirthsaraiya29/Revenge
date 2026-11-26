@@ -14,16 +14,16 @@ import com.revenge.innertube.models.filterExplicit
 import com.revenge.innertube.models.filterVideoSongs
 import com.revenge.innertube.models.filterYoutubeShorts
 import com.revenge.innertube.pages.ArtistPage
-import com.revenge.music.constants.HideExplicitKey
-import com.revenge.music.constants.HideVideoSongsKey
-import com.revenge.music.constants.HideYoutubeShortsKey
-import com.revenge.music.db.MusicDatabase
-import com.revenge.music.extensions.filterExplicit
-import com.revenge.music.extensions.filterExplicitAlbums
-import com.revenge.music.extensions.filterVideoSongs as filterVideoSongsLocal
-import com.revenge.music.utils.dataStore
-import com.revenge.music.utils.get
-import com.revenge.music.utils.reportException
+import com.revenge.core.constants.HideExplicitKey
+import com.revenge.core.constants.HideVideoSongsKey
+import com.revenge.core.constants.HideYoutubeShortsKey
+import com.revenge.core.db.MusicDatabase
+import com.revenge.core.extensions.filterExplicit
+import com.revenge.core.extensions.filterExplicitAlbums
+import com.revenge.core.extensions.filterVideoSongs as filterVideoSongsLocal
+import com.revenge.core.utils.dataStore
+import com.revenge.core.utils.get
+import com.revenge.core.utils.reportException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject

@@ -62,11 +62,11 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.revenge.music.LocalPlayerAwareWindowInsets
 import com.revenge.music.R
-import com.revenge.music.constants.ListenTogetherAutoApprovalKey
-import com.revenge.music.constants.ListenTogetherServerUrlKey
-import com.revenge.music.constants.ListenTogetherSmartResyncKey
-import com.revenge.music.constants.ListenTogetherSyncVolumeKey
-import com.revenge.music.constants.ListenTogetherUsernameKey
+import com.revenge.core.constants.ListenTogetherAutoApprovalKey
+import com.revenge.core.constants.ListenTogetherServerUrlKey
+import com.revenge.core.constants.ListenTogetherSmartResyncKey
+import com.revenge.core.constants.ListenTogetherSyncVolumeKey
+import com.revenge.core.constants.ListenTogetherUsernameKey
 import com.revenge.music.listentogether.ListenTogetherEvent
 import com.revenge.music.listentogether.ListenTogetherServer
 import com.revenge.music.listentogether.ListenTogetherServers

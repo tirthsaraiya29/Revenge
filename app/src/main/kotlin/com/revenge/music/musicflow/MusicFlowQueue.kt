@@ -1,9 +1,9 @@
 package com.revenge.music.musicflow
 
 import androidx.media3.common.MediaItem
-import com.revenge.music.extensions.toMediaItem
-import com.revenge.music.models.MediaMetadata
-import com.revenge.music.playback.queues.Queue
+import com.revenge.core.extensions.toMediaItem
+import com.revenge.core.models.MediaMetadata
+import com.revenge.playback.queues.Queue
 
 /** Marker for queues owned by the Music Flow subsystem. */
 interface MusicFlowOwnedQueue : Queue

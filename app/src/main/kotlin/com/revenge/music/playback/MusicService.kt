@@ -77,100 +77,100 @@ import com.revenge.innertube.models.response.PlayerResponse
 import com.revenge.innertube.pages.PodcastPage
 import com.revenge.music.MainActivity
 import com.revenge.music.R
-import com.revenge.music.constants.AudioNormalizationKey
-import com.revenge.music.constants.AudioOffload
-import com.revenge.music.constants.AudioQuality
-import com.revenge.music.constants.AutoDownloadOnLikeKey
-import com.revenge.music.constants.AutoLoadMoreKey
-import com.revenge.music.constants.AutoSkipNextOnErrorKey
-import com.revenge.music.constants.AutomixCrossfadeKey
-import com.revenge.music.constants.CrossfadeDurationKey
-import com.revenge.music.constants.CrossfadeEnabledKey
-import com.revenge.music.constants.CrossfadeGaplessKey
-import com.revenge.music.constants.DisableLoadMoreWhenRepeatAllKey
-import com.revenge.music.constants.EnableBitPerfectUsbDacKey
-import com.revenge.music.constants.EnableLastFMScrobblingKey
-import com.revenge.music.constants.ForceOpusKey
-import com.revenge.music.constants.HideExplicitKey
-import com.revenge.music.constants.HideVideoSongsKey
-import com.revenge.music.constants.HistoryDuration
-import com.revenge.music.constants.IpVersionKey
-import com.revenge.music.constants.LastFMSessionKey
-import com.revenge.music.constants.LastFMUseNowPlaying
-import com.revenge.music.constants.LastFMUseSendLikes
-import com.revenge.music.constants.MediaSessionConstants
-import com.revenge.music.constants.MediaSessionConstants.CommandToggleLike
-import com.revenge.music.constants.MediaSessionConstants.CommandToggleRepeatMode
-import com.revenge.music.constants.MediaSessionConstants.CommandToggleShuffle
-import com.revenge.music.constants.MediaSessionConstants.CommandToggleStartRadio
-import com.revenge.music.constants.PauseListenHistoryKey
-import com.revenge.music.constants.PauseOnMute
-import com.revenge.music.constants.PersistentQueueKey
-import com.revenge.music.constants.PersistentShuffleAcrossQueuesKey
-import com.revenge.music.constants.PlayerVolumeKey
-import com.revenge.music.constants.PreferExtensionAudioKey
-import com.revenge.music.constants.PreferredAudioAddonIdKey
-import com.revenge.music.constants.PreloadLyricsEnabledKey
-import com.revenge.music.constants.PreloadNextSongEnabledKey
-import com.revenge.music.constants.PreloadNextSongLimitKey
-import com.revenge.music.constants.PreventDuplicateTracksInQueueKey
-import com.revenge.music.constants.RememberShuffleAndRepeatKey
-import com.revenge.music.constants.RepeatModeKey
-import com.revenge.music.constants.ResumeOnBluetoothConnectKey
-import com.revenge.music.constants.ShowLyricsKey
-import com.revenge.music.constants.ShuffleModeKey
-import com.revenge.music.constants.ShufflePlaylistFirstKey
-import com.revenge.music.constants.SimilarContent
-import com.revenge.music.constants.SkipSilenceInstantKey
-import com.revenge.music.constants.SkipSilenceKey
-import com.revenge.music.constants.SpatialAudioKey
-import com.revenge.music.constants.StopMusicOnTaskClearKey
-import com.revenge.music.db.MusicDatabase
-import com.revenge.music.db.entities.BeatInfoEntity
-import com.revenge.music.db.entities.Event
-import com.revenge.music.db.entities.FormatEntity
-import com.revenge.music.db.entities.LyricsEntity
-import com.revenge.music.db.entities.RelatedSongMap
-import com.revenge.music.db.entities.Song
-import com.revenge.music.di.DownloadCache
-import com.revenge.music.di.PlayerCache
-import com.revenge.music.extensions.SilentHandler
-import com.revenge.music.extensions.collect
-import com.revenge.music.extensions.collectLatest
-import com.revenge.music.extensions.currentMetadata
-import com.revenge.music.extensions.findNextMediaItemById
-import com.revenge.music.extensions.mediaItems
-import com.revenge.music.extensions.metadata
-import com.revenge.music.extensions.setOffloadEnabled
-import com.revenge.music.extensions.toEnum
-import com.revenge.music.extensions.toMediaItem
+import com.revenge.core.constants.AudioNormalizationKey
+import com.revenge.core.constants.AudioOffload
+import com.revenge.core.constants.AudioQuality
+import com.revenge.core.constants.AutoDownloadOnLikeKey
+import com.revenge.core.constants.AutoLoadMoreKey
+import com.revenge.core.constants.AutoSkipNextOnErrorKey
+import com.revenge.core.constants.AutomixCrossfadeKey
+import com.revenge.core.constants.CrossfadeDurationKey
+import com.revenge.core.constants.CrossfadeEnabledKey
+import com.revenge.core.constants.CrossfadeGaplessKey
+import com.revenge.core.constants.DisableLoadMoreWhenRepeatAllKey
+import com.revenge.core.constants.EnableBitPerfectUsbDacKey
+import com.revenge.core.constants.EnableLastFMScrobblingKey
+import com.revenge.core.constants.ForceOpusKey
+import com.revenge.core.constants.HideExplicitKey
+import com.revenge.core.constants.HideVideoSongsKey
+import com.revenge.core.constants.HistoryDuration
+import com.revenge.core.constants.IpVersionKey
+import com.revenge.core.constants.LastFMSessionKey
+import com.revenge.core.constants.LastFMUseNowPlaying
+import com.revenge.core.constants.LastFMUseSendLikes
+import com.revenge.core.constants.MediaSessionConstants
+import com.revenge.core.constants.MediaSessionConstants.CommandToggleLike
+import com.revenge.core.constants.MediaSessionConstants.CommandToggleRepeatMode
+import com.revenge.core.constants.MediaSessionConstants.CommandToggleShuffle
+import com.revenge.core.constants.MediaSessionConstants.CommandToggleStartRadio
+import com.revenge.core.constants.PauseListenHistoryKey
+import com.revenge.core.constants.PauseOnMute
+import com.revenge.core.constants.PersistentQueueKey
+import com.revenge.core.constants.PersistentShuffleAcrossQueuesKey
+import com.revenge.core.constants.PlayerVolumeKey
+import com.revenge.core.constants.PreferExtensionAudioKey
+import com.revenge.core.constants.PreferredAudioAddonIdKey
+import com.revenge.core.constants.PreloadLyricsEnabledKey
+import com.revenge.core.constants.PreloadNextSongEnabledKey
+import com.revenge.core.constants.PreloadNextSongLimitKey
+import com.revenge.core.constants.PreventDuplicateTracksInQueueKey
+import com.revenge.core.constants.RememberShuffleAndRepeatKey
+import com.revenge.core.constants.RepeatModeKey
+import com.revenge.core.constants.ResumeOnBluetoothConnectKey
+import com.revenge.core.constants.ShowLyricsKey
+import com.revenge.core.constants.ShuffleModeKey
+import com.revenge.core.constants.ShufflePlaylistFirstKey
+import com.revenge.core.constants.SimilarContent
+import com.revenge.core.constants.SkipSilenceInstantKey
+import com.revenge.core.constants.SkipSilenceKey
+import com.revenge.core.constants.SpatialAudioKey
+import com.revenge.core.constants.StopMusicOnTaskClearKey
+import com.revenge.core.db.MusicDatabase
+import com.revenge.core.db.entities.BeatInfoEntity
+import com.revenge.core.db.entities.Event
+import com.revenge.core.db.entities.FormatEntity
+import com.revenge.core.db.entities.LyricsEntity
+import com.revenge.core.db.entities.RelatedSongMap
+import com.revenge.core.db.entities.Song
+import com.revenge.core.di.DownloadCache
+import com.revenge.core.di.PlayerCache
+import com.revenge.core.extensions.SilentHandler
+import com.revenge.core.extensions.collect
+import com.revenge.core.extensions.collectLatest
+import com.revenge.core.extensions.currentMetadata
+import com.revenge.core.extensions.findNextMediaItemById
+import com.revenge.core.extensions.mediaItems
+import com.revenge.core.extensions.metadata
+import com.revenge.core.extensions.setOffloadEnabled
+import com.revenge.core.extensions.toEnum
+import com.revenge.core.extensions.toMediaItem
 import com.revenge.music.generate.SongPlayStatsRepository
-import com.revenge.music.lyrics.LyricsHelper
-import com.revenge.music.models.PersistPlayerState
-import com.revenge.music.models.PersistQueue
-import com.revenge.music.models.toMediaMetadata
+import com.revenge.lyrics.lyrics.LyricsHelper
+import com.revenge.core.models.PersistPlayerState
+import com.revenge.core.models.PersistQueue
+import com.revenge.core.models.toMediaMetadata
 import com.revenge.music.musicflow.MusicFlowQueue
-import com.revenge.music.playback.audio.BeatAnalyzer
-import com.revenge.music.playback.audio.SilenceDetectorAudioProcessor
-import com.revenge.music.playback.queues.EmptyQueue
-import com.revenge.music.playback.queues.ListQueue
-import com.revenge.music.playback.queues.Queue
-import com.revenge.music.playback.queues.YouTubePlaylistQueue
-import com.revenge.music.playback.queues.YouTubeQueue
-import com.revenge.music.playback.queues.filterExplicit
-import com.revenge.music.playback.queues.filterVideoSongs
+import com.revenge.playback.audio.BeatAnalyzer
+import com.revenge.playback.audio.SilenceDetectorAudioProcessor
+import com.revenge.playback.queues.EmptyQueue
+import com.revenge.playback.queues.ListQueue
+import com.revenge.playback.queues.Queue
+import com.revenge.playback.queues.YouTubePlaylistQueue
+import com.revenge.playback.queues.YouTubeQueue
+import com.revenge.playback.queues.filterExplicit
+import com.revenge.playback.queues.filterVideoSongs
 import com.revenge.music.spotify.SpotifyQueue
 import com.revenge.music.updates.updater.downloadmanager.RevengeNotificationProvider
 import com.revenge.music.utils.CoilBitmapLoader
-import com.revenge.music.utils.NetworkConnectivityObserver
+import com.revenge.core.utils.NetworkConnectivityObserver
 import com.revenge.music.utils.PodcastProgress
 import com.revenge.music.utils.ScrobbleManager
 import com.revenge.music.utils.YTPlayerUtils
 import com.revenge.music.utils.YTPlayerUtils.PlaybackData
-import com.revenge.music.utils.dataStore
-import com.revenge.music.utils.get
+import com.revenge.core.utils.dataStore
+import com.revenge.core.utils.get
 import com.revenge.music.utils.isLocalMediaId
-import com.revenge.music.utils.reportException
+import com.revenge.core.utils.reportException
 import com.revenge.music.widget.MusicWidgetReceiver
 import com.revenge.music.widget.RevengeWidgetManager
 import com.revenge.music.widget.WidgetQueueItem
@@ -232,7 +232,7 @@ class MusicService : MediaLibraryService(), Player.Listener, PlaybackStatsListen
   @Inject lateinit var database: MusicDatabase
   @Inject lateinit var extensionManager: com.revenge.music.extensions.ExtensionManager
 
-  @Inject lateinit var lyricsHelper: com.revenge.music.lyrics.LyricsHelper
+  @Inject lateinit var lyricsHelper: com.revenge.lyrics.lyrics.LyricsHelper
 
   @Inject lateinit var syncUtils: com.revenge.music.utils.SyncUtils
 
@@ -296,7 +296,7 @@ class MusicService : MediaLibraryService(), Player.Listener, PlaybackStatsListen
   private var crossfadeGapless = true
   private var crossfadeTriggerJob: Job? = null
   private val preArmManager by lazy {
-    com.revenge.music.playback.crossfade.AdaptivePreArmManager()
+    com.revenge.playback.crossfade.AdaptivePreArmManager()
   }
 
   private var automixEnabled = false
@@ -395,25 +395,25 @@ class MusicService : MediaLibraryService(), Player.Listener, PlaybackStatsListen
   val waitingForNetworkConnection = MutableStateFlow(false)
   private val isNetworkConnected = MutableStateFlow(false)
 
-  private lateinit var audioQuality: com.revenge.music.constants.AudioQuality
+  private lateinit var audioQuality: com.revenge.core.constants.AudioQuality
   private lateinit var ipVersion: IpVersion
 
-  fun getEffectiveAudioQuality(): com.revenge.music.constants.AudioQuality {
+  fun getEffectiveAudioQuality(): com.revenge.core.constants.AudioQuality {
     val dataSaver = runCatching {
-      dataStore.get(com.revenge.music.constants.DataSaverEnabledKey, false)
+      dataStore.get(com.revenge.core.constants.DataSaverEnabledKey, false)
     }
       .getOrDefault(false)
-    if (dataSaver) return com.revenge.music.constants.AudioQuality.LOW
+    if (dataSaver) return com.revenge.core.constants.AudioQuality.LOW
 
     val isMetered = runCatching { connectivityManager.isActiveNetworkMetered }.getOrDefault(false)
     val wifiQuality =
       dataStore
-        .get(com.revenge.music.constants.AudioQualityWifiKey)
-        .toEnum(com.revenge.music.constants.AudioQuality.LOSSLESS)
+        .get(com.revenge.core.constants.AudioQualityWifiKey)
+        .toEnum(com.revenge.core.constants.AudioQuality.LOSSLESS)
     val cellularQuality =
       dataStore
-        .get(com.revenge.music.constants.AudioQualityCellularKey)
-        .toEnum(com.revenge.music.constants.AudioQuality.MEDIUM)
+        .get(com.revenge.core.constants.AudioQualityCellularKey)
+        .toEnum(com.revenge.core.constants.AudioQuality.MEDIUM)
 
     return if (isMetered) cellularQuality else wifiQuality
   }
@@ -448,7 +448,7 @@ class MusicService : MediaLibraryService(), Player.Listener, PlaybackStatsListen
       else android.os.Handler(player.applicationLooper).post(update)
     }
 
-  val currentMediaMetadata = MutableStateFlow<com.revenge.music.models.MediaMetadata?>(null)
+  val currentMediaMetadata = MutableStateFlow<com.revenge.core.models.MediaMetadata?>(null)
   private val currentSong =
     currentMediaMetadata
       .flatMapLatest { mediaMetadata -> database.song(mediaMetadata?.id) }
@@ -640,21 +640,21 @@ class MusicService : MediaLibraryService(), Player.Listener, PlaybackStatsListen
     }
   }
 
-  private fun losslessFitsNetwork(quality: com.revenge.music.constants.AudioQuality): Boolean {
-    if (quality == com.revenge.music.constants.AudioQuality.LOSSLESS) return true
+  private fun losslessFitsNetwork(quality: com.revenge.core.constants.AudioQuality): Boolean {
+    if (quality == com.revenge.core.constants.AudioQuality.LOSSLESS) return true
     if (System.currentTimeMillis() - lastAddonStallAtMs < ADDON_STALL_COOLDOWN_MS) return false
     return bandwidthMeter.bitrateEstimate >= LOSSLESS_MIN_BITRATE
   }
 
   /** YouTube's quality for [quality] on the current connection: "Auto" drops on a slow one. */
   private fun youtubeQualityFor(
-    quality: com.revenge.music.constants.AudioQuality,
-  ): com.revenge.music.constants.AudioQuality =
+    quality: com.revenge.core.constants.AudioQuality,
+  ): com.revenge.core.constants.AudioQuality =
     if (
-      quality == com.revenge.music.constants.AudioQuality.AUTO &&
+      quality == com.revenge.core.constants.AudioQuality.AUTO &&
         bandwidthMeter.bitrateEstimate < YOUTUBE_HIGH_MIN_BITRATE
     ) {
-      com.revenge.music.constants.AudioQuality.LOW
+      com.revenge.core.constants.AudioQuality.LOW
     } else {
       quality
     }
@@ -949,8 +949,8 @@ class MusicService : MediaLibraryService(), Player.Listener, PlaybackStatsListen
     scope.launch {
       dataStore.data
         .map {
-          val listenBrainz = it[com.revenge.music.constants.ListenBrainzEnabledKey] ?: false
-          val dataSaver = it[com.revenge.music.constants.DataSaverEnabledKey] ?: false
+          val listenBrainz = it[com.revenge.core.constants.ListenBrainzEnabledKey] ?: false
+          val dataSaver = it[com.revenge.core.constants.DataSaverEnabledKey] ?: false
           if (dataSaver) false else listenBrainz
         }
         .distinctUntilChanged()
@@ -959,7 +959,7 @@ class MusicService : MediaLibraryService(), Player.Listener, PlaybackStatsListen
 
     scope.launch {
       dataStore.data
-        .map { it[com.revenge.music.constants.ListenBrainzTokenKey] ?: "" }
+        .map { it[com.revenge.core.constants.ListenBrainzTokenKey] ?: "" }
         .distinctUntilChanged()
         .collect { listenBrainzToken = it }
     }
@@ -1107,7 +1107,7 @@ class MusicService : MediaLibraryService(), Player.Listener, PlaybackStatsListen
               } catch (e: Exception) {
                 null
               }) ?: false
-            val dataSaver = it[com.revenge.music.constants.DataSaverEnabledKey] ?: false
+            val dataSaver = it[com.revenge.core.constants.DataSaverEnabledKey] ?: false
             if (dataSaver) false else showLyrics
           }
           .distinctUntilChanged(),
@@ -1137,7 +1137,7 @@ class MusicService : MediaLibraryService(), Player.Listener, PlaybackStatsListen
       .distinctUntilChangedBy { it?.id }
       .flatMapLatest { metadata ->
         if (metadata == null) {
-          flowOf<Pair<com.revenge.music.models.MediaMetadata?, String?>>(null to null)
+          flowOf<Pair<com.revenge.core.models.MediaMetadata?, String?>>(null to null)
         } else {
           database.lyrics(metadata.id).map { metadata to it?.lyrics }.distinctUntilChanged()
         }
@@ -1223,7 +1223,7 @@ class MusicService : MediaLibraryService(), Player.Listener, PlaybackStatsListen
         dataStore.data
           .map {
             (try {
-              it[com.revenge.music.constants.AudioLoudnessPresetKey]
+              it[com.revenge.core.constants.AudioLoudnessPresetKey]
             } catch (e: Exception) {
               null
             })
@@ -1351,7 +1351,7 @@ class MusicService : MediaLibraryService(), Player.Listener, PlaybackStatsListen
           } catch (e: Exception) {
             null
           }) ?: true
-        val dataSaver = it[com.revenge.music.constants.DataSaverEnabledKey] ?: false
+        val dataSaver = it[com.revenge.core.constants.DataSaverEnabledKey] ?: false
         if (dataSaver) false else preload
       }
       .distinctUntilChanged()
@@ -2388,7 +2388,7 @@ class MusicService : MediaLibraryService(), Player.Listener, PlaybackStatsListen
           .filterExplicit(dataStore.get(HideExplicitKey, false))
           .filterVideoSongs(
             dataStore.get(HideVideoSongsKey, false) ||
-              dataStore.get(com.revenge.music.constants.DataSaverEnabledKey, false),
+              dataStore.get(com.revenge.core.constants.DataSaverEnabledKey, false),
           )
       }
     if (queue.preloadItem != null && player.playbackState == STATE_IDLE) return
@@ -2488,7 +2488,7 @@ class MusicService : MediaLibraryService(), Player.Listener, PlaybackStatsListen
               .filterExplicit(dataStore.get(HideExplicitKey, false))
               .filterVideoSongs(
                 dataStore.get(HideVideoSongsKey, false) ||
-                  dataStore.get(com.revenge.music.constants.DataSaverEnabledKey, false),
+                  dataStore.get(com.revenge.core.constants.DataSaverEnabledKey, false),
               )
           }
 
@@ -2542,7 +2542,7 @@ class MusicService : MediaLibraryService(), Player.Listener, PlaybackStatsListen
                   .filterExplicit(dataStore.get(HideExplicitKey, false))
                   .filterVideoSongs(
                     dataStore.get(HideVideoSongsKey, false) ||
-                      dataStore.get(com.revenge.music.constants.DataSaverEnabledKey, false),
+                      dataStore.get(com.revenge.core.constants.DataSaverEnabledKey, false),
                   )
 
               if (radioItems.isNotEmpty()) {
@@ -2989,7 +2989,7 @@ class MusicService : MediaLibraryService(), Player.Listener, PlaybackStatsListen
     scope.launch { toggleLike(database.song(songId).first()) }
   }
 
-  private suspend fun toggleLike(songToToggle: com.revenge.music.db.entities.Song?) {
+  private suspend fun toggleLike(songToToggle: com.revenge.core.db.entities.Song?) {
     songToToggle?.let {
       val song = it.song.toggleLike()
       database.query {
@@ -3051,11 +3051,11 @@ class MusicService : MediaLibraryService(), Player.Listener, PlaybackStatsListen
             dataStore.data
               .map {
                 (try {
-                    it[com.revenge.music.constants.AudioLoudnessPresetKey]
+                    it[com.revenge.core.constants.AudioLoudnessPresetKey]
                   } catch (e: Exception) {
                     null
                   })
-                  .toEnum(com.revenge.music.constants.AudioLoudnessPreset.NORMAL)
+                  .toEnum(com.revenge.core.constants.AudioLoudnessPreset.NORMAL)
               }
               .first()
           }
@@ -3297,7 +3297,7 @@ class MusicService : MediaLibraryService(), Player.Listener, PlaybackStatsListen
                 .filterExplicit(dataStore.get(HideExplicitKey, false))
                 .filterVideoSongs(
                   dataStore.get(HideVideoSongsKey, false) ||
-                    dataStore.get(com.revenge.music.constants.DataSaverEnabledKey, false),
+                    dataStore.get(com.revenge.core.constants.DataSaverEnabledKey, false),
                 )
             }
           if (
@@ -3417,7 +3417,7 @@ class MusicService : MediaLibraryService(), Player.Listener, PlaybackStatsListen
               .filterExplicit(dataStore.get(HideExplicitKey, false))
               .filterVideoSongs(
                 dataStore.get(HideVideoSongsKey, false) ||
-                  dataStore.get(com.revenge.music.constants.DataSaverEnabledKey, false),
+                  dataStore.get(com.revenge.core.constants.DataSaverEnabledKey, false),
               )
               .items
           }
@@ -4449,7 +4449,7 @@ class MusicService : MediaLibraryService(), Player.Listener, PlaybackStatsListen
       }
         .getOrDefault(true)
       val isDataSaver = runCatching {
-        dataStore.get(com.revenge.music.constants.DataSaverEnabledKey, false)
+        dataStore.get(com.revenge.core.constants.DataSaverEnabledKey, false)
       }
         .getOrDefault(false)
       val canUseAddon =
@@ -5130,7 +5130,7 @@ class MusicService : MediaLibraryService(), Player.Listener, PlaybackStatsListen
     }
     if (
       !shouldStopPlaybackOnTaskRemoval(
-        dataStore.get(com.revenge.music.constants.StopMusicOnTaskClearKey, false),
+        dataStore.get(com.revenge.core.constants.StopMusicOnTaskClearKey, false),
         player.playWhenReady,
         player.playbackState,
       )
@@ -5340,7 +5340,7 @@ class MusicService : MediaLibraryService(), Player.Listener, PlaybackStatsListen
         }
           .getOrDefault(true)
         val isDataSaver = runCatching {
-          dataStore.get(com.revenge.music.constants.DataSaverEnabledKey, false)
+          dataStore.get(com.revenge.core.constants.DataSaverEnabledKey, false)
         }
           .getOrDefault(false)
         val canUseAddon = !isDataSaver && (preferExtensionAudio || audioQuality.permitsAddons())
@@ -5377,7 +5377,7 @@ class MusicService : MediaLibraryService(), Player.Listener, PlaybackStatsListen
     }
 
   private fun initializeCast() {
-    if (dataStore.get(com.revenge.music.constants.EnableGoogleCastKey, true)) {
+    if (dataStore.get(com.revenge.core.constants.EnableGoogleCastKey, true)) {
       try {
         castConnectionHandler = CastConnectionHandler(this, scope, this)
         if (castConnectionHandler?.initialize() != true) {
@@ -6157,11 +6157,11 @@ class MusicService : MediaLibraryService(), Player.Listener, PlaybackStatsListen
       // Equal-power curve: delegate to EqualPowerCurve for constant acoustic power
       fun equalPowerIn(edge0: Float, edge1: Float, x: Float): Float {
         val t = ((x - edge0) / (edge1 - edge0)).coerceIn(0f, 1f)
-        return com.revenge.music.playback.crossfade.EqualPowerCurve.calculateGains(t).incomingGain
+        return com.revenge.playback.crossfade.EqualPowerCurve.calculateGains(t).incomingGain
       }
       fun equalPowerOut(edge0: Float, edge1: Float, x: Float): Float {
         val t = ((x - edge0) / (edge1 - edge0)).coerceIn(0f, 1f)
-        return com.revenge.music.playback.crossfade.EqualPowerCurve.calculateGains(t).outgoingGain
+        return com.revenge.playback.crossfade.EqualPowerCurve.calculateGains(t).outgoingGain
       }
 
       try {
@@ -6187,7 +6187,7 @@ class MusicService : MediaLibraryService(), Player.Listener, PlaybackStatsListen
           }
 
           val progress = (i / steps.toFloat()).coerceIn(0f, 1f)
-          val gains = com.revenge.music.playback.crossfade.EqualPowerCurve.calculateGains(progress)
+          val gains = com.revenge.playback.crossfade.EqualPowerCurve.calculateGains(progress)
 
           try {
             player.volume = startVolume * gains.incomingGain
@@ -6444,7 +6444,7 @@ class MusicService : MediaLibraryService(), Player.Listener, PlaybackStatsListen
               }
                 .getOrDefault(true)
               val isDataSaver = runCatching {
-                dataStore.get(com.revenge.music.constants.DataSaverEnabledKey, false)
+                dataStore.get(com.revenge.core.constants.DataSaverEnabledKey, false)
               }
                 .getOrDefault(false)
               val canUseAddon =
@@ -6624,12 +6624,12 @@ class MusicService : MediaLibraryService(), Player.Listener, PlaybackStatsListen
               if (dbSong != null) {
                 kotlin.runCatching {
                   val metadata =
-                    com.revenge.music.models.MediaMetadata(
+                    com.revenge.core.models.MediaMetadata(
                       id = dbSong.song.id,
                       title = dbSong.song.title,
                       artists =
                         dbSong.artists.map { artist ->
-                          com.revenge.music.models.MediaMetadata.Artist(artist.id, artist.name)
+                          com.revenge.core.models.MediaMetadata.Artist(artist.id, artist.name)
                         },
                       duration = dbSong.song.duration,
                       thumbnailUrl = dbSong.thumbnailUrl,
@@ -6637,7 +6637,7 @@ class MusicService : MediaLibraryService(), Player.Listener, PlaybackStatsListen
                   val lyricsResult = lyricsHelper.getLyrics(metadata)
                   database.query {
                     upsert(
-                      com.revenge.music.db.entities.LyricsEntity(
+                      com.revenge.core.db.entities.LyricsEntity(
                         id = mediaId,
                         lyrics = lyricsResult.lyrics ?: "",
                       ),

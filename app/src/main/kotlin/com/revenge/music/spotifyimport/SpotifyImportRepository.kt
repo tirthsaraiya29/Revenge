@@ -4,10 +4,10 @@ import android.content.Context
 import com.revenge.innertube.YouTube
 import com.revenge.innertube.YouTube.SearchFilter
 import com.revenge.innertube.models.SongItem
-import com.revenge.music.db.MusicDatabase
-import com.revenge.music.db.entities.PlaylistEntity
-import com.revenge.music.db.entities.PlaylistSongMap
-import com.revenge.music.models.toMediaMetadata
+import com.revenge.core.db.MusicDatabase
+import com.revenge.core.db.entities.PlaylistEntity
+import com.revenge.core.db.entities.PlaylistSongMap
+import com.revenge.core.models.toMediaMetadata
 import com.revenge.music.spotify.Spotify
 import com.revenge.music.spotify.SpotifyAuth
 import com.revenge.music.spotify.SpotifyMapper

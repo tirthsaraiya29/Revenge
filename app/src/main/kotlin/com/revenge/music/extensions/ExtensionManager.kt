@@ -6,7 +6,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.revenge.innertube.models.Artist
 import com.revenge.innertube.models.SongItem
-import com.revenge.music.utils.dataStore
+import com.revenge.core.utils.dataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.net.URLEncoder
 import javax.inject.Inject

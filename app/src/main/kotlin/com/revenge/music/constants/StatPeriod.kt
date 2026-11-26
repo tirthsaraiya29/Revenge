@@ -1,6 +1,6 @@
 package com.revenge.music.constants
 
-import com.revenge.music.ui.screens.OptionStats
+import com.revenge.core.ui.screens.OptionStats
 import java.time.LocalDateTime
 import java.time.ZoneOffset
 

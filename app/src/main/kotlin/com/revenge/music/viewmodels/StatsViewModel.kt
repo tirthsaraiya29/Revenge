@@ -4,12 +4,12 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.revenge.innertube.YouTube
-import com.revenge.music.constants.HideVideoSongsKey
+import com.revenge.core.constants.HideVideoSongsKey
 import com.revenge.music.constants.statToPeriod
-import com.revenge.music.db.MusicDatabase
-import com.revenge.music.ui.screens.OptionStats
-import com.revenge.music.utils.dataStore
-import com.revenge.music.utils.reportException
+import com.revenge.core.db.MusicDatabase
+import com.revenge.core.ui.screens.OptionStats
+import com.revenge.core.utils.dataStore
+import com.revenge.core.utils.reportException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.time.Duration

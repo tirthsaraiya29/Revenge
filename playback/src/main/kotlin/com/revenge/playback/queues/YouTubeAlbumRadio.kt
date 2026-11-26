@@ -3,8 +3,8 @@ package com.revenge.playback.queues
 import androidx.media3.common.MediaItem
 import com.revenge.innertube.YouTube
 import com.revenge.innertube.models.WatchEndpoint
-import com.revenge.music.extensions.toMediaItem
-import com.revenge.music.models.MediaMetadata
+import com.revenge.core.extensions.toMediaItem
+import com.revenge.core.models.MediaMetadata
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 

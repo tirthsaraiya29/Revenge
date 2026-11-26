@@ -35,8 +35,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.revenge.music.constants.LyricsRomanizeAsMainKey
-import com.revenge.music.lyrics.LyricsEntry
+import com.revenge.core.constants.LyricsRomanizeAsMainKey
+import com.revenge.lyrics.lyrics.LyricsEntry
 import com.revenge.music.ui.screens.settings.LyricsPosition
 import com.revenge.music.utils.rememberPreference
 import kotlin.math.PI
@@ -77,7 +77,7 @@ fun revengeLyricsLine(
 
   val wordData =
     remember(entry.text, entry.words, activeDuration) {
-      val isHindiText = com.revenge.music.lyrics.LyricsUtils.isHindi(entry.text)
+      val isHindiText = com.revenge.lyrics.lyrics.LyricsUtils.isHindi(entry.text)
       if (!isHindiText && entry.words?.isNotEmpty() == true) {
 
         entry.words!!.mapIndexed { index, word ->

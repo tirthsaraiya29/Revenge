@@ -18,8 +18,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.NavController
 import com.revenge.music.R
-import com.revenge.music.constants.PreferExtensionAudioKey
-import com.revenge.music.constants.PreferredAudioAddonIdKey
+import com.revenge.core.constants.PreferExtensionAudioKey
+import com.revenge.core.constants.PreferredAudioAddonIdKey
 import com.revenge.music.extensions.AddonEndpoint
 import com.revenge.music.extensions.ExtensionManager
 import com.revenge.music.ui.component.Material3SettingsGroup

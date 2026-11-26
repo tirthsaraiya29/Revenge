@@ -1,10 +1,10 @@
 package com.revenge.music.generate
 
 import androidx.room.Room
-import com.revenge.music.db.InternalDatabase
-import com.revenge.music.db.MusicDatabase
-import com.revenge.music.db.daos.RecommendationExclusionDao
-import com.revenge.music.db.entities.RecommendationExclusionEntity
+import com.revenge.core.db.InternalDatabase
+import com.revenge.core.db.MusicDatabase
+import com.revenge.core.db.daos.RecommendationExclusionDao
+import com.revenge.core.db.entities.RecommendationExclusionEntity
 import com.revenge.music.viewmodels.GenerateUiState
 import com.revenge.music.viewmodels.GenerateViewModel
 import kotlinx.coroutines.Dispatchers

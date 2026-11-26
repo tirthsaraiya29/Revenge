@@ -49,8 +49,8 @@ import com.revenge.innertube.models.MediaInfo
 import com.revenge.music.LocalDatabase
 import com.revenge.music.LocalPlayerConnection
 import com.revenge.music.R
-import com.revenge.music.db.entities.FormatEntity
-import com.revenge.music.db.entities.Song
+import com.revenge.core.db.entities.FormatEntity
+import com.revenge.core.db.entities.Song
 import com.revenge.music.ui.component.LocalBottomSheetPageState
 import com.revenge.music.ui.component.shimmer.ShimmerHost
 import com.revenge.music.ui.component.shimmer.TextPlaceholder

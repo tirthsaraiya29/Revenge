@@ -72,7 +72,7 @@ class AutomotiveArtworkTest {
   @Test
   fun extensionsLeaveMissingArtworkUntouched() {
     val metadata =
-      com.revenge.music.models.MediaMetadata(
+      com.revenge.core.models.MediaMetadata(
         id = "id",
         title = "title",
         artists = emptyList(),

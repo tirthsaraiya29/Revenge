@@ -1,6 +1,6 @@
 package com.revenge.music.data
 
-import com.revenge.music.models.SponsorBlockSegment
+import com.revenge.core.models.SponsorBlockSegment
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers

@@ -18,9 +18,9 @@ import com.revenge.innertube.models.SongItem
 import com.revenge.innertube.models.WatchEndpoint.WatchEndpointMusicSupportedConfigs.WatchEndpointMusicConfig.Companion.MUSIC_VIDEO_TYPE_PODCAST_EPISODE
 import com.revenge.music.LocalPlayerConnection
 import com.revenge.music.R
-import com.revenge.music.extensions.toMediaItem
-import com.revenge.music.models.toMediaMetadata
-import com.revenge.music.playback.queues.ListQueue
+import com.revenge.core.extensions.toMediaItem
+import com.revenge.core.models.toMediaMetadata
+import com.revenge.playback.queues.ListQueue
 import com.revenge.music.utils.EpisodeProgress
 import com.revenge.music.utils.PodcastProgress
 import com.revenge.music.utils.listItemShape

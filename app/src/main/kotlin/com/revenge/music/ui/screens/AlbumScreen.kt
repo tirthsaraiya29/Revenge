@@ -86,13 +86,13 @@ import com.revenge.music.LocalDownloadUtil
 import com.revenge.music.LocalPlayerAwareWindowInsets
 import com.revenge.music.LocalPlayerConnection
 import com.revenge.music.R
-import com.revenge.music.constants.AlbumCanvasEnabledKey
-import com.revenge.music.constants.AppBarHeight
-import com.revenge.music.constants.HideExplicitKey
-import com.revenge.music.constants.HideVideoSongsKey
-import com.revenge.music.db.entities.Album
+import com.revenge.core.constants.AlbumCanvasEnabledKey
+import com.revenge.core.constants.AppBarHeight
+import com.revenge.core.constants.HideExplicitKey
+import com.revenge.core.constants.HideVideoSongsKey
+import com.revenge.core.db.entities.Album
 import com.revenge.music.playback.DownloadUtil
-import com.revenge.music.playback.queues.LocalAlbumRadio
+import com.revenge.playback.queues.LocalAlbumRadio
 import com.revenge.music.ui.component.ExpandableText
 import com.revenge.music.ui.component.HeartBurstIcon
 import com.revenge.music.ui.component.IconButton
@@ -142,7 +142,7 @@ fun AlbumScreen(
   val descriptionRuns by viewModel.descriptionRuns.collectAsState()
   val hideExplicit by rememberPreference(key = HideExplicitKey, defaultValue = false)
   val dataSaverEnabled by
-    rememberPreference(key = com.revenge.music.constants.DataSaverEnabledKey, defaultValue = false)
+    rememberPreference(key = com.revenge.core.constants.DataSaverEnabledKey, defaultValue = false)
   val hideVideoSongsPref by rememberPreference(key = HideVideoSongsKey, defaultValue = false)
   val hideVideoSongs = if (dataSaverEnabled) true else hideVideoSongsPref
   val albumCanvasEnabledPref by

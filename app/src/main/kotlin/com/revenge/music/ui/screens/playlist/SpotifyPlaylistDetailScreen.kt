@@ -90,9 +90,9 @@ import coil3.request.ImageRequest
 import com.revenge.music.LocalPlayerAwareWindowInsets
 import com.revenge.music.LocalPlayerConnection
 import com.revenge.music.R
-import com.revenge.music.constants.AppBarHeight
-import com.revenge.music.constants.ListThumbnailSize
-import com.revenge.music.constants.ThumbnailCornerRadius
+import com.revenge.core.constants.AppBarHeight
+import com.revenge.core.constants.ListThumbnailSize
+import com.revenge.core.constants.ThumbnailCornerRadius
 import com.revenge.music.spotify.SpotifyMapper
 import com.revenge.music.spotify.models.SpotifyTrack
 import com.revenge.music.ui.component.EmptyPlaceholder

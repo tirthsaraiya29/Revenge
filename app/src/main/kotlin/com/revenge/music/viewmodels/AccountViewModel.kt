@@ -9,11 +9,11 @@ import com.revenge.innertube.models.ArtistItem
 import com.revenge.innertube.models.PlaylistItem
 import com.revenge.innertube.models.filterYoutubeShorts
 import com.revenge.innertube.utils.completed
-import com.revenge.music.constants.HideYoutubeShortsKey
-import com.revenge.music.ui.utils.resize
-import com.revenge.music.utils.dataStore
-import com.revenge.music.utils.get
-import com.revenge.music.utils.reportException
+import com.revenge.core.constants.HideYoutubeShortsKey
+import com.revenge.core.ui.utils.resize
+import com.revenge.core.utils.dataStore
+import com.revenge.core.utils.get
+import com.revenge.core.utils.reportException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject

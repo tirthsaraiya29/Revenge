@@ -2,12 +2,15 @@ package com.revenge.playback.queues
 
 import android.net.Uri
 import androidx.media3.common.MediaItem
-import com.revenge.music.models.MediaMetadata
+import com.revenge.core.models.MediaMetadata
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 
+@RunWith(RobolectricTestRunner::class)
 class QueueFilterSelectedTrackTest {
 
     private val audioType = "MUSIC_VIDEO_TYPE_ATV"

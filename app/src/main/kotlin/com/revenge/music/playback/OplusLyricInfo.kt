@@ -1,8 +1,8 @@
 package com.revenge.music.playback
 
-import com.revenge.music.db.entities.LyricsEntity
-import com.revenge.music.lyrics.LyricsEntry
-import com.revenge.music.lyrics.LyricsUtils
+import com.revenge.core.db.entities.LyricsEntity
+import com.revenge.lyrics.lyrics.LyricsEntry
+import com.revenge.lyrics.lyrics.LyricsUtils
 import java.util.Locale
 import kotlin.math.max
 import kotlin.math.roundToLong

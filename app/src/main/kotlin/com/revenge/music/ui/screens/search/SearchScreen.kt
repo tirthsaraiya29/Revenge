@@ -82,11 +82,11 @@ import com.revenge.music.LocalIsPlayerExpanded
 import com.revenge.music.LocalPlayerAwareWindowInsets
 import com.revenge.music.LocalPlayerConnection
 import com.revenge.music.R
-import com.revenge.music.constants.PauseSearchHistoryKey
-import com.revenge.music.constants.SearchSource
-import com.revenge.music.constants.SearchSourceKey
-import com.revenge.music.db.entities.SearchHistory
-import com.revenge.music.playback.queues.YouTubeQueue
+import com.revenge.core.constants.PauseSearchHistoryKey
+import com.revenge.core.constants.SearchSource
+import com.revenge.core.constants.SearchSourceKey
+import com.revenge.core.db.entities.SearchHistory
+import com.revenge.playback.queues.YouTubeQueue
 import com.revenge.music.utils.rememberEnumPreference
 import com.revenge.music.utils.rememberPreference
 import com.revenge.music.viewmodels.HomeViewModel

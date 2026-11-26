@@ -22,17 +22,17 @@ import com.revenge.innertube.YouTube
 import com.revenge.innertube.models.IpVersion
 import com.revenge.innertube.models.YouTubeLocale
 import com.revenge.kugou.KuGou
-import com.revenge.music.constants.*
-import com.revenge.music.di.ApplicationScope
-import com.revenge.music.extensions.toEnum
-import com.revenge.music.extensions.toInetSocketAddress
+import com.revenge.core.constants.*
+import com.revenge.core.di.ApplicationScope
+import com.revenge.core.extensions.toEnum
+import com.revenge.core.extensions.toInetSocketAddress
 import com.revenge.music.utils.AppContextHolder
 import com.revenge.music.utils.CrashHandler
 import com.revenge.music.utils.LocalAlbumArtFetcher
 import com.revenge.music.utils.NewEpisodesWorker
 import com.revenge.music.utils.YouTubeThumbnailFallbackInterceptor
-import com.revenge.music.utils.dataStore
-import com.revenge.music.utils.reportException
+import com.revenge.core.utils.dataStore
+import com.revenge.core.utils.reportException
 import dagger.hilt.android.HiltAndroidApp
 import java.net.Authenticator
 import java.net.PasswordAuthentication
@@ -209,13 +209,13 @@ class App : Application(), SingletonImageLoader.Factory, Configuration.Provider 
       settings[IpVersionKey]?.toEnum(defaultValue = IpVersion.AUTO) ?: IpVersion.AUTO
 
     // Set playback engine preference
-    val engineName = settings[com.revenge.music.constants.PlaybackEngineKey]
+    val engineName = settings[com.revenge.core.constants.PlaybackEngineKey]
     com.revenge.music.utils.YTPlayerUtils.playbackEngine =
       try {
-        if (engineName != null) com.revenge.music.constants.PlaybackEngine.valueOf(engineName)
-        else com.revenge.music.constants.PlaybackEngine.AUTO
+        if (engineName != null) com.revenge.core.constants.PlaybackEngine.valueOf(engineName)
+        else com.revenge.core.constants.PlaybackEngine.AUTO
       } catch (_: Exception) {
-        com.revenge.music.constants.PlaybackEngine.AUTO
+        com.revenge.core.constants.PlaybackEngine.AUTO
       }
 
     val channel =

@@ -64,15 +64,15 @@ import com.revenge.music.LocalDownloadUtil
 import com.revenge.music.LocalListenTogetherManager
 import com.revenge.music.LocalPlayerConnection
 import com.revenge.music.R
-import com.revenge.music.constants.EnableExportAsMp3Key
-import com.revenge.music.constants.ExportDirectoryUriKey
-import com.revenge.music.constants.ExportedSongIdsKey
-import com.revenge.music.constants.ExportingSongIdsKey
-import com.revenge.music.constants.ListItemHeight
-import com.revenge.music.constants.VarispeedKey
-import com.revenge.music.extensions.toggleRepeatMode
-import com.revenge.music.models.MediaMetadata
-import com.revenge.music.models.toMediaMetadata
+import com.revenge.core.constants.EnableExportAsMp3Key
+import com.revenge.core.constants.ExportDirectoryUriKey
+import com.revenge.core.constants.ExportedSongIdsKey
+import com.revenge.core.constants.ExportingSongIdsKey
+import com.revenge.core.constants.ListItemHeight
+import com.revenge.core.constants.VarispeedKey
+import com.revenge.core.extensions.toggleRepeatMode
+import com.revenge.core.models.MediaMetadata
+import com.revenge.core.models.toMediaMetadata
 import com.revenge.music.playback.ExoDownloadService
 import com.revenge.music.ui.component.BottomSheetState
 import com.revenge.music.ui.component.ListDialog
@@ -141,7 +141,7 @@ fun OldPlayerMenu(
   val (exportedSongIds) = rememberPreference(key = ExportedSongIdsKey, defaultValue = "")
   val (showLyricsOnPlayer, onShowLyricsOnPlayerChange) =
     rememberPreference(
-      key = com.revenge.music.constants.ShowLyricsOnPlayerKey,
+      key = com.revenge.core.constants.ShowLyricsOnPlayerKey,
       defaultValue = false,
     )
 

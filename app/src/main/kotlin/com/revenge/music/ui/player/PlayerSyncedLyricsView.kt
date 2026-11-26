@@ -35,9 +35,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.revenge.music.LocalDatabase
 import com.revenge.music.LocalPlayerConnection
-import com.revenge.music.db.entities.LyricsEntity
-import com.revenge.music.lyrics.LyricsUtils.parseLyrics
-import com.revenge.music.models.MediaMetadata
+import com.revenge.core.db.entities.LyricsEntity
+import com.revenge.lyrics.lyrics.LyricsUtils.parseLyrics
+import com.revenge.core.models.MediaMetadata
 import com.revenge.music.ui.component.shimmer.ShimmerHost
 import com.revenge.music.ui.component.shimmer.TextPlaceholder
 import dagger.hilt.android.EntryPointAccessors
@@ -110,7 +110,7 @@ fun PlayerSyncedLyricsView(
     modifier =
       modifier
         .fillMaxWidth()
-        .padding(horizontal = com.revenge.music.constants.PlayerHorizontalPadding),
+        .padding(horizontal = com.revenge.core.constants.PlayerHorizontalPadding),
     contentAlignment = Alignment.CenterStart,
   ) {
     if (currentLyrics == null) {

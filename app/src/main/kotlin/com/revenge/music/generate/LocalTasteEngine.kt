@@ -3,11 +3,11 @@ package com.revenge.music.generate
 import com.revenge.innertube.YouTube
 import com.revenge.innertube.models.SongItem
 import com.revenge.innertube.models.WatchEndpoint
-import com.revenge.music.db.MusicDatabase
-import com.revenge.music.db.entities.PlaylistEntity
-import com.revenge.music.db.entities.PlaylistSongMap
-import com.revenge.music.db.entities.SongPlayStatsEntity
-import com.revenge.music.models.MediaMetadata
+import com.revenge.core.db.MusicDatabase
+import com.revenge.core.db.entities.PlaylistEntity
+import com.revenge.core.db.entities.PlaylistSongMap
+import com.revenge.core.db.entities.SongPlayStatsEntity
+import com.revenge.core.models.MediaMetadata
 import java.util.Calendar
 import javax.inject.Inject
 import kotlin.math.ln

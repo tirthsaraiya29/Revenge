@@ -28,11 +28,11 @@ import com.revenge.music.LocalDatabase
 import com.revenge.music.LocalListenTogetherManager
 import com.revenge.music.LocalPlayerConnection
 import com.revenge.music.R
-import com.revenge.music.constants.ArtistSongSortType
-import com.revenge.music.db.entities.Artist
-import com.revenge.music.db.entities.SpeedDialItem
-import com.revenge.music.extensions.toMediaItem
-import com.revenge.music.playback.queues.ListQueue
+import com.revenge.core.constants.ArtistSongSortType
+import com.revenge.core.db.entities.Artist
+import com.revenge.core.db.entities.SpeedDialItem
+import com.revenge.core.extensions.toMediaItem
+import com.revenge.playback.queues.ListQueue
 import com.revenge.music.ui.component.ArtistListItem
 import com.revenge.music.ui.component.Material3MenuGroup
 import com.revenge.music.ui.component.Material3MenuItemData

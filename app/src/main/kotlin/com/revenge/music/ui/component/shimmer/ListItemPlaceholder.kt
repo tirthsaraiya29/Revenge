@@ -15,9 +15,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.dp
-import com.revenge.music.constants.ListItemHeight
-import com.revenge.music.constants.ListThumbnailSize
-import com.revenge.music.constants.ThumbnailCornerRadius
+import com.revenge.core.constants.ListItemHeight
+import com.revenge.core.constants.ListThumbnailSize
+import com.revenge.core.constants.ThumbnailCornerRadius
 
 @Composable
 fun ListItemPlaceHolder(

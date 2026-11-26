@@ -13,7 +13,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.TextFieldValue
 import com.revenge.music.LocalDatabase
 import com.revenge.music.R
-import com.revenge.music.db.entities.PlaylistEntity
+import com.revenge.core.db.entities.PlaylistEntity
 import com.revenge.music.ui.component.TextFieldDialog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.firstOrNull

@@ -2,7 +2,7 @@ package com.revenge.music.utils
 
 import androidx.datastore.preferences.core.edit
 import com.revenge.innertube.YouTube
-import com.revenge.music.constants.VisitorDataKey
+import com.revenge.core.constants.VisitorDataKey
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext

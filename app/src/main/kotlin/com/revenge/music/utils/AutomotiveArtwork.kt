@@ -8,7 +8,7 @@ import coil3.request.allowHardware
 import coil3.toBitmap
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata as Media3Metadata
-import com.revenge.music.models.MediaMetadata
+import com.revenge.core.models.MediaMetadata
 import java.io.File
 import java.security.MessageDigest
 import java.security.SecureRandom

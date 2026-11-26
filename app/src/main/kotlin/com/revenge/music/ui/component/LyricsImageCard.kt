@@ -55,7 +55,7 @@ import coil3.request.allowHardware
 import coil3.request.crossfade
 import coil3.toBitmap
 import com.revenge.music.R
-import com.revenge.music.models.MediaMetadata
+import com.revenge.core.models.MediaMetadata
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 

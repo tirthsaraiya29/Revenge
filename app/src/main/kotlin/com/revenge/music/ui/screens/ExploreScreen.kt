@@ -59,9 +59,9 @@ import com.revenge.innertube.models.WatchEndpoint
 import com.revenge.music.LocalPlayerAwareWindowInsets
 import com.revenge.music.LocalPlayerConnection
 import com.revenge.music.R
-import com.revenge.music.constants.ListItemHeight
-import com.revenge.music.models.toMediaMetadata
-import com.revenge.music.playback.queues.YouTubeQueue
+import com.revenge.core.constants.ListItemHeight
+import com.revenge.core.models.toMediaMetadata
+import com.revenge.playback.queues.YouTubeQueue
 import com.revenge.music.ui.component.LocalMenuState
 import com.revenge.music.ui.component.NavigationTitle
 import com.revenge.music.ui.component.YouTubeGridItem

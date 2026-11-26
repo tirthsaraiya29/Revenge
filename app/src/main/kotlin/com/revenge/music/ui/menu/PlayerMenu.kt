@@ -86,17 +86,17 @@ import com.revenge.music.LocalDownloadUtil
 import com.revenge.music.LocalListenTogetherManager
 import com.revenge.music.LocalPlayerConnection
 import com.revenge.music.R
-import com.revenge.music.constants.EnableExportAsMp3Key
-import com.revenge.music.constants.ExportDirectoryUriKey
-import com.revenge.music.constants.ExportedSongIdsKey
-import com.revenge.music.constants.ExportingSongIdsKey
-import com.revenge.music.constants.ListItemHeight
-import com.revenge.music.constants.QueueEditLockKey
-import com.revenge.music.constants.ShowLyricsOnPlayerKey
-import com.revenge.music.constants.VarispeedKey
+import com.revenge.core.constants.EnableExportAsMp3Key
+import com.revenge.core.constants.ExportDirectoryUriKey
+import com.revenge.core.constants.ExportedSongIdsKey
+import com.revenge.core.constants.ExportingSongIdsKey
+import com.revenge.core.constants.ListItemHeight
+import com.revenge.core.constants.QueueEditLockKey
+import com.revenge.core.constants.ShowLyricsOnPlayerKey
+import com.revenge.core.constants.VarispeedKey
 import com.revenge.music.listentogether.ConnectionState
 import com.revenge.music.listentogether.ListenTogetherEvent
-import com.revenge.music.models.MediaMetadata
+import com.revenge.core.models.MediaMetadata
 import com.revenge.music.playback.ExoDownloadService
 import com.revenge.music.ui.component.BottomSheetState
 import com.revenge.music.ui.component.DefaultDialog
@@ -211,7 +211,7 @@ fun PlayerMenu(
     rememberPreference(key = ShowLyricsOnPlayerKey, defaultValue = false)
 
   val (exportProgressString) =
-    rememberPreference(key = com.revenge.music.constants.ExportProgressKey, defaultValue = "")
+    rememberPreference(key = com.revenge.core.constants.ExportProgressKey, defaultValue = "")
   val exportProgress =
     remember(exportProgressString, mediaMetadata.id) {
       exportProgressString
@@ -1227,7 +1227,7 @@ fun ListenTogetherDialog(visible: Boolean, mediaMetadata: MediaMetadata?, onDism
   val pendingJoinRequests by listenTogetherManager.pendingJoinRequests.collectAsState()
   val pendingSuggestions by listenTogetherManager.pendingSuggestions.collectAsState()
 
-  var savedUsername by rememberPreference(com.revenge.music.constants.ListenTogetherUsernameKey, "")
+  var savedUsername by rememberPreference(com.revenge.core.constants.ListenTogetherUsernameKey, "")
   var roomCodeInput by rememberSaveable { mutableStateOf("") }
   var usernameInput by rememberSaveable { mutableStateOf(savedUsername) }
 

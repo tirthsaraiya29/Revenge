@@ -5,7 +5,7 @@ import android.content.SharedPreferences
 import com.revenge.innertube.models.PODCAST_BROWSE_PREFIX
 import com.revenge.innertube.models.SongItem
 import com.revenge.innertube.pages.HomePage
-import com.revenge.music.models.MediaMetadata
+import com.revenge.core.models.MediaMetadata
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow

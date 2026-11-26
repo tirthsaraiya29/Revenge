@@ -6,8 +6,8 @@ import com.revenge.innertube.models.SongItem
 import com.revenge.innertube.models.WatchEndpoint
 import com.revenge.innertube.pages.NextResult
 import com.revenge.innertube.pages.PodcastPage
-import com.revenge.music.extensions.toMediaItem
-import com.revenge.music.models.MediaMetadata
+import com.revenge.core.extensions.toMediaItem
+import com.revenge.core.models.MediaMetadata
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext

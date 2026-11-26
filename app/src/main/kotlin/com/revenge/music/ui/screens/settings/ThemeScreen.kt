@@ -70,11 +70,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.revenge.music.R
-import com.revenge.music.constants.DarkModeKey
-import com.revenge.music.constants.IsMonochromeThemeKey
-import com.revenge.music.constants.PureBlackKey
-import com.revenge.music.constants.PureBlackMiniPlayerKey
-import com.revenge.music.constants.SelectedThemeColorKey
+import com.revenge.core.constants.DarkModeKey
+import com.revenge.core.constants.IsMonochromeThemeKey
+import com.revenge.core.constants.PureBlackKey
+import com.revenge.core.constants.PureBlackMiniPlayerKey
+import com.revenge.core.constants.SelectedThemeColorKey
 import com.revenge.music.ui.theme.BrandThemeColor
 import com.revenge.music.ui.theme.DefaultThemeColor
 import com.revenge.music.utils.rememberEnumPreference

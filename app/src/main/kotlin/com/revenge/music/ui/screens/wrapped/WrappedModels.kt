@@ -1,10 +1,10 @@
 package com.revenge.music.ui.screens.wrapped
 
 import androidx.compose.runtime.Immutable
-import com.revenge.music.db.entities.Album
-import com.revenge.music.db.entities.Artist
-import com.revenge.music.db.entities.Song
-import com.revenge.music.db.entities.SongWithStats
+import com.revenge.core.db.entities.Album
+import com.revenge.core.db.entities.Artist
+import com.revenge.core.db.entities.Song
+import com.revenge.core.db.entities.SongWithStats
 
 enum class WrappedTimeRange(val label: String) {
   THIS_YEAR("This Year"),

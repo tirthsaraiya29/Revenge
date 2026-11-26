@@ -63,59 +63,59 @@ import androidx.core.content.edit
 import androidx.navigation.NavController
 import com.revenge.music.LocalPlayerAwareWindowInsets
 import com.revenge.music.R
-import com.revenge.music.constants.AlbumArtThemeRecoloringKey
-import com.revenge.music.constants.AppFont
-import com.revenge.music.constants.AppIconTypeKey
-import com.revenge.music.constants.AppleMusicLyricsBlurKey
-import com.revenge.music.constants.CanvasThumbnailAnimationKey
-import com.revenge.music.constants.ChipSortTypeKey
-import com.revenge.music.constants.CropAlbumArtKey
-import com.revenge.music.constants.DefaultOpenTabKey
-import com.revenge.music.constants.DensityScale
-import com.revenge.music.constants.DensityScaleKey
-import com.revenge.music.constants.EnableHighRefreshRateKey
-import com.revenge.music.constants.EnableLyricsThumbnailPlayPauseKey
-import com.revenge.music.constants.GridItemSize
-import com.revenge.music.constants.GridItemsSizeKey
-import com.revenge.music.constants.HidePlayerThumbnailKey
-import com.revenge.music.constants.HideStatusBarOnFullscreenKey
-import com.revenge.music.constants.LibraryFilter
-import com.revenge.music.constants.ListenTogetherInTopBarKey
-import com.revenge.music.constants.LyricsAnimationStyle
-import com.revenge.music.constants.LyricsAnimationStyleKey
-import com.revenge.music.constants.LyricsClickKey
-import com.revenge.music.constants.LyricsGlowEffectKey
-import com.revenge.music.constants.LyricsLineSpacingKey
-import com.revenge.music.constants.LyricsScrollKey
-import com.revenge.music.constants.LyricsStandardBlurKey
-import com.revenge.music.constants.LyricsTextPositionKey
-import com.revenge.music.constants.LyricsTextSizeKey
-import com.revenge.music.constants.MiniPlayerBackgroundStyleKey
-import com.revenge.music.constants.PlayerBackgroundStyle
-import com.revenge.music.constants.PlayerBackgroundStyleKey
-import com.revenge.music.constants.PlayerButtonsStyle
-import com.revenge.music.constants.PlayerButtonsStyleKey
-import com.revenge.music.constants.RotatingThumbnailKey
-import com.revenge.music.constants.SelectedFontKey
-import com.revenge.music.constants.SelectedThemeColorKey
-import com.revenge.music.constants.ShowBottomPlaylistKey
-import com.revenge.music.constants.ShowCachedPlaylistKey
-import com.revenge.music.constants.ShowCommentButtonKey
-import com.revenge.music.constants.ShowDownloadedPlaylistKey
-import com.revenge.music.constants.ShowExportedPlaylistKey
-import com.revenge.music.constants.ShowLikedPlaylistKey
-import com.revenge.music.constants.ShowTopPlaylistKey
-import com.revenge.music.constants.SliderStyle
-import com.revenge.music.constants.SliderStyleKey
-import com.revenge.music.constants.SquigglySliderKey
-import com.revenge.music.constants.SwipeLyricsKey
-import com.revenge.music.constants.SwipeSensitivityKey
-import com.revenge.music.constants.SwipeThumbnailKey
-import com.revenge.music.constants.SwipeToRemoveSongKey
-import com.revenge.music.constants.SwipeToSongKey
-import com.revenge.music.constants.ThumbnailCornerRadiusKey
-import com.revenge.music.constants.UseNewPlayerDesignKey
-import com.revenge.music.constants.WavyPlayPauseKey
+import com.revenge.core.constants.AlbumArtThemeRecoloringKey
+import com.revenge.core.constants.AppFont
+import com.revenge.core.constants.AppIconTypeKey
+import com.revenge.core.constants.AppleMusicLyricsBlurKey
+import com.revenge.core.constants.CanvasThumbnailAnimationKey
+import com.revenge.core.constants.ChipSortTypeKey
+import com.revenge.core.constants.CropAlbumArtKey
+import com.revenge.core.constants.DefaultOpenTabKey
+import com.revenge.core.constants.DensityScale
+import com.revenge.core.constants.DensityScaleKey
+import com.revenge.core.constants.EnableHighRefreshRateKey
+import com.revenge.core.constants.EnableLyricsThumbnailPlayPauseKey
+import com.revenge.core.constants.GridItemSize
+import com.revenge.core.constants.GridItemsSizeKey
+import com.revenge.core.constants.HidePlayerThumbnailKey
+import com.revenge.core.constants.HideStatusBarOnFullscreenKey
+import com.revenge.core.constants.LibraryFilter
+import com.revenge.core.constants.ListenTogetherInTopBarKey
+import com.revenge.core.constants.LyricsAnimationStyle
+import com.revenge.core.constants.LyricsAnimationStyleKey
+import com.revenge.core.constants.LyricsClickKey
+import com.revenge.core.constants.LyricsGlowEffectKey
+import com.revenge.core.constants.LyricsLineSpacingKey
+import com.revenge.core.constants.LyricsScrollKey
+import com.revenge.core.constants.LyricsStandardBlurKey
+import com.revenge.core.constants.LyricsTextPositionKey
+import com.revenge.core.constants.LyricsTextSizeKey
+import com.revenge.core.constants.MiniPlayerBackgroundStyleKey
+import com.revenge.core.constants.PlayerBackgroundStyle
+import com.revenge.core.constants.PlayerBackgroundStyleKey
+import com.revenge.core.constants.PlayerButtonsStyle
+import com.revenge.core.constants.PlayerButtonsStyleKey
+import com.revenge.core.constants.RotatingThumbnailKey
+import com.revenge.core.constants.SelectedFontKey
+import com.revenge.core.constants.SelectedThemeColorKey
+import com.revenge.core.constants.ShowBottomPlaylistKey
+import com.revenge.core.constants.ShowCachedPlaylistKey
+import com.revenge.core.constants.ShowCommentButtonKey
+import com.revenge.core.constants.ShowDownloadedPlaylistKey
+import com.revenge.core.constants.ShowExportedPlaylistKey
+import com.revenge.core.constants.ShowLikedPlaylistKey
+import com.revenge.core.constants.ShowTopPlaylistKey
+import com.revenge.core.constants.SliderStyle
+import com.revenge.core.constants.SliderStyleKey
+import com.revenge.core.constants.SquigglySliderKey
+import com.revenge.core.constants.SwipeLyricsKey
+import com.revenge.core.constants.SwipeSensitivityKey
+import com.revenge.core.constants.SwipeThumbnailKey
+import com.revenge.core.constants.SwipeToRemoveSongKey
+import com.revenge.core.constants.SwipeToSongKey
+import com.revenge.core.constants.ThumbnailCornerRadiusKey
+import com.revenge.core.constants.UseNewPlayerDesignKey
+import com.revenge.core.constants.WavyPlayPauseKey
 import com.revenge.music.ui.component.DefaultDialog
 import com.revenge.music.ui.component.EnumDialog
 import com.revenge.music.ui.component.IconButton
@@ -155,7 +155,7 @@ fun AppearanceSettings(
 
   val (selectedFontValue) = rememberPreference(SelectedFontKey, defaultValue = AppFont.PLUS_JAKARTA_SANS.value)
   val (customFontPathValue) =
-    rememberPreference(com.revenge.music.constants.CustomFontPathKey, defaultValue = "")
+    rememberPreference(com.revenge.core.constants.CustomFontPathKey, defaultValue = "")
 
   val activeFontFamily =
     remember(selectedFontValue, customFontPathValue) {
@@ -182,19 +182,19 @@ fun AppearanceSettings(
   val (albumArtThemeRecoloring, onAlbumArtThemeRecoloringChange) =
     rememberPreference(AlbumArtThemeRecoloringKey, defaultValue = false)
   val (enableLegacyIcon, onEnableLegacyIconChange) =
-    rememberPreference(com.revenge.music.constants.EnableLegacyIconKey, defaultValue = false)
+    rememberPreference(com.revenge.core.constants.EnableLegacyIconKey, defaultValue = false)
 
   val (appIconType, onAppIconTypeChange) =
     rememberEnumPreference(
-      com.revenge.music.constants.AppIconTypeKey,
+      com.revenge.core.constants.AppIconTypeKey,
       defaultValue = com.revenge.music.utils.AppIconType.DEFAULT,
     )
 
   var showAppIconDialog by rememberSaveable { mutableStateOf(false) }
   val (enableHighRefreshRate, onEnableHighRefreshRateChange) =
-    rememberPreference(com.revenge.music.constants.EnableHighRefreshRateKey, defaultValue = true)
+    rememberPreference(com.revenge.core.constants.EnableHighRefreshRateKey, defaultValue = true)
   val (liveBlurDensity, onLiveBlurDensityChange) =
-    rememberPreference(com.revenge.music.constants.LiveBlurDensityKey, defaultValue = 50f)
+    rememberPreference(com.revenge.core.constants.LiveBlurDensityKey, defaultValue = 50f)
   val (selectedThemeColorInt) =
     rememberPreference(SelectedThemeColorKey, defaultValue = DefaultThemeColor.toArgb())
 
@@ -224,9 +224,9 @@ fun AppearanceSettings(
   val (useNewPlayerDesign, onUseNewPlayerDesignChange) =
     rememberPreference(UseNewPlayerDesignKey, defaultValue = true)
   val (showCodecOnPlayer, onShowCodecOnPlayerChange) =
-    rememberPreference(com.revenge.music.constants.ShowCodecOnPlayerKey, defaultValue = false)
+    rememberPreference(com.revenge.core.constants.ShowCodecOnPlayerKey, defaultValue = false)
   val (hidePlayerSlider, onHidePlayerSliderChange) =
-    rememberPreference(com.revenge.music.constants.HidePlayerSliderKey, defaultValue = false)
+    rememberPreference(com.revenge.core.constants.HidePlayerSliderKey, defaultValue = false)
   val (hidePlayerThumbnail, onHidePlayerThumbnailChange) =
     rememberPreference(HidePlayerThumbnailKey, defaultValue = false)
   val (cropAlbumArt, onCropAlbumArtChange) =

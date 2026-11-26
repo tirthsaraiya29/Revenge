@@ -16,7 +16,7 @@ import com.revenge.innertube.models.YouTubeClient.Companion.WEB_CREATOR
 import com.revenge.innertube.models.YouTubeClient.Companion.WEB_REMIX
 import com.revenge.innertube.models.response.PlayerConfig
 import com.revenge.innertube.models.response.PlayerResponse
-import com.revenge.music.constants.AudioQuality
+import com.revenge.core.constants.AudioQuality
 import com.revenge.music.utils.YTPlayerUtils.MAIN_CLIENT
 import com.revenge.music.utils.YTPlayerUtils.STREAM_FALLBACK_CLIENTS
 import com.revenge.music.utils.YTPlayerUtils.validateStatus
@@ -43,8 +43,8 @@ object YTPlayerUtils {
   @Volatile var forceOpusEnabled: Boolean = false
 
   @Volatile
-  var playbackEngine: com.revenge.music.constants.PlaybackEngine =
-    com.revenge.music.constants.PlaybackEngine.AUTO
+  var playbackEngine: com.revenge.core.constants.PlaybackEngine =
+    com.revenge.core.constants.PlaybackEngine.AUTO
 
   private val httpClient =
     OkHttpClient.Builder()
@@ -488,8 +488,8 @@ object YTPlayerUtils {
 
     // --- PoToken / CipherDeobfuscator path ---
     val useCipher =
-      engine == com.revenge.music.constants.PlaybackEngine.POTOKEN ||
-        engine == com.revenge.music.constants.PlaybackEngine.AUTO
+      engine == com.revenge.core.constants.PlaybackEngine.POTOKEN ||
+        engine == com.revenge.core.constants.PlaybackEngine.AUTO
     if (useCipher) {
       val signatureCipher = format.signatureCipher ?: format.cipher
       if (!signatureCipher.isNullOrEmpty()) {
@@ -511,8 +511,8 @@ object YTPlayerUtils {
 
     // --- BravePipe / NewPipeExtractor path ---
     val useBravePipe =
-      engine == com.revenge.music.constants.PlaybackEngine.BRAVEPIPE ||
-        engine == com.revenge.music.constants.PlaybackEngine.AUTO
+      engine == com.revenge.core.constants.PlaybackEngine.BRAVEPIPE ||
+        engine == com.revenge.core.constants.PlaybackEngine.AUTO
     if (useBravePipe) {
       if (skipNewPipe) {
         Timber.tag(logTag).d("Skipping NewPipe methods for age-restricted content")

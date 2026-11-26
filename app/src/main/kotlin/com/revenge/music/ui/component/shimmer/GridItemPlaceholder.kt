@@ -16,11 +16,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.dp
-import com.revenge.music.constants.GridItemSize
-import com.revenge.music.constants.GridItemsSizeKey
-import com.revenge.music.constants.GridThumbnailHeight
-import com.revenge.music.constants.SmallGridThumbnailHeight
-import com.revenge.music.constants.ThumbnailCornerRadius
+import com.revenge.core.constants.GridItemSize
+import com.revenge.core.constants.GridItemsSizeKey
+import com.revenge.core.constants.GridThumbnailHeight
+import com.revenge.core.constants.SmallGridThumbnailHeight
+import com.revenge.core.constants.ThumbnailCornerRadius
 import com.revenge.music.utils.rememberEnumPreference
 
 @Composable

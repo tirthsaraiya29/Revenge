@@ -22,7 +22,7 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.revenge.innertube.YouTube
 import com.revenge.music.MainActivity
-import com.revenge.music.db.MusicDatabase
+import com.revenge.core.db.MusicDatabase
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import java.util.concurrent.TimeUnit

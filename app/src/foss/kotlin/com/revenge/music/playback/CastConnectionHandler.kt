@@ -48,7 +48,7 @@ class CastConnectionHandler(context: Context, scope: CoroutineScope, musicServic
 
   fun loadCurrentMedia() {}
 
-  fun loadMedia(metadata: com.revenge.music.models.MediaMetadata) {}
+  fun loadMedia(metadata: com.revenge.core.models.MediaMetadata) {}
 
   fun play() {}
 

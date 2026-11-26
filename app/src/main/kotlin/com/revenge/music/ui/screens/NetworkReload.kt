@@ -3,7 +3,7 @@ package com.revenge.music.ui.screens
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.platform.LocalContext
-import com.revenge.music.utils.NetworkConnectivityObserver
+import com.revenge.core.utils.NetworkConnectivityObserver
 
 @Composable
 fun NetworkReload(onReload: () -> Unit) {

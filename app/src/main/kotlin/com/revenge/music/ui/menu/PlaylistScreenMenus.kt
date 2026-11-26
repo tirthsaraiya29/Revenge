@@ -14,8 +14,8 @@ import androidx.compose.ui.unit.dp
 import androidx.media3.exoplayer.offline.Download
 import com.revenge.music.LocalListenTogetherManager
 import com.revenge.music.R
-import com.revenge.music.db.entities.Playlist
-import com.revenge.music.db.entities.PlaylistSong
+import com.revenge.core.db.entities.Playlist
+import com.revenge.core.db.entities.PlaylistSong
 import com.revenge.music.ui.component.Material3MenuGroup
 import com.revenge.music.ui.component.Material3MenuItemData
 

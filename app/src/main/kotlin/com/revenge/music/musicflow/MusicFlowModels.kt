@@ -3,7 +3,7 @@ package com.revenge.music.musicflow
 import com.revenge.innertube.models.Album
 import com.revenge.innertube.models.Artist
 import com.revenge.innertube.models.SongItem
-import com.revenge.music.models.MediaMetadata
+import com.revenge.core.models.MediaMetadata
 
 enum class MusicFlowSource { NOW_PLAYING, HISTORY, LIKED, QUICK_PICKS, CATALOG, OFFLINE }
 

@@ -33,43 +33,43 @@ import androidx.navigation.NavController
 import com.revenge.music.BuildConfig
 import com.revenge.music.LocalPlayerAwareWindowInsets
 import com.revenge.music.R
-import com.revenge.music.constants.AudioNormalizationKey
-import com.revenge.music.constants.AudioOffload
-import com.revenge.music.constants.AudioQuality
-import com.revenge.music.constants.AutoDownloadOnLikeKey
-import com.revenge.music.constants.AutoLoadMoreKey
-import com.revenge.music.constants.AutoSkipNextOnErrorKey
-import com.revenge.music.constants.AutomixCrossfadeKey
-import com.revenge.music.constants.AutomixDebugOverlayKey
-import com.revenge.music.constants.AutoplayOnAutomotiveConnectKey
-import com.revenge.music.constants.CrossfadeDurationKey
-import com.revenge.music.constants.CrossfadeEnabledKey
-import com.revenge.music.constants.CrossfadeGaplessKey
-import com.revenge.music.constants.DisableLoadMoreWhenRepeatAllKey
-import com.revenge.music.constants.DownloadOnWifiOnlyKey
-import com.revenge.music.constants.DownloadWithMetadataKey
-import com.revenge.music.constants.EnableBitPerfectUsbDacKey
-import com.revenge.music.constants.EnableExportAsMp3Key
-import com.revenge.music.constants.EnableGoogleCastKey
-import com.revenge.music.constants.HistoryDuration
-import com.revenge.music.constants.KeepScreenOn
-import com.revenge.music.constants.PauseOnMute
-import com.revenge.music.constants.PersistentQueueKey
-import com.revenge.music.constants.PersistentShuffleAcrossQueuesKey
-import com.revenge.music.constants.PreloadLyricsEnabledKey
-import com.revenge.music.constants.PreloadNextSongEnabledKey
-import com.revenge.music.constants.PreloadNextSongLimitKey
-import com.revenge.music.constants.PreventDuplicateTracksInQueueKey
-import com.revenge.music.constants.RememberShuffleAndRepeatKey
-import com.revenge.music.constants.ResumeOnBluetoothConnectKey
-import com.revenge.music.constants.SeekExtraSeconds
-import com.revenge.music.constants.ShufflePlaylistFirstKey
-import com.revenge.music.constants.SimilarContent
-import com.revenge.music.constants.SkipSilenceInstantKey
-import com.revenge.music.constants.SkipSilenceKey
-import com.revenge.music.constants.StopMusicOnTaskClearKey
-import com.revenge.music.constants.UsbDacVolumeModeKey
-import com.revenge.music.constants.VarispeedKey
+import com.revenge.core.constants.AudioNormalizationKey
+import com.revenge.core.constants.AudioOffload
+import com.revenge.core.constants.AudioQuality
+import com.revenge.core.constants.AutoDownloadOnLikeKey
+import com.revenge.core.constants.AutoLoadMoreKey
+import com.revenge.core.constants.AutoSkipNextOnErrorKey
+import com.revenge.core.constants.AutomixCrossfadeKey
+import com.revenge.core.constants.AutomixDebugOverlayKey
+import com.revenge.core.constants.AutoplayOnAutomotiveConnectKey
+import com.revenge.core.constants.CrossfadeDurationKey
+import com.revenge.core.constants.CrossfadeEnabledKey
+import com.revenge.core.constants.CrossfadeGaplessKey
+import com.revenge.core.constants.DisableLoadMoreWhenRepeatAllKey
+import com.revenge.core.constants.DownloadOnWifiOnlyKey
+import com.revenge.core.constants.DownloadWithMetadataKey
+import com.revenge.core.constants.EnableBitPerfectUsbDacKey
+import com.revenge.core.constants.EnableExportAsMp3Key
+import com.revenge.core.constants.EnableGoogleCastKey
+import com.revenge.core.constants.HistoryDuration
+import com.revenge.core.constants.KeepScreenOn
+import com.revenge.core.constants.PauseOnMute
+import com.revenge.core.constants.PersistentQueueKey
+import com.revenge.core.constants.PersistentShuffleAcrossQueuesKey
+import com.revenge.core.constants.PreloadLyricsEnabledKey
+import com.revenge.core.constants.PreloadNextSongEnabledKey
+import com.revenge.core.constants.PreloadNextSongLimitKey
+import com.revenge.core.constants.PreventDuplicateTracksInQueueKey
+import com.revenge.core.constants.RememberShuffleAndRepeatKey
+import com.revenge.core.constants.ResumeOnBluetoothConnectKey
+import com.revenge.core.constants.SeekExtraSeconds
+import com.revenge.core.constants.ShufflePlaylistFirstKey
+import com.revenge.core.constants.SimilarContent
+import com.revenge.core.constants.SkipSilenceInstantKey
+import com.revenge.core.constants.SkipSilenceKey
+import com.revenge.core.constants.StopMusicOnTaskClearKey
+import com.revenge.core.constants.UsbDacVolumeModeKey
+import com.revenge.core.constants.VarispeedKey
 import com.revenge.music.ui.component.DefaultDialog
 import com.revenge.music.ui.component.EnumDialog
 import com.revenge.music.ui.component.IconButton
@@ -91,12 +91,12 @@ fun PlayerSettings(
 
   val (audioQualityWifi, onAudioQualityWifiChange) =
     rememberEnumPreference(
-      com.revenge.music.constants.AudioQualityWifiKey,
+      com.revenge.core.constants.AudioQualityWifiKey,
       defaultValue = AudioQuality.LOSSLESS,
     )
   val (audioQualityCellular, onAudioQualityCellularChange) =
     rememberEnumPreference(
-      com.revenge.music.constants.AudioQualityCellularKey,
+      com.revenge.core.constants.AudioQualityCellularKey,
       defaultValue = AudioQuality.MEDIUM,
     )
 
@@ -120,13 +120,13 @@ fun PlayerSettings(
     rememberPreference(AudioNormalizationKey, defaultValue = true)
   val (audioLoudnessPreset, onAudioLoudnessPresetChange) =
     rememberEnumPreference(
-      com.revenge.music.constants.AudioLoudnessPresetKey,
-      defaultValue = com.revenge.music.constants.AudioLoudnessPreset.NORMAL,
+      com.revenge.core.constants.AudioLoudnessPresetKey,
+      defaultValue = com.revenge.core.constants.AudioLoudnessPreset.NORMAL,
     )
   var showLoudnessPresetDialog by remember { mutableStateOf(false) }
 
   val (spatialAudio, onSpatialAudioChange) =
-    rememberPreference(com.revenge.music.constants.SpatialAudioKey, defaultValue = false)
+    rememberPreference(com.revenge.core.constants.SpatialAudioKey, defaultValue = false)
 
   val (audioOffload, onAudioOffloadChange) =
     rememberPreference(key = AudioOffload, defaultValue = false)
@@ -147,7 +147,7 @@ fun PlayerSettings(
     rememberPreference(key = PreloadLyricsEnabledKey, defaultValue = true)
 
   val (dataSaverEnabled, onDataSaverEnabledChange) =
-    rememberPreference(key = com.revenge.music.constants.DataSaverEnabledKey, defaultValue = false)
+    rememberPreference(key = com.revenge.core.constants.DataSaverEnabledKey, defaultValue = false)
 
   val (enableExportAsMp3, onEnableExportAsMp3Change) =
     rememberPreference(key = EnableExportAsMp3Key, defaultValue = false)
@@ -158,7 +158,7 @@ fun PlayerSettings(
     rememberPreference(key = EnableGoogleCastKey, defaultValue = true)
 
   val (showSeekButtons, onShowSeekButtonsChange) =
-    rememberPreference(com.revenge.music.constants.ShowSeekButtonsKey, defaultValue = false)
+    rememberPreference(com.revenge.core.constants.ShowSeekButtonsKey, defaultValue = false)
 
   val (seekExtraSeconds, onSeekExtraSeconds) =
     rememberPreference(SeekExtraSeconds, defaultValue = false)
@@ -202,8 +202,8 @@ fun PlayerSettings(
 
   val (playbackEngine, onPlaybackEngineChange) =
     rememberEnumPreference(
-      com.revenge.music.constants.PlaybackEngineKey,
-      defaultValue = com.revenge.music.constants.PlaybackEngine.AUTO,
+      com.revenge.core.constants.PlaybackEngineKey,
+      defaultValue = com.revenge.core.constants.PlaybackEngine.AUTO,
     )
 
   if (showAudioQualityWifiDialog) {
@@ -259,20 +259,20 @@ fun PlayerSettings(
       current = audioLoudnessPreset,
       values =
         listOf(
-          com.revenge.music.constants.AudioLoudnessPreset.QUIET,
-          com.revenge.music.constants.AudioLoudnessPreset.NORMAL,
-          com.revenge.music.constants.AudioLoudnessPreset.LOUD,
-          com.revenge.music.constants.AudioLoudnessPreset.AGGRESSIVE,
+          com.revenge.core.constants.AudioLoudnessPreset.QUIET,
+          com.revenge.core.constants.AudioLoudnessPreset.NORMAL,
+          com.revenge.core.constants.AudioLoudnessPreset.LOUD,
+          com.revenge.core.constants.AudioLoudnessPreset.AGGRESSIVE,
         ),
       valueText = {
         when (it) {
-          com.revenge.music.constants.AudioLoudnessPreset.QUIET ->
+          com.revenge.core.constants.AudioLoudnessPreset.QUIET ->
             stringResource(R.string.loudness_preset_quiet)
-          com.revenge.music.constants.AudioLoudnessPreset.NORMAL ->
+          com.revenge.core.constants.AudioLoudnessPreset.NORMAL ->
             stringResource(R.string.loudness_preset_normal)
-          com.revenge.music.constants.AudioLoudnessPreset.LOUD ->
+          com.revenge.core.constants.AudioLoudnessPreset.LOUD ->
             stringResource(R.string.loudness_preset_loud)
-          com.revenge.music.constants.AudioLoudnessPreset.AGGRESSIVE ->
+          com.revenge.core.constants.AudioLoudnessPreset.AGGRESSIVE ->
             stringResource(R.string.loudness_preset_aggressive)
         }
       },
@@ -291,24 +291,24 @@ fun PlayerSettings(
       current = playbackEngine,
       values =
         listOf(
-          com.revenge.music.constants.PlaybackEngine.POTOKEN,
-          com.revenge.music.constants.PlaybackEngine.BRAVEPIPE,
-          com.revenge.music.constants.PlaybackEngine.AUTO,
+          com.revenge.core.constants.PlaybackEngine.POTOKEN,
+          com.revenge.core.constants.PlaybackEngine.BRAVEPIPE,
+          com.revenge.core.constants.PlaybackEngine.AUTO,
         ),
       valueText = {
         when (it) {
-          com.revenge.music.constants.PlaybackEngine.POTOKEN -> "eXtended InnerTube"
-          com.revenge.music.constants.PlaybackEngine.BRAVEPIPE -> "BravePipe (NewPipe)"
-          com.revenge.music.constants.PlaybackEngine.AUTO -> "Auto (Try Both)"
+          com.revenge.core.constants.PlaybackEngine.POTOKEN -> "eXtended InnerTube"
+          com.revenge.core.constants.PlaybackEngine.BRAVEPIPE -> "BravePipe (NewPipe)"
+          com.revenge.core.constants.PlaybackEngine.AUTO -> "Auto (Try Both)"
         }
       },
       valueDescription = {
         when (it) {
-          com.revenge.music.constants.PlaybackEngine.POTOKEN ->
+          com.revenge.core.constants.PlaybackEngine.POTOKEN ->
             "Uses WebView PoToken + CipherDeobfuscator. Most reliable and future-proof."
-          com.revenge.music.constants.PlaybackEngine.BRAVEPIPE ->
+          com.revenge.core.constants.PlaybackEngine.BRAVEPIPE ->
             "Uses NewPipe extractor for stream resolution. Lightweight but may break with YouTube updates."
-          com.revenge.music.constants.PlaybackEngine.AUTO ->
+          com.revenge.core.constants.PlaybackEngine.AUTO ->
             "Tries PoToken first, falls back to BravePipe if it fails."
         }
       },
@@ -502,9 +502,9 @@ fun PlayerSettings(
               description = {
                 Text(
                   when (playbackEngine) {
-                    com.revenge.music.constants.PlaybackEngine.POTOKEN -> "eXtended InnerTube"
-                    com.revenge.music.constants.PlaybackEngine.BRAVEPIPE -> "BravePipe (NewPipe)"
-                    com.revenge.music.constants.PlaybackEngine.AUTO -> "Auto (Try Both)"
+                    com.revenge.core.constants.PlaybackEngine.POTOKEN -> "eXtended InnerTube"
+                    com.revenge.core.constants.PlaybackEngine.BRAVEPIPE -> "BravePipe (NewPipe)"
+                    com.revenge.core.constants.PlaybackEngine.AUTO -> "Auto (Try Both)"
                   },
                 )
               },
@@ -821,13 +821,13 @@ fun PlayerSettings(
               description = {
                 Text(
                   when (audioLoudnessPreset) {
-                    com.revenge.music.constants.AudioLoudnessPreset.QUIET ->
+                    com.revenge.core.constants.AudioLoudnessPreset.QUIET ->
                       stringResource(R.string.loudness_preset_quiet)
-                    com.revenge.music.constants.AudioLoudnessPreset.NORMAL ->
+                    com.revenge.core.constants.AudioLoudnessPreset.NORMAL ->
                       stringResource(R.string.loudness_preset_normal)
-                    com.revenge.music.constants.AudioLoudnessPreset.LOUD ->
+                    com.revenge.core.constants.AudioLoudnessPreset.LOUD ->
                       stringResource(R.string.loudness_preset_loud)
-                    com.revenge.music.constants.AudioLoudnessPreset.AGGRESSIVE ->
+                    com.revenge.core.constants.AudioLoudnessPreset.AGGRESSIVE ->
                       stringResource(R.string.loudness_preset_aggressive)
                   },
                 )

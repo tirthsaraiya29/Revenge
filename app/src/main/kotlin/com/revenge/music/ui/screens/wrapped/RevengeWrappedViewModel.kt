@@ -3,9 +3,9 @@ package com.revenge.music.ui.screens.wrapped
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.revenge.music.db.MusicDatabase
-import com.revenge.music.db.entities.PlaylistEntity
-import com.revenge.music.db.entities.PlaylistSongMap
+import com.revenge.core.db.MusicDatabase
+import com.revenge.core.db.entities.PlaylistEntity
+import com.revenge.core.db.entities.PlaylistSongMap
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.time.LocalDateTime

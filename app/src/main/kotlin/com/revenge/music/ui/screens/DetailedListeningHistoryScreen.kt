@@ -21,7 +21,7 @@ import com.revenge.music.ui.component.LocalAlbumsGrid
 import com.revenge.music.ui.component.LocalArtistsGrid
 import com.revenge.music.ui.component.LocalSongsGrid
 import com.revenge.music.ui.component.NavigationTitle
-import com.revenge.music.ui.utils.resize
+import com.revenge.core.ui.utils.resize
 import com.revenge.music.utils.joinByBullet
 import com.revenge.music.utils.makeTimeString
 import com.revenge.music.viewmodels.DetailedListeningHistoryViewModel

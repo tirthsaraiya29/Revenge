@@ -35,20 +35,20 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.revenge.music.LocalPlayerAwareWindowInsets
 import com.revenge.music.R
-import com.revenge.music.api.DeepLService
-import com.revenge.music.api.OpenRouterService
-import com.revenge.music.constants.AiProviderKey
-import com.revenge.music.constants.AiRecommendationsKey
-import com.revenge.music.constants.AutoTranslateKey
-import com.revenge.music.constants.DeeplApiKey
-import com.revenge.music.constants.DeeplFormalityKey
-import com.revenge.music.constants.LanguageCodeToName
-import com.revenge.music.constants.OpenRouterApiKey
-import com.revenge.music.constants.OpenRouterBaseUrlKey
-import com.revenge.music.constants.OpenRouterModelKey
-import com.revenge.music.constants.TranslateLanguageKey
-import com.revenge.music.constants.TranslateModeKey
-import com.revenge.music.lyrics.LyricsTranslationHelper
+import com.revenge.lyrics.api.DeepLService
+import com.revenge.lyrics.api.OpenRouterService
+import com.revenge.core.constants.AiProviderKey
+import com.revenge.core.constants.AiRecommendationsKey
+import com.revenge.core.constants.AutoTranslateKey
+import com.revenge.core.constants.DeeplApiKey
+import com.revenge.core.constants.DeeplFormalityKey
+import com.revenge.core.constants.LanguageCodeToName
+import com.revenge.core.constants.OpenRouterApiKey
+import com.revenge.core.constants.OpenRouterBaseUrlKey
+import com.revenge.core.constants.OpenRouterModelKey
+import com.revenge.core.constants.TranslateLanguageKey
+import com.revenge.core.constants.TranslateModeKey
+import com.revenge.lyrics.lyrics.LyricsTranslationHelper
 import com.revenge.music.ui.component.EnumDialog
 import com.revenge.music.ui.component.Material3SettingsGroup
 import com.revenge.music.ui.component.Material3SettingsItem
@@ -76,7 +76,7 @@ fun AiSettings(
   var autoTranslate by rememberPreference(AutoTranslateKey, false)
   var aiRecommendations by rememberPreference(AiRecommendationsKey, false)
   var createFromTasteDaily by
-    rememberPreference(com.revenge.music.constants.CreateFromTasteDailyKey, false)
+    rememberPreference(com.revenge.core.constants.CreateFromTasteDailyKey, false)
   var deeplApiKey by rememberPreference(DeeplApiKey, "")
   var deeplFormality by rememberPreference(DeeplFormalityKey, "default")
 

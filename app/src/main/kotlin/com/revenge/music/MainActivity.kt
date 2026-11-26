@@ -136,56 +136,56 @@ import com.revenge.innertube.YouTube
 import com.revenge.innertube.models.SongItem
 import com.revenge.innertube.models.WatchEndpoint
 import com.revenge.music.ai.AiRecommendationHelper
-import com.revenge.music.constants.*
-import com.revenge.music.constants.AiRecommendationsKey
-import com.revenge.music.constants.AlbumArtThemeRecoloringKey
-import com.revenge.music.constants.AppBarHeight
-import com.revenge.music.constants.AppLanguageKey
-import com.revenge.music.constants.DarkModeKey
-import com.revenge.music.constants.DefaultOpenTabKey
-import com.revenge.music.constants.DisableScreenshotKey
-import com.revenge.music.constants.EnableHighRefreshRateKey
-import com.revenge.music.constants.FloatingToolbarBottomPadding
-import com.revenge.music.constants.FloatingToolbarHorizontalPadding
-import com.revenge.music.constants.IsMonochromeThemeKey
-import com.revenge.music.constants.LastAiRecommendationUpdateDayKey
-import com.revenge.music.constants.LiquidGlassBlurRadiusKey
-import com.revenge.music.constants.LiquidGlassChromaticAberrationKey
-import com.revenge.music.constants.LiquidGlassDepthEffectKey
-import com.revenge.music.constants.LiquidGlassGlobalEnabledKey
-import com.revenge.music.constants.LiquidGlassLensAmountKey
-import com.revenge.music.constants.LiquidGlassLensHeightKey
-import com.revenge.music.constants.LiquidGlassMiniPlayerEnabledKey
-import com.revenge.music.constants.LiquidGlassNavBarEnabledKey
-import com.revenge.music.constants.LiquidGlassPlayerEnabledKey
-import com.revenge.music.constants.LiquidGlassSurfaceOpacityKey
-import com.revenge.music.constants.LiquidGlassSurfaceTintColorKey
-import com.revenge.music.constants.LiquidGlassTextColorKey
-import com.revenge.music.constants.LiquidGlassVibrancyKey
-import com.revenge.music.constants.ListenTogetherInTopBarKey
-import com.revenge.music.constants.ListenTogetherUsernameKey
-import com.revenge.music.constants.MiniPlayerBottomSpacing
-import com.revenge.music.constants.MiniPlayerHeight
-import com.revenge.music.constants.MusicFlowEnabledKey
-import com.revenge.music.constants.NavigationBarAnimationSpec
-import com.revenge.music.constants.NavigationBarHeight
-import com.revenge.music.constants.PauseListenHistoryKey
-import com.revenge.music.constants.PauseSearchHistoryKey
-import com.revenge.music.constants.PureBlackKey
-import com.revenge.music.constants.SYSTEM_DEFAULT
-import com.revenge.music.constants.SelectedThemeColorKey
-import com.revenge.music.constants.StopMusicOnTaskClearKey
-import com.revenge.music.constants.UseNewMiniPlayerDesignKey
-import com.revenge.music.db.MusicDatabase
-import com.revenge.music.db.entities.SearchHistory
-import com.revenge.music.extensions.toEnum
-import com.revenge.music.models.toMediaMetadata
+import com.revenge.core.constants.*
+import com.revenge.core.constants.AiRecommendationsKey
+import com.revenge.core.constants.AlbumArtThemeRecoloringKey
+import com.revenge.core.constants.AppBarHeight
+import com.revenge.core.constants.AppLanguageKey
+import com.revenge.core.constants.DarkModeKey
+import com.revenge.core.constants.DefaultOpenTabKey
+import com.revenge.core.constants.DisableScreenshotKey
+import com.revenge.core.constants.EnableHighRefreshRateKey
+import com.revenge.core.constants.FloatingToolbarBottomPadding
+import com.revenge.core.constants.FloatingToolbarHorizontalPadding
+import com.revenge.core.constants.IsMonochromeThemeKey
+import com.revenge.core.constants.LastAiRecommendationUpdateDayKey
+import com.revenge.core.constants.LiquidGlassBlurRadiusKey
+import com.revenge.core.constants.LiquidGlassChromaticAberrationKey
+import com.revenge.core.constants.LiquidGlassDepthEffectKey
+import com.revenge.core.constants.LiquidGlassGlobalEnabledKey
+import com.revenge.core.constants.LiquidGlassLensAmountKey
+import com.revenge.core.constants.LiquidGlassLensHeightKey
+import com.revenge.core.constants.LiquidGlassMiniPlayerEnabledKey
+import com.revenge.core.constants.LiquidGlassNavBarEnabledKey
+import com.revenge.core.constants.LiquidGlassPlayerEnabledKey
+import com.revenge.core.constants.LiquidGlassSurfaceOpacityKey
+import com.revenge.core.constants.LiquidGlassSurfaceTintColorKey
+import com.revenge.core.constants.LiquidGlassTextColorKey
+import com.revenge.core.constants.LiquidGlassVibrancyKey
+import com.revenge.core.constants.ListenTogetherInTopBarKey
+import com.revenge.core.constants.ListenTogetherUsernameKey
+import com.revenge.core.constants.MiniPlayerBottomSpacing
+import com.revenge.core.constants.MiniPlayerHeight
+import com.revenge.core.constants.MusicFlowEnabledKey
+import com.revenge.core.constants.NavigationBarAnimationSpec
+import com.revenge.core.constants.NavigationBarHeight
+import com.revenge.core.constants.PauseListenHistoryKey
+import com.revenge.core.constants.PauseSearchHistoryKey
+import com.revenge.core.constants.PureBlackKey
+import com.revenge.core.constants.SYSTEM_DEFAULT
+import com.revenge.core.constants.SelectedThemeColorKey
+import com.revenge.core.constants.StopMusicOnTaskClearKey
+import com.revenge.core.constants.UseNewMiniPlayerDesignKey
+import com.revenge.core.db.MusicDatabase
+import com.revenge.core.db.entities.SearchHistory
+import com.revenge.core.extensions.toEnum
+import com.revenge.core.models.toMediaMetadata
 import com.revenge.music.playback.DownloadUtil
 import com.revenge.music.playback.MusicService
 import com.revenge.music.playback.MusicService.MusicBinder
 import com.revenge.music.playback.PlayerConnection
-import com.revenge.music.playback.queues.ListQueue
-import com.revenge.music.playback.queues.YouTubeQueue
+import com.revenge.playback.queues.ListQueue
+import com.revenge.playback.queues.YouTubeQueue
 import com.revenge.music.ui.component.*
 import com.revenge.music.ui.component.AppFloatingNavBar
 import com.revenge.music.ui.component.GlassEffectConfig
@@ -220,13 +220,13 @@ import com.revenge.music.updates.updater.getUpdateNotificationsSetting
 import com.revenge.music.updates.updater.saveUpdateAvailableState
 import com.revenge.music.utils.HapticType
 import com.revenge.music.utils.SyncUtils
-import com.revenge.music.utils.dataStore
-import com.revenge.music.utils.get
+import com.revenge.core.utils.dataStore
+import com.revenge.core.utils.get
 import com.revenge.music.utils.onlinePlaylistRoute
 import com.revenge.music.utils.rememberEnumPreference
 import com.revenge.music.utils.rememberHapticHelper
 import com.revenge.music.utils.rememberPreference
-import com.revenge.music.utils.reportException
+import com.revenge.core.utils.reportException
 import com.revenge.music.utils.setAppLocale
 import com.revenge.music.utils.validOnlinePlaylistId
 import com.revenge.music.viewmodels.HomeViewModel
@@ -419,9 +419,9 @@ class MainActivity : ComponentActivity() {
     if (java.io.File(filesDir, "clear_export_state").exists()) {
       lifecycleScope.launch {
         dataStore.edit { preferences ->
-          preferences.remove(com.revenge.music.constants.ExportingSongIdsKey)
-          preferences.remove(com.revenge.music.constants.ExportedSongIdsKey)
-          preferences.remove(com.revenge.music.constants.ExportProgressKey)
+          preferences.remove(com.revenge.core.constants.ExportingSongIdsKey)
+          preferences.remove(com.revenge.core.constants.ExportedSongIdsKey)
+          preferences.remove(com.revenge.core.constants.ExportProgressKey)
         }
         java.io.File(filesDir, "clear_export_state").delete()
       }
@@ -562,7 +562,7 @@ class MainActivity : ComponentActivity() {
       if (lastSeenVersion.isEmpty() || lastSeenVersion != currentVersion) {
         // Run migrations for fresh installs and updates
         context.dataStore.edit { preferences ->
-          preferences[com.revenge.music.constants.ForceOpusKey] = true
+          preferences[com.revenge.core.constants.ForceOpusKey] = true
         }
       }
 
@@ -1060,7 +1060,7 @@ class MainActivity : ComponentActivity() {
 
         LaunchedEffect(Unit) {
           val prefs = context.dataStore.data.first()
-          val lastOpened = prefs[com.revenge.music.constants.LastOpenedVersionCodeKey] ?: -1
+          val lastOpened = prefs[com.revenge.core.constants.LastOpenedVersionCodeKey] ?: -1
           if (lastOpened < BuildConfig.VERSION_CODE) {
             showWelcomeDialog = true
           }
@@ -1737,7 +1737,7 @@ class MainActivity : ComponentActivity() {
                 showWelcomeDialog = false
                 coroutineScope.launch {
                   context.dataStore.edit {
-                    it[com.revenge.music.constants.LastOpenedVersionCodeKey] =
+                    it[com.revenge.core.constants.LastOpenedVersionCodeKey] =
                       BuildConfig.VERSION_CODE
                   }
                 }

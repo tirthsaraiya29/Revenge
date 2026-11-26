@@ -1,6 +1,6 @@
 package com.revenge.music.utils
 
-import com.revenge.music.lyrics.LyricsUtils
+import com.revenge.lyrics.lyrics.LyricsUtils
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue

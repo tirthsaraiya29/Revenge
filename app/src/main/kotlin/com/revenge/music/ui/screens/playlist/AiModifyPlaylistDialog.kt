@@ -17,7 +17,7 @@ import androidx.compose.ui.window.DialogProperties
 import com.revenge.music.LocalDatabase
 import com.revenge.music.R
 import com.revenge.music.ai.AiPlaylistModifier
-import com.revenge.music.db.entities.PlaylistSong
+import com.revenge.core.db.entities.PlaylistSong
 import kotlinx.coroutines.launch
 
 @Composable

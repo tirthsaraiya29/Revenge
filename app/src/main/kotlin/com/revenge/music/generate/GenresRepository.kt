@@ -1,6 +1,6 @@
 package com.revenge.music.generate
 
-import com.revenge.music.db.MusicDatabase
+import com.revenge.core.db.MusicDatabase
 import com.revenge.music.utils.lastfm.LastFmTasteApi
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject

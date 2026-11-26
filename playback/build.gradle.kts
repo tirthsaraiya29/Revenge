@@ -35,4 +35,5 @@ dependencies {
 
     coreLibraryDesugaring(libs.desugaring)
     testImplementation(libs.junit)
+    testImplementation(libs.robolectric)
 }

@@ -2,11 +2,11 @@ package com.revenge.music.generate
 
 import androidx.datastore.preferences.core.edit
 import androidx.room.Room
-import com.revenge.music.constants.LastFMUsernameKey
-import com.revenge.music.db.InternalDatabase
-import com.revenge.music.db.MusicDatabase
-import com.revenge.music.db.entities.TasteProfileEntity
-import com.revenge.music.utils.dataStore
+import com.revenge.core.constants.LastFMUsernameKey
+import com.revenge.core.db.InternalDatabase
+import com.revenge.core.db.MusicDatabase
+import com.revenge.core.db.entities.TasteProfileEntity
+import com.revenge.core.utils.dataStore
 import com.revenge.music.utils.lastfm.LastFmTasteApi
 import com.revenge.music.utils.lastfm.SimilarArtist
 import com.revenge.music.utils.lastfm.SimilarTrack
