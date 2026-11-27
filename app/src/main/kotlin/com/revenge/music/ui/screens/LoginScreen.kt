@@ -161,9 +161,7 @@ fun LoginScreen(navController: NavController) {
       factory = {
         val webView =
           WebView(it).apply {
-            // nosemgrep: revenge-webview-javascript -- YouTube login page requires JS; no JS
-            // interface is added.
-            settings.javaScriptEnabled = true
+            settings.javaScriptEnabled = true // nosemgrep: revenge-webview-javascript -- trusted Google/YouTube sign-in hosts only; no JS interface is exposed.
             settings.domStorageEnabled = true
             settings.setSupportMultipleWindows(true)
             CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
