@@ -69,6 +69,7 @@ import com.revenge.music.updates.commitscreen.CommitScreen
 import com.revenge.music.updates.updater.UpdateScreen
 import com.revenge.music.utils.rememberEnumPreference
 import com.revenge.music.utils.rememberPreference
+import com.revenge.music.utils.shouldUseDarkTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
 fun NavGraphBuilder.navigationBuilder(
@@ -91,7 +92,7 @@ fun NavGraphBuilder.navigationBuilder(
     val isSystemInDarkTheme = isSystemInDarkTheme()
     val useDarkTheme =
       remember(darkTheme, isSystemInDarkTheme) {
-        if (darkTheme == DarkMode.AUTO) isSystemInDarkTheme else darkTheme == DarkMode.ON
+        shouldUseDarkTheme(darkTheme, isSystemInDarkTheme)
       }
     val pureBlack = remember(pureBlackEnabled, useDarkTheme) { pureBlackEnabled && useDarkTheme }
     SearchScreen(navController = navController, pureBlack = pureBlack)
