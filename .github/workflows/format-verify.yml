@@ -52,7 +52,7 @@ jobs:
             -dname "CN=Android Debug,O=Android,C=US" \
             -keyalg RSA -keysize 2048 -validity 10000
       - name: Build and test
-        run: ./gradlew clean build --console=plain --no-daemon
+        run: ./gradlew spotlessCheck test :app:assembleUniversalFossDebug --console=plain --no-daemon
       - name: Install Semgrep
         run: pipx install semgrep
       - name: Run Semgrep and print findings
