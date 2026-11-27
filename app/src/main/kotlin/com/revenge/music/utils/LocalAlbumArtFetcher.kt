@@ -33,15 +33,11 @@ class LocalAlbumArtFetcher(
                 retriever.setDataSource(data)
             }
             val bytes = retriever.embeddedPicture ?: return@withContext null
-            val mimeType = when {
-                bytes.size >= 8 && bytes[0] == 0x89.toByte() && bytes[1] == 'P'.code.toByte() -> "image/png"
-                bytes.size >= 3 && bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte() -> "image/jpeg"
-                bytes.size >= 12 && String(bytes, 0, 4, Charsets.US_ASCII) == "RIFF" -> "image/webp"
-                else -> "image/jpeg"
-            }
-            SourceFetchResult(
-                source = coil3.decode.ImageSource(ByteBuffer.wrap(bytes), context),
-                mimeType = mimeType,
+            val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                ?: return@withContext null
+            ImageFetchResult(
+                image = bitmap.asImage(),
+                isSampled = false,
                 dataSource = DataSource.DISK,
             )
         } catch (_: Exception) {

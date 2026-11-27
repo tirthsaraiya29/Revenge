@@ -45,7 +45,7 @@ object FunctionNameExtractor {
       val namedDeclaration = match.groupValues[1]
       val assigned = match.groupValues[3]
       val property = match.groupValues[5]
-      val name = namedDeclaration.ifEmpty { assigned.ifEmpty { property } }.ifEmpty { null }
+      val name = namedDeclaration.ifEmpty { assigned.ifEmpty { property } }.takeIf { it.isNotEmpty() }
       val paramsText =
         when {
           namedDeclaration.isNotEmpty() -> match.groupValues[2]
@@ -126,7 +126,7 @@ object FunctionNameExtractor {
    */
   fun findSignatureCallDescriptor(playerJs: String, functionName: String): String? {
     if (!IDENTIFIER.matches(functionName)) return null
-    val regex = Regex("(?<![\w$.])" + Regex.escape(functionName) + "\s*\(([^()]*)\)")
+    val regex = Regex("""(?<![\w$.])""" + Regex.escape(functionName) + """\s*\(([^()]*)\)""")
     var best: String? = null
     var bestArity = 0
     for (match in regex.findAll(playerJs)) {
@@ -207,7 +207,7 @@ object FunctionNameExtractor {
   private fun skipQuoted(source: String, start: Int, quote: Char): Int {
     var index = start + 1
     while (index < source.length) {
-      if (source[index] == '\') {
+      if (source[index] == '\\') {
         index += 2
         continue
       }
@@ -220,7 +220,7 @@ object FunctionNameExtractor {
   private fun skipTemplate(source: String, start: Int): Int {
     var index = start + 1
     while (index < source.length) {
-      if (source[index] == '\') {
+      if (source[index] == '\\') {
         index += 2
         continue
       }

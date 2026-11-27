@@ -89,7 +89,7 @@ object PlayerJsFetcher {
 
   /** Player id from an `iframe_api` or watch-page body. Exposed for validation. */
   fun extractPlayerId(html: String): String? {
-    val normalized = html.replace("\/", "/").replace("\u0026", "&")
+    val normalized = html.replace("\\/", "/").replace("\\u0026", "&")
     for (pattern in PLAYER_ID_PATTERNS) {
       pattern.find(normalized)?.groupValues?.getOrNull(1)?.let { return it }
     }
@@ -104,7 +104,7 @@ object PlayerJsFetcher {
       Timber.tag(TAG).w("Unable to download the player bootstrap")
       return null
     }
-    val normalized = html.replace("\/", "/")
+    val normalized = html.replace("\\/", "/")
     val playerId = extractPlayerId(html)
     if (playerId == null) {
       Timber.tag(TAG).w("No player id in bootstrap (len=%d)", html.length)
@@ -146,7 +146,7 @@ object PlayerJsFetcher {
     }
 
   private fun extractJsUrl(html: String): String? =
-    JS_URL.find(html)?.groupValues?.getOrNull(1)?.replace("\/", "/")
+    JS_URL.find(html)?.groupValues?.getOrNull(1)?.replace("\\/", "/")
 
   private fun absoluteUrl(url: String): String =
     when {

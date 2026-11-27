@@ -130,8 +130,11 @@ class SyncUtils @Inject constructor(
     fun performLikedAlbumsSync() = syncLikedAlbums()
     fun performUploadedAlbumsSync() = syncUploadedAlbums()
     fun performArtistsSync() = syncArtistsSubscriptions()
+    fun performArtistsSubscriptionsSync() = syncArtistsSubscriptions()
     fun performSavedPlaylistsSync() = syncSavedPlaylists()
     fun performAutoSyncPlaylistsSync() = syncAutoSyncPlaylists()
+    fun performSinglePlaylistSync(browseId: String, playlistId: String) =
+        syncPlaylist(browseId, playlistId)
 
     fun runAllSyncs() = enqueue(SyncOperation.FullSync)
     fun performFullSync() = runAllSyncs()
@@ -162,16 +165,26 @@ class SyncUtils @Inject constructor(
     // ---- suspend surface -------------------------------------------------------------------
 
     suspend fun syncLikedSongsSuspend() = perform(SyncOperation.LikedSongs)
+    suspend fun likedSongsSyncSuspend() = perform(SyncOperation.LikedSongs)
     suspend fun syncLibrarySongsSuspend() = perform(SyncOperation.LibrarySongs)
+    suspend fun librarySongsSyncSuspend() = perform(SyncOperation.LibrarySongs)
     suspend fun syncUploadedSongsSuspend() = perform(SyncOperation.UploadedSongs)
+    suspend fun uploadedSongsSyncSuspend() = perform(SyncOperation.UploadedSongs)
     suspend fun syncLikedAlbumsSuspend() = perform(SyncOperation.LikedAlbums)
+    suspend fun likedAlbumsSyncSuspend() = perform(SyncOperation.LikedAlbums)
     suspend fun syncUploadedAlbumsSuspend() = perform(SyncOperation.UploadedAlbums)
+    suspend fun uploadedAlbumsSyncSuspend() = perform(SyncOperation.UploadedAlbums)
     suspend fun syncArtistsSuspend() = perform(SyncOperation.ArtistsSubscriptions)
+    suspend fun artistsSubscriptionsSyncSuspend() = perform(SyncOperation.ArtistsSubscriptions)
     suspend fun syncSavedPlaylistsSuspend() = perform(SyncOperation.SavedPlaylists)
+    suspend fun savedPlaylistsSyncSuspend() = perform(SyncOperation.SavedPlaylists)
     suspend fun syncAutoSyncPlaylistsSuspend() = perform(SyncOperation.AutoSyncPlaylists)
     suspend fun syncPlaylistSuspend(browseId: String, playlistId: String) =
         perform(SyncOperation.SinglePlaylist(browseId, playlistId))
+    suspend fun singlePlaylistSyncSuspend(browseId: String, playlistId: String) =
+        perform(SyncOperation.SinglePlaylist(browseId, playlistId))
     suspend fun runAllSyncsSuspend() = perform(SyncOperation.FullSync)
+    suspend fun fullSyncSuspend() = perform(SyncOperation.FullSync)
     suspend fun cleanupDuplicatesSuspend() = perform(SyncOperation.CleanupDuplicates)
     suspend fun clearAllSyncedContent() = perform(SyncOperation.ClearAllSynced)
 
@@ -335,7 +348,7 @@ class SyncUtils @Inject constructor(
         var continuation = first.continuation
         var pages = 0
         while (continuation != null && pages < MAX_CONTINUATION_PAGES) {
-            val page: LibraryPage = YouTube.libraryContinuation(continuation).getOrThrow()
+            val page = YouTube.libraryContinuation(continuation).getOrThrow()
             items += page.items
             continuation = page.continuation
             pages++

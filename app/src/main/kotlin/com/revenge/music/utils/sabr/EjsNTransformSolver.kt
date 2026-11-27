@@ -58,7 +58,7 @@ object EjsNTransformSolver {
     }
   }
 
-  private fun runSolver(
+  private suspend fun runSolver(
     context: Context,
     playerJs: String,
     type: String,
