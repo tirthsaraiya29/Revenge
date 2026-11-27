@@ -1,6 +1,8 @@
 # Revenge rebuild — durable progress log
 
-Updated after each milestone. Read this first when resuming.
+Updated after each milestone. Read this first when resuming. A tool-agnostic
+handoff prompt (for Antigravity or any successor) lives at
+`C:\Users\tirth\Downloads\REVENGE_CONTINUATION.md`.
 
 ## Mission
 
