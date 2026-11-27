@@ -831,11 +831,12 @@ internal fun revengeApp(activity: MainActivity, initialRoute: String) {
     val (listenTogetherInTopBar) = rememberPreference(ListenTogetherInTopBarKey, false)
     val navigationItems =
       remember(listenTogetherInTopBar) {
-        if (listenTogetherInTopBar) {
+        // filterNotNull: release/R8 has produced a null-containing MainScreens list.
+        (if (listenTogetherInTopBar) {
           Screens.MainScreens.filter { it != Screens.ListenTogether }
         } else {
           Screens.MainScreens
-        }
+        }).filterNotNull()
       }
 
     val backStackEntry by navController.currentBackStackEntryAsState()
@@ -1264,7 +1265,7 @@ private fun isNavigationBarRoute(route: String?, useRail: Boolean): Boolean {
   if (route == "update") return false
   if (route.startsWith("settings")) return false
   if (route in HIDDEN_BOTTOM_BAR_ROUTES) return false
-  if (route in Screens.MainScreens.map { it.route }) return true
+  if (route in Screens.MainScreens.filterNotNull().map { it.route }) return true
   return route.substringBefore('/') in BOTTOM_BAR_DETAIL_SEGMENTS
 }
 

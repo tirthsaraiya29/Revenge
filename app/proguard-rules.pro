@@ -115,6 +115,11 @@
 # Keep all classes within the kuromoji package
 -keep class com.atilika.kuromoji.** { *; }
 
+# Release builds have produced a `MainScreens` list containing nulls (crash:
+# Screens.getRoute() on null). Keep the screen singletons out of R8 merging.
+-keep class com.revenge.music.ui.screens.Screens { *; }
+-keep class com.revenge.music.ui.screens.Screens$* { *; }
+
 ## Queue Persistence Rules
 # Keep queue-related classes to prevent serialization issues in release builds
 -keep class com.revenge.music.models.PersistQueue { *; }
