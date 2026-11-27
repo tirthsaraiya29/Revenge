@@ -1,16 +1,6 @@
 name: Format and verify
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "**/*.kt"
-      - "**/*.kts"
-      - "**/*.java"
-      - "gradlew"
-      - "gradlew.bat"
-      - "gradle/**"
-      - ".github/workflows/format-verify.yml"
   workflow_dispatch:
 
 permissions:
