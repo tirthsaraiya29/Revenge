@@ -1,4 +1,10 @@
 package com.revenge.music.utils.potoken
 
-/** Raised when a PO token cannot be minted or the BotGuard runtime fails. */
-class PoTokenException(message: String, cause: Throwable? = null) : Exception(message, cause)
+class PoTokenException(message: String) : Exception(message)
+
+// to be thrown if the WebView provided by the system is broken
+class BadWebViewException(message: String) : Exception(message)
+
+fun buildExceptionForJsError(error: String): Exception {
+  return if (error.contains("SyntaxError")) BadWebViewException(error) else PoTokenException(error)
+}

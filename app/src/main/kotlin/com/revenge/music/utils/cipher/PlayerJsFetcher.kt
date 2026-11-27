@@ -1,213 +1,302 @@
 package com.revenge.music.utils.cipher
 
-import android.content.Context
-import com.revenge.innertube.models.YouTubeClient
+import com.revenge.innertube.YouTube
 import java.io.File
-import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import timber.log.Timber
 
 /**
- * Downloads and caches `base.js` for the current YouTube web player.
+ * Fetches and caches YouTube's player.js for cipher operations.
  *
- * The player id is discovered from the public `iframe_api` bootstrap script (falling back to the
- * watch page), then the build is fetched from `/s/player/<id>/player_ias.vflset/en_US/base.js`.
- * The payload is cached on disk together with its id so a failed refresh can still fall back to
- * the previous build. A build younger than [CACHE_TTL_MS] is reused without network access.
+ * The player.js contains the signature deobfuscation and n-transform functions that are required to
+ * access stream URLs on web clients.
  */
 object PlayerJsFetcher {
-  private const val TAG = "PlayerJsFetcher"
-  private const val IFRAME_API = "https://www.youtube.com/iframe_api"
-  private const val WATCH_PAGE = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
-  private const val PLAYER_URL_TEMPLATE =
-    "https://www.youtube.com/s/player/%s/player_ias.vflset/en_US/base.js"
-  private const val YOUTUBE_ORIGIN = "https://www.youtube.com"
-  private const val PREFS = "cipher_player_js"
-  private const val KEY_ID = "player_id"
-  private const val KEY_URL = "player_url"
-  private const val KEY_FETCHED_AT = "fetched_at"
-  private const val CACHE_DIR = "cipher"
-  private const val CACHE_FILE = "player.js"
-  private const val MIN_PLAYER_JS_LENGTH = 100_000
-  private const val CACHE_TTL_MS = 6L * 60L * 60L * 1000L
+  private const val TAG = "Metrolist_CipherFetcher"
+  private const val IFRAME_API_URL = "https://www.youtube.com/iframe_api"
+  private const val PLAYER_JS_URL_TEMPLATE =
+    "https://www.youtube.com/s/player/%s/player_ias.vflset/en_GB/base.js"
+  private const val CACHE_TTL_MS = 6 * 60 * 60 * 1000L // 6 hours
 
-  /** A fetched player build. [js] is the raw `base.js` text. */
-  data class PlayerJs(
-    val playerId: String,
-    val url: String,
-    val js: String,
-    val fetchedAt: Long,
-  )
+  private val httpClient = OkHttpClient.Builder().proxy(YouTube.proxy).build()
 
-  private val mutex = Mutex()
+  // Regex to extract player hash from iframe_api response
+  private val PLAYER_HASH_REGEX = Regex("""\\?/s\\?/player\\?/([a-zA-Z0-9_-]+)\\?/""")
 
-  @Volatile private var memory: PlayerJs? = null
+  // Serializes cache mutations: getPlayerJs has unsynchronized concurrent callers, and an
+  // unlocked writeToCache purge racing another writer's writeAtomic tmp window would delete
+  // the tmp mid-write and silently degrade to a truncating non-atomic write.
+  private val cacheWriteLock = Any()
 
-  private val client: OkHttpClient by lazy {
-    OkHttpClient.Builder()
-      .connectTimeout(20, TimeUnit.SECONDS)
-      .readTimeout(30, TimeUnit.SECONDS)
-      .writeTimeout(30, TimeUnit.SECONDS)
-      .retryOnConnectionFailure(true)
-      .build()
-  }
+  private fun getCacheDir(): File = File(CipherDeobfuscator.appContext.filesDir, "cipher_cache")
 
-  /** Returns the newest player, refreshing when [forceRefresh] is set or the cache is stale. */
-  suspend fun getPlayerJs(forceRefresh: Boolean = false): PlayerJs? =
-    mutex.withLock {
-      val context = contextOrNull() ?: return@withLock null
-      val cached = memory ?: withContext(Dispatchers.IO) { readDisk(context) }
-      if (!forceRefresh && cached != null && !isStale(cached)) return@withLock cached
+  private fun getCacheFile(hash: String): File = File(getCacheDir(), "player_$hash.js")
 
-      val fetched = withContext(Dispatchers.IO) { fetch() }
-      if (fetched != null) {
-        memory = fetched
-        withContext(Dispatchers.IO) { writeDisk(context, fetched) }
-        fetched
-      } else {
-        cached
-      }
-    }
+  private fun getHashFile(): File = File(getCacheDir(), "current_hash.txt")
 
-  fun currentPlayerId(): String? = memory?.playerId
+  /**
+   * Get player.js content and hash.
+   *
+   * Uses cached version if available and not expired, otherwise fetches fresh. Returns
+   * Pair(playerJs, hash) or null if failed.
+   */
+  suspend fun getPlayerJs(forceRefresh: Boolean = false): Pair<String, String>? =
+    withContext(Dispatchers.IO) {
+      Timber.tag(TAG).d("=== GET PLAYER.JS ===")
+      Timber.tag(TAG).d("forceRefresh: $forceRefresh")
 
-  /** Drops the in-memory and on-disk cache; the next call performs a network fetch. */
-  suspend fun invalidate() =
-    mutex.withLock {
-      memory = null
-      val context = contextOrNull() ?: return@withLock
-      withContext(Dispatchers.IO) {
-        runCatching { cacheFile(context).delete() }
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply()
-      }
-    }
-
-  /** Player id from an `iframe_api` or watch-page body. Exposed for validation. */
-  fun extractPlayerId(html: String): String? {
-    val normalized = html.replace("\\/", "/").replace("\\u0026", "&")
-    for (pattern in PLAYER_ID_PATTERNS) {
-      pattern.find(normalized)?.groupValues?.getOrNull(1)?.let { return it }
-    }
-    val jsUrl = extractJsUrl(normalized) ?: return null
-    return PLAYER_ID_FROM_URL.find(jsUrl)?.groupValues?.getOrNull(1)
-  }
-
-  private fun fetch(): PlayerJs? {
-    val html =
-      httpGet(IFRAME_API, YOUTUBE_ORIGIN + "/") ?: httpGet(WATCH_PAGE, YOUTUBE_ORIGIN + "/")
-    if (html == null) {
-      Timber.tag(TAG).w("Unable to download the player bootstrap")
-      return null
-    }
-    val normalized = html.replace("\\/", "/")
-    val playerId = extractPlayerId(html)
-    if (playerId == null) {
-      Timber.tag(TAG).w("No player id in bootstrap (len=%d)", html.length)
-      return null
-    }
-    val url =
-      extractJsUrl(normalized)?.let(::absoluteUrl)
-        ?: PLAYER_URL_TEMPLATE.format(playerId)
-    val js = httpGet(url, YOUTUBE_ORIGIN + "/")
-    if (js == null || js.length < MIN_PLAYER_JS_LENGTH) {
-      Timber.tag(TAG).w("Player %s fetch failed or truncated (len=%d)", playerId, js?.length ?: 0)
-      return null
-    }
-    Timber.tag(TAG).d("Fetched player %s (%d chars)", playerId, js.length)
-    return PlayerJs(playerId = playerId, url = url, js = js, fetchedAt = System.currentTimeMillis())
-  }
-
-  private fun httpGet(url: String, referer: String): String? =
-    try {
-      val request =
-        Request.Builder()
-          .url(url)
-          .header("User-Agent", YouTubeClient.USER_AGENT_WEB)
-          .header("Referer", referer)
-          .header("Accept-Language", "en-US,en;q=0.9")
-          .get()
-          .build()
-      client.newCall(request).execute().use { response ->
-        if (!response.isSuccessful) {
-          Timber.tag(TAG).w("HTTP %d for %s", response.code, url)
-          null
-        } else {
-          response.body?.string()
+      try {
+        val cacheDir = getCacheDir()
+        if (!cacheDir.exists()) {
+          Timber.tag(TAG).d("Creating cache directory: ${cacheDir.absolutePath}")
+          cacheDir.mkdirs()
         }
+
+        // Check cache first (unless forced refresh)
+        if (!forceRefresh) {
+          val cached = readFromCache()
+          if (cached != null) {
+            Timber.tag(TAG).d("=== CACHE HIT ===")
+            Timber.tag(TAG)
+              .d("Using cached player JS (hash=${cached.second}, length=${cached.first.length})")
+            return@withContext cached
+          }
+          Timber.tag(TAG).d("Cache miss, will fetch fresh")
+        }
+
+        // Fetch player hash from iframe_api
+        Timber.tag(TAG).d("Fetching player hash from iframe_api...")
+        val hash = fetchPlayerHash()
+        if (hash == null) {
+          Timber.tag(TAG).e("Failed to extract player hash from iframe_api")
+          return@withContext null
+        }
+        Timber.tag(TAG).d("Extracted player hash: $hash")
+
+        // Download player JS
+        Timber.tag(TAG).d("Downloading player JS for hash: $hash...")
+        val playerJs = downloadPlayerJs(hash)
+        if (playerJs == null) {
+          Timber.tag(TAG).e("Failed to download player JS for hash=$hash")
+          return@withContext null
+        }
+
+        Timber.tag(TAG).d("=== PLAYER.JS DOWNLOADED ===")
+        Timber.tag(TAG).d("hash: $hash")
+        Timber.tag(TAG).d("length: ${playerJs.length} chars")
+        Timber.tag(TAG).d("preview: ${playerJs.take(100)}...")
+
+        // Cache the result
+        writeToCache(hash, playerJs)
+
+        Pair(playerJs, hash)
+      } catch (e: Exception) {
+        Timber.tag(TAG).e(e, "getPlayerJs exception: ${e.message}")
+        null
       }
-    } catch (error: Exception) {
-      Timber.tag(TAG).w(error, "GET %s failed", url)
-      null
     }
 
-  private fun extractJsUrl(html: String): String? =
-    JS_URL.find(html)?.groupValues?.getOrNull(1)?.replace("\\/", "/")
-
-  private fun absoluteUrl(url: String): String =
-    when {
-      url.startsWith("http://") || url.startsWith("https://") -> url
-      url.startsWith("//") -> "https:$url"
-      url.startsWith("/") -> YOUTUBE_ORIGIN + url
-      else -> "$YOUTUBE_ORIGIN/$url"
-    }
-
-  private fun isStale(player: PlayerJs): Boolean =
-    System.currentTimeMillis() - player.fetchedAt > CACHE_TTL_MS
-
-  private fun cacheFile(context: Context): File =
-    File(File(context.filesDir, CACHE_DIR), CACHE_FILE)
-
-  private fun readDisk(context: Context): PlayerJs? {
-    val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-    val id = prefs.getString(KEY_ID, null) ?: return null
-    val url = prefs.getString(KEY_URL, null) ?: return null
-    val fetchedAt = prefs.getLong(KEY_FETCHED_AT, 0L)
-    val file = cacheFile(context)
-    if (!file.isFile) return null
-    return try {
-      val js = file.readText()
-      if (js.length < MIN_PLAYER_JS_LENGTH) return null
-      PlayerJs(id, url, js, fetchedAt).also { memory = it }
-    } catch (error: Exception) {
-      Timber.tag(TAG).w(error, "Unable to read cached player")
-      null
+  /**
+   * Invalidate the player.js cache. Call this when cipher operations fail to force a fresh fetch.
+   */
+  fun invalidateCache() {
+    Timber.tag(TAG).d("Invalidating cache...")
+    synchronized(cacheWriteLock) {
+      try {
+        val cacheDir = getCacheDir()
+        if (cacheDir.exists()) {
+          // Only the player.js cache (player_*.js + current_hash.txt) belongs to this fetcher.
+          // The dir is shared with PlayerConfigStore (configs_remote.json/.meta) — do NOT wipe
+          // those, or every decipher retry destroys the config ETag and forces a full
+          // non-conditional re-download of the config file.
+          val files =
+            cacheDir.listFiles()?.filter {
+              it.name.startsWith("player_") || it.name == "current_hash.txt"
+            }
+          Timber.tag(TAG).d("Deleting ${files?.size ?: 0} player-JS cache files")
+          files?.forEach {
+            Timber.tag(TAG).v("Deleting: ${it.name}")
+            it.delete()
+          }
+        }
+        Timber.tag(TAG).d("Cache invalidated successfully")
+      } catch (e: Exception) {
+        Timber.tag(TAG).e(e, "Failed to invalidate cache: ${e.message}")
+      }
     }
   }
 
-  private fun writeDisk(context: Context, player: PlayerJs) {
+  private fun readFromCache(): Pair<String, String>? {
+    Timber.tag(TAG).d("Checking cache...")
     try {
-      val dir = File(context.filesDir, CACHE_DIR)
-      if (!dir.isDirectory && !dir.mkdirs()) {
-        Timber.tag(TAG).w("Unable to create cipher cache directory")
-        return
+      val hashFile = getHashFile()
+      if (!hashFile.exists()) {
+        Timber.tag(TAG).d("Hash file does not exist")
+        return null
       }
-      cacheFile(context).writeText(player.js)
-      context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        .edit()
-        .putString(KEY_ID, player.playerId)
-        .putString(KEY_URL, player.url)
-        .putLong(KEY_FETCHED_AT, player.fetchedAt)
-        .apply()
-    } catch (error: Exception) {
-      Timber.tag(TAG).w(error, "Unable to cache player")
+
+      val hashData = hashFile.readText().split("\n")
+      if (hashData.size < 2) {
+        Timber.tag(TAG).d("Hash file malformed (expected 2 lines, got ${hashData.size})")
+        return null
+      }
+
+      val hash = hashData[0]
+      val timestamp = hashData[1].toLongOrNull()
+      if (timestamp == null) {
+        Timber.tag(TAG).d("Could not parse timestamp from hash file")
+        return null
+      }
+
+      val ageMs = System.currentTimeMillis() - timestamp
+      val ageHours = ageMs / (1000 * 60 * 60)
+      Timber.tag(TAG).d("Cache age: ${ageHours}h (TTL: ${CACHE_TTL_MS / (1000 * 60 * 60)}h)")
+
+      // Check TTL (in-range: a future timestamp from a backward clock step counts as
+      // expired, not fresh — see PlayerConfigStore.withinWindow).
+      if (!PlayerConfigStore.withinWindow(System.currentTimeMillis(), timestamp, CACHE_TTL_MS)) {
+        Timber.tag(TAG).d("Cache expired (hash=$hash, age=${ageHours}h)")
+        return null
+      }
+
+      val cacheFile = getCacheFile(hash)
+      if (!cacheFile.exists()) {
+        Timber.tag(TAG).d("Cache file does not exist for hash: $hash")
+        return null
+      }
+
+      val playerJs = cacheFile.readText()
+      if (playerJs.isEmpty()) {
+        Timber.tag(TAG).d("Cache file is empty")
+        return null
+      }
+
+      Timber.tag(TAG).d("Cache valid: hash=$hash, length=${playerJs.length}, age=${ageHours}h")
+      return Pair(playerJs, hash)
+    } catch (e: Exception) {
+      Timber.tag(TAG).e(e, "Error reading cache: ${e.message}")
+      return null
     }
   }
 
-  private fun contextOrNull(): Context? =
-    if (CipherDeobfuscator.isInitialized) CipherDeobfuscator.appContext else null
+  private fun writeToCache(hash: String, playerJs: String) {
+    Timber.tag(TAG).d("Writing to cache: hash=$hash, length=${playerJs.length}")
+    synchronized(cacheWriteLock) {
+      try {
+        val cacheDir = getCacheDir()
 
-  private val PLAYER_ID_PATTERNS =
-    listOf(
-      Regex("""/s/player/([0-9A-Za-z_-]{8})/"""),
-      Regex("""/player/([0-9A-Za-z_-]{8})/"""),
-    )
+        // Clean old cache files
+        val oldFiles = cacheDir.listFiles()?.filter { it.name.startsWith("player_") }
+        Timber.tag(TAG).d("Cleaning ${oldFiles?.size ?: 0} old cache files")
+        oldFiles?.forEach { it.delete() }
 
-  private val PLAYER_ID_FROM_URL = Regex("""/s/player/([0-9A-Za-z_-]{8})/""")
+        // Atomic (temp + rename): a plain writeText truncates first, so process death
+        // during a same-hash force-refresh rewrite would leave a truncated player.js
+        // that readFromCache happily serves until the TTL expires.
+        PlayerConfigStore.writeAtomic(getCacheFile(hash), playerJs)
+        PlayerConfigStore.writeAtomic(getHashFile(), "$hash\n${System.currentTimeMillis()}")
 
-  private val JS_URL = Regex("""["']jsUrl["']\s*:\s*["']([^"']+)["']""")
+        Timber.tag(TAG).d("Cache written successfully")
+      } catch (e: Exception) {
+        Timber.tag(TAG).e(e, "Error writing cache: ${e.message}")
+      }
+    }
+  }
+
+  private fun fetchPlayerHash(): String? {
+    Timber.tag(TAG).d("Fetching iframe_api from: $IFRAME_API_URL")
+
+    val request =
+      Request.Builder()
+        .url(IFRAME_API_URL)
+        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+        .build()
+
+    // .use{} so the response is closed on the error path too (an unread body would
+    // otherwise strand its connection).
+    val body =
+      httpClient.newCall(request).execute().use { response ->
+        Timber.tag(TAG).d("iframe_api response: HTTP ${response.code}")
+        if (!response.isSuccessful) {
+          Timber.tag(TAG).e("iframe_api HTTP ${response.code}")
+          return null
+        }
+        response.body?.string()
+      }
+    if (body == null) {
+      Timber.tag(TAG).e("iframe_api response body is null")
+      return null
+    }
+
+    Timber.tag(TAG).d("iframe_api body length: ${body.length}")
+    Timber.tag(TAG).v("iframe_api body preview: ${body.take(200)}...")
+
+    val match = PLAYER_HASH_REGEX.find(body)
+    if (match == null) {
+      Timber.tag(TAG).e("Could not find player hash in iframe_api response")
+      Timber.tag(TAG).d("Regex pattern: ${PLAYER_HASH_REGEX.pattern}")
+      return null
+    }
+
+    val hash = match.groupValues[1]
+    Timber.tag(TAG).d("Found player hash: $hash")
+    return hash
+  }
+
+  private fun downloadPlayerJs(hash: String): String? {
+    val url = PLAYER_JS_URL_TEMPLATE.format(hash)
+    Timber.tag(TAG).d("Downloading player.js from: $url")
+
+    val request =
+      Request.Builder()
+        .url(url)
+        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+        .build()
+
+    val body =
+      httpClient.newCall(request).execute().use { response ->
+        Timber.tag(TAG).d("player.js response: HTTP ${response.code}")
+        if (!response.isSuccessful) {
+          Timber.tag(TAG).e("player.js download HTTP ${response.code}")
+          return null
+        }
+        response.body?.string()
+      }
+    if (body == null) {
+      Timber.tag(TAG).e("player.js response body is null")
+      return null
+    }
+
+    Timber.tag(TAG).d("player.js downloaded: ${body.length} chars")
+    return body
+  }
+
+  /** Debug method: Get cache information */
+  fun getCacheInfo(): Map<String, Any?> {
+    return try {
+      val hashFile = getHashFile()
+      if (!hashFile.exists()) {
+        return mapOf("exists" to false)
+      }
+
+      val hashData = hashFile.readText().split("\n")
+      val hash = hashData.getOrNull(0)
+      val timestamp = hashData.getOrNull(1)?.toLongOrNull()
+      val cacheFile = hash?.let { getCacheFile(it) }
+
+      mapOf(
+        "exists" to true,
+        "hash" to hash,
+        "timestamp" to timestamp,
+        "ageMs" to (timestamp?.let { System.currentTimeMillis() - it }),
+        "fileExists" to (cacheFile?.exists() == true),
+        "fileSize" to (cacheFile?.length()),
+      )
+    } catch (e: Exception) {
+      mapOf("error" to e.message)
+    }
+  }
 }

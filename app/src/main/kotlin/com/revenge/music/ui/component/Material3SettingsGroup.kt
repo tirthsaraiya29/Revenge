@@ -32,7 +32,6 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
-import com.revenge.music.ui.theme.RevengeColor
 import com.revenge.music.ui.theme.RevengeRadius
 import com.revenge.music.ui.utils.scrollToOnHighlight
 
@@ -91,7 +90,7 @@ fun Material3SettingsGroup(
                 width = 1.dp,
                 color =
                   if (item.isHighlighted) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
-                  else RevengeColor.BorderSubtleDark,
+                  else MaterialTheme.colorScheme.outlineVariant,
                 shape = shape,
               ),
           shape = shape,
@@ -99,7 +98,7 @@ fun Material3SettingsGroup(
             CardDefaults.cardColors(
               containerColor =
                 if (item.isHighlighted) MaterialTheme.colorScheme.surfaceVariant
-                else RevengeColor.SurfaceCardDark,
+                else MaterialTheme.colorScheme.surfaceContainer,
             ),
           elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         ) {

@@ -3,179 +3,212 @@ package com.revenge.music.utils
 import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
-import android.util.Base64
-import androidx.media3.common.MediaItem
-import androidx.media3.common.MediaMetadata
-import coil3.SingletonImageLoader
-import coil3.request.CachePolicy
-import coil3.request.ImageRequest
-import coil3.request.SuccessResult
+import coil3.imageLoader
+import coil3.request.allowHardware
 import coil3.toBitmap
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata as Media3Metadata
+import com.revenge.core.models.MediaMetadata
 import java.io.File
-import java.io.FileOutputStream
 import java.security.MessageDigest
 import java.security.SecureRandom
+import java.util.Base64
+import java.util.concurrent.ConcurrentHashMap
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
-import timber.log.Timber
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.math.min
 
 /**
- * Maps remote artwork URLs to signed `content://` URIs that Android Auto can load, and serves the
- * bytes from a bounded on-disk cache. The signature is the security boundary: the provider will
- * only fetch URLs that this process previously signed.
+ * Maps remote artwork URLs to signed, read-only content URIs so other processes (Android Auto,
+ * Automotive OS, clusters) can load covers through the exported provider.
  */
 object AutomotiveArtwork {
 
-    private const val PREFERENCES_NAME = "automotive_artwork"
-    private const val KEY_SECRET = "uri_secret"
-    private const val DIRECTORY_NAME = "automotive_artwork"
-    private const val IMAGE_SIZE = 1024
-    private const val TIMEOUT_MS = 10_000L
-    private const val JPEG_QUALITY = 90
-    private const val MAX_CACHE_BYTES = 64L * 1024L * 1024L
-    private const val TARGET_CACHE_BYTES = 48L * 1024L * 1024L
-    private const val SIGNATURE_BYTES = 16
+  private const val PREFS = "automotive_artwork_prefs"
+  private const val SECRET_KEY = "uri_secret"
+  private const val DIR = "automotive_artwork"
+  private const val MAX_BYTES = 64L * 1024 * 1024
+  private const val TRIM_BYTES = 48L * 1024 * 1024
 
-    fun authority(context: Context): String = "${context.packageName}.artwork"
+  private val mappingCache = ConcurrentHashMap<String, Uri>()
 
-    fun contentUriFor(context: Context, uri: Uri?): Uri? {
-        if (uri == null) return null
-        val scheme = uri.scheme?.lowercase() ?: return uri
-        if (scheme != "http" && scheme != "https") return uri
-        val url = uri.toString()
-        val encoded = Base64.encodeToString(
-            url.toByteArray(Charsets.UTF_8),
-            Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING,
-        )
-        val signature = signature(context, url)
-        return Uri.parse("content://${authority(context)}/art/$encoded/$signature")
+  /** Test seam; returns the decoded cover for a URL. */
+  internal var fetchBitmap: (String) -> Bitmap? = { url ->
+    runBlocking(Dispatchers.IO) { loadWithCoil(url) }
+  }
+
+  fun authority(context: Context): String = "${context.packageName}.artwork"
+
+  fun contentUriFor(context: Context, uri: Uri?): Uri? {
+    if (uri == null) return null
+    val scheme = uri.scheme?.lowercase()
+    if (scheme != "http" && scheme != "https") return uri
+    val url = uri.toString()
+    mappingCache[url]?.let { return it }
+    val encoded = Base64.getUrlEncoder().withoutPadding().encodeToString(url.toByteArray(Charsets.UTF_8))
+    val signature = signature(context, url)
+    val mapped =
+      Uri.Builder()
+        .scheme("content")
+        .authority(authority(context))
+        .appendPath("art")
+        .appendPath(encoded)
+        .appendPath(signature)
+        .build()
+    if (mappingCache.size > 1_024) mappingCache.clear()
+    mappingCache[url] = mapped
+    return mapped
+  }
+
+  fun originalUrl(context: Context, uri: Uri): String? {
+    if (uri.scheme != "content") return null
+    if (uri.authority != authority(context)) return null
+    val segments = uri.pathSegments
+    if (segments.size != 3 || segments[0] != "art") return null
+    val url =
+      runCatching {
+        String(Base64.getUrlDecoder().decode(segments[1]), Charsets.UTF_8)
+      }.getOrNull() ?: return null
+    if (!url.startsWith("http://") && !url.startsWith("https://")) return null
+    val expected = signature(context, url)
+    val matches =
+      MessageDigest.isEqual(
+        segments[2].toByteArray(Charsets.UTF_8),
+        expected.toByteArray(Charsets.UTF_8),
+      )
+    return if (matches) url else null
+  }
+
+  fun artworkFile(context: Context, url: String): File? {
+    val directory = File(context.cacheDir, DIR)
+    if (!directory.exists() && !directory.mkdirs()) return null
+    val file = File(directory, sha256Hex(url) + ".jpg")
+    if (file.exists() && file.length() > 0) {
+      file.setLastModified(System.currentTimeMillis())
+      return file
     }
-
-    fun originalUrl(context: Context, uri: Uri): String? {
-        if (uri.scheme != "content") return null
-        if (uri.authority != authority(context)) return null
-        val segments = uri.pathSegments
-        if (segments.size != 3 || segments[0] != "art") return null
-        val decoded = try {
-            String(Base64.decode(segments[1], Base64.URL_SAFE), Charsets.UTF_8)
-        } catch (_: Exception) {
-            return null
+    applicationContext = context.applicationContext
+    val bitmap = runCatching { fetchBitmap(url) }.getOrNull() ?: return null
+    val encoded =
+      runCatching {
+        java.io.ByteArrayOutputStream().use { output ->
+          bitmap.compress(Bitmap.CompressFormat.JPEG, 90, output)
+          output.toByteArray()
         }
-        if (!decoded.startsWith("http://") && !decoded.startsWith("https://")) return null
-        val expected = signature(context, decoded)
-        if (!MessageDigest.isEqual(
-                expected.toByteArray(Charsets.UTF_8),
-                segments[2].toByteArray(Charsets.UTF_8),
-            )
-        ) {
-            return null
-        }
-        return decoded
+      }.getOrNull() ?: return null
+    if (encoded.isEmpty()) return null
+    val temp = File(directory, "${file.name}.tmp")
+    return try {
+      temp.writeBytes(encoded)
+      if (file.exists()) file.delete()
+      if (!temp.renameTo(file)) {
+        temp.copyTo(file, overwrite = true)
+        temp.delete()
+      }
+      file.setLastModified(System.currentTimeMillis())
+      trim(directory)
+      file
+    } catch (e: Throwable) {
+      temp.delete()
+      null
     }
+  }
 
-    /**
-     * Blocking fetch/encode intended for a provider binder thread. Returns a cached or freshly
-     * written JPEG, or null when the image cannot be obtained.
-     */
-    fun artworkFile(context: Context, url: String): File? {
-        val directory = File(context.cacheDir, DIRECTORY_NAME).apply { mkdirs() }
-        val file = File(directory, sha256Hex(url) + ".jpg")
-        if (file.exists() && file.length() > 0L) {
-            file.setLastModified(System.currentTimeMillis())
-            return file
-        }
-
-        val bitmap = fetchBitmap(context, url) ?: return null
-        val temporary = File(directory, file.name + ".tmp")
-        val written = try {
-            FileOutputStream(temporary).use { output ->
-                bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, output)
-            }
-        } catch (error: Exception) {
-            Timber.w(error, "Automotive artwork encode failed")
-            temporary.delete()
-            return null
-        }
-        if (!written) {
-            temporary.delete()
-            return null
-        }
-        if (!temporary.renameTo(file)) {
-            temporary.delete()
-            return null
-        }
-        trim(directory)
-        return file
+  private fun trim(directory: File) {
+    val files = directory.listFiles()?.filter { it.isFile } ?: return
+    var total = files.sumOf { it.length() }
+    if (total <= MAX_BYTES) return
+    files.sortedBy { it.lastModified() }.forEach { file ->
+      if (total <= TRIM_BYTES) return@forEach
+      val length = file.length()
+      if (file.delete()) total -= length
     }
+  }
 
-    private fun fetchBitmap(context: Context, url: String): Bitmap? {
-        val network = runCatching {
-            runBlocking { decode(context, url, allowNetwork = true) }
-        }.getOrNull()
-        if (network != null) return network
-        return runCatching {
-            runBlocking { decode(context, url, allowNetwork = false) }
-        }.getOrNull()
+  private fun signature(context: Context, url: String): String {
+    val mac = Mac.getInstance("HmacSHA256")
+    mac.init(SecretKeySpec(secret(context), "HmacSHA256"))
+    val digest = mac.doFinal(url.toByteArray(Charsets.UTF_8))
+    return digest.take(16).joinToString("") { "%02x".format(it.toInt() and 0xff) }
+  }
+
+  private fun secret(context: Context): ByteArray {
+    val preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    val stored = preferences.getString(SECRET_KEY, null)
+    if (stored != null) {
+      runCatching { return Base64.getDecoder().decode(stored) }
     }
+    val generated = ByteArray(32).also { SecureRandom().nextBytes(it) }
+    preferences.edit().putString(SECRET_KEY, Base64.getEncoder().encodeToString(generated)).apply()
+    return generated
+  }
 
-    private suspend fun decode(context: Context, url: String, allowNetwork: Boolean): Bitmap? {
-        val request = ImageRequest.Builder(context)
-            .data(url)
-            .size(IMAGE_SIZE, IMAGE_SIZE)
-            .networkCachePolicy(if (allowNetwork) CachePolicy.ENABLED else CachePolicy.DISABLED)
-            .memoryCachePolicy(CachePolicy.DISABLED)
+  internal fun sha256Hex(value: String): String =
+    MessageDigest.getInstance("SHA-256")
+      .digest(value.toByteArray(Charsets.UTF_8))
+      .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+
+  private suspend fun loadWithCoil(url: String): Bitmap? {
+    val request =
+      coil3.request.ImageRequest.Builder(currentContext())
+        .data(url)
+        .size(1024)
+        .allowHardware(false)
+        .build()
+    val result =
+      withTimeoutOrNull(10_000L) { currentContext().imageLoader.execute(request) }
+        ?: return null
+    return when (result) {
+      is coil3.request.SuccessResult -> runCatching { result.image.toBitmap() }.getOrNull()
+      is coil3.request.ErrorResult -> {
+        val cached =
+          request.newBuilder()
+            .networkCachePolicy(coil3.request.CachePolicy.READ_ONLY)
             .build()
-        val result = SingletonImageLoader.get(context).execute(request)
-        if (result !is SuccessResult) return null
-        return result.image.toBitmap(IMAGE_SIZE, IMAGE_SIZE)
-    }
-
-    private fun trim(directory: File) {
-        val files = directory.listFiles { file -> file.isFile }?.toMutableList() ?: return
-        var total = files.sumOf { it.length() }
-        if (total <= MAX_CACHE_BYTES) return
-        files.sortBy { it.lastModified() }
-        for (file in files) {
-            if (total <= TARGET_CACHE_BYTES) break
-            val length = file.length()
-            if (file.delete()) total -= length
+        val fallback = withTimeoutOrNull(10_000L) { currentContext().imageLoader.execute(cached) }
+        (fallback as? coil3.request.SuccessResult)?.let {
+          runCatching { it.image.toBitmap() }.getOrNull()
         }
+      }
+      else -> null
     }
+  }
 
-    private fun signature(context: Context, url: String): String {
-        val mac = Mac.getInstance("HmacSHA256")
-        mac.init(SecretKeySpec(secret(context), "HmacSHA256"))
-        val digest = mac.doFinal(url.toByteArray(Charsets.UTF_8))
-        return digest.take(SIGNATURE_BYTES).joinToString(separator = "") { "%02x".format(it) }
+  /** Set by the provider while it fetches; keeps the Coil call independent of composition. */
+  @Volatile internal var applicationContext: Context? = null
+
+  private fun currentContext(): Context =
+    applicationContext ?: throw IllegalStateException("Artwork context not initialised")
+
+  internal fun downloadBitmap(context: Context, url: String): Bitmap? =
+    runBlocking(Dispatchers.IO) {
+      applicationContext = context.applicationContext
+      loadWithCoil(url)
     }
-
-    private fun secret(context: Context): ByteArray {
-        val preferences = context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
-        preferences.getString(KEY_SECRET, null)?.let { stored ->
-            runCatching { Base64.decode(stored, Base64.NO_WRAP) }.getOrNull()?.let { return it }
-        }
-        val generated = ByteArray(32).also { SecureRandom().nextBytes(it) }
-        preferences.edit()
-            .putString(KEY_SECRET, Base64.encodeToString(generated, Base64.NO_WRAP))
-            .apply()
-        return generated
-    }
-
-    private fun sha256Hex(value: String): String =
-        MessageDigest.getInstance("SHA-256")
-            .digest(value.toByteArray(Charsets.UTF_8))
-            .joinToString(separator = "") { "%02x".format(it) }
 }
 
 fun MediaMetadata.withAutomotiveArtworkUri(context: Context): MediaMetadata {
-    val mapped = AutomotiveArtwork.contentUriFor(context, artworkUri) ?: return this
-    return buildUpon().setArtworkUri(mapped).build()
+  val original = thumbnailUrl ?: return this
+  val mapped = AutomotiveArtwork.contentUriFor(context, Uri.parse(original)) ?: return this
+  if (mapped.toString() == original) return this
+  return copy(thumbnailUrl = mapped.toString())
+}
+
+fun Media3Metadata.withAutomotiveArtworkUri(context: Context): Media3Metadata {
+  val artwork = artworkUri ?: return this
+  val mapped = AutomotiveArtwork.contentUriFor(context, artwork) ?: return this
+  if (mapped == artwork) return this
+  return buildUpon().setArtworkUri(mapped).build()
 }
 
 fun MediaItem.withAutomotiveArtworkUri(context: Context): MediaItem {
-    val metadata = mediaMetadata
-    val mapped = metadata.withAutomotiveArtworkUri(context)
-    if (mapped === metadata) return this
-    return buildUpon().setMediaMetadata(mapped).build()
+  val artwork = mediaMetadata.artworkUri ?: return this
+  val mapped = AutomotiveArtwork.contentUriFor(context, artwork) ?: return this
+  if (mapped == artwork) return this
+  val metadata: Media3Metadata =
+    mediaMetadata.buildUpon().setArtworkUri(mapped).build()
+  return buildUpon().setMediaMetadata(metadata).build()
 }

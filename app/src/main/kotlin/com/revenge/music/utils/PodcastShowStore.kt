@@ -1,7 +1,7 @@
 package com.revenge.music.utils
 
 import android.content.Context
-import androidx.core.content.edit
+import android.content.SharedPreferences
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -9,33 +9,28 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-/**
- * Persisted set of followed podcast shows. Backed by SharedPreferences so every process reader
- * sees the same ids; the in-memory flow mirrors the stored set.
- */
+/** Tracks which podcast-show browse ids the user has followed at least once. */
 @Singleton
-class PodcastShowStore @Inject constructor(@ApplicationContext context: Context) {
+class PodcastShowStore @Inject constructor(
+    @ApplicationContext context: Context,
+) {
+    private val preferences: SharedPreferences =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
-    private val preferences = context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
+    private val _ids = MutableStateFlow(
+        preferences.getStringSet(KEY, emptySet())?.toSet() ?: emptySet(),
+    )
+    val ids: StateFlow<Set<String>> = _ids.asStateFlow()
 
-    private val mutableIds = MutableStateFlow(load())
-    val ids: StateFlow<Set<String>> = mutableIds.asStateFlow()
-
-    /** Adds [id] once; repeated calls are no-ops. */
     fun add(id: String) {
-        if (id.isBlank()) return
-        val current = mutableIds.value
-        if (id in current) return
-        val next = current + id
-        mutableIds.value = next
-        preferences.edit { putStringSet(KEY_IDS, next) }
+        if (id.isBlank() || id in _ids.value) return
+        val updated = _ids.value + id
+        _ids.value = updated
+        preferences.edit().putStringSet(KEY, updated).apply()
     }
 
-    private fun load(): Set<String> =
-        preferences.getStringSet(KEY_IDS, emptySet())?.toSet().orEmpty()
-
     companion object {
-        private const val PREFERENCES_NAME = "podcast_shows"
-        private const val KEY_IDS = "ids"
+        private const val PREFS_NAME = "podcast_shows"
+        private const val KEY = "show_ids"
     }
 }

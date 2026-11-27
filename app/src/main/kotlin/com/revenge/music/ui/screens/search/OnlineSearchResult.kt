@@ -55,7 +55,6 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
-import com.revenge.music.ui.theme.RevengeColor
 import com.revenge.music.ui.theme.RevengeRadius
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
@@ -312,13 +311,11 @@ fun OnlineSearchResult(
       colors =
         OutlinedTextFieldDefaults.colors(
           focusedContainerColor =
-            if (pureBlack) Color.Black
-            else RevengeColor.SurfaceCardDark,
+            if (pureBlack) Color.Black else MaterialTheme.colorScheme.surfaceContainer,
           unfocusedContainerColor =
-            if (pureBlack) Color.Black
-            else RevengeColor.SurfaceCardDark,
+            if (pureBlack) Color.Black else MaterialTheme.colorScheme.surfaceContainer,
           focusedBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f),
-          unfocusedBorderColor = RevengeColor.BorderSubtleDark,
+          unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
         ),
       modifier =
         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).onFocusChanged {

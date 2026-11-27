@@ -96,7 +96,7 @@ fun AppNavigationBar(
     else MaterialTheme.colorScheme.surfaceContainerHigh
   val topBorderColor =
     if (pureBlack) Color.White.copy(alpha = 0.08f)
-    else RevengeColor.BorderSubtleDark
+    else MaterialTheme.colorScheme.outlineVariant
 
   val haptics = LocalHapticFeedback.current
   val viewConfiguration = LocalViewConfiguration.current
@@ -111,7 +111,8 @@ fun AppNavigationBar(
     contentColor = MaterialTheme.colorScheme.onSurface,
     tonalElevation = 0.dp,
   ) {
-    navigationItems.forEach { screen ->
+    // Guard: the nav list has been observed carrying null entries, crashing on screen.route.
+    navigationItems.filterNotNull().forEach { screen ->
       val isSelected =
         remember(currentRoute, screen.route) {
           isRouteSelected(currentRoute, screen.route, navigationItems)
@@ -224,7 +225,7 @@ fun AppNavigationRail(
     else MaterialTheme.colorScheme.surfaceContainerHigh
   val rightBorderColor =
     if (pureBlack) Color.White.copy(alpha = 0.08f)
-    else RevengeColor.BorderSubtleDark
+    else MaterialTheme.colorScheme.outlineVariant
 
   val haptics = LocalHapticFeedback.current
   val viewConfiguration = LocalViewConfiguration.current
@@ -263,7 +264,8 @@ fun AppNavigationRail(
   ) {
     Spacer(modifier = Modifier.weight(1f))
 
-    navigationItems.forEach { screen ->
+    // Guard: the nav list has been observed carrying null entries, crashing on screen.route.
+    navigationItems.filterNotNull().forEach { screen ->
       val isSelected =
         remember(currentRoute, screen.route) {
           isRouteSelected(currentRoute, screen.route, navigationItems)
