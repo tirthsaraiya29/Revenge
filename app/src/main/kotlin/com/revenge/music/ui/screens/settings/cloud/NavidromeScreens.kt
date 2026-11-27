@@ -110,12 +110,10 @@ fun NavidromeLoginScreen(navController: NavController, repository: NavidromeRepo
         modifier = Modifier.fillMaxWidth(),
       )
       Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        // nosemgrep: revenge-cleartext-endpoint -- user-supplied LAN Navidrome server; HTTP is a
-        // supported local setup.
         OutlinedButton(
           onClick = {
             serverUrl =
-              "http://${serverUrl.trim().removePrefix("http://").removePrefix("https://")}"
+              "http://${serverUrl.trim().removePrefix("http://").removePrefix("https://")}" // nosemgrep: revenge-cleartext-endpoint -- user explicitly selects HTTP for a self-hosted server.
           },
         ) {
           Text("Add http://")
@@ -128,6 +126,13 @@ fun NavidromeLoginScreen(navController: NavController, repository: NavidromeRepo
         ) {
           Text("Add https://")
         }
+      }
+      if (serverUrl.trim().startsWith("http://", ignoreCase = true)) {
+        Text(
+          "HTTP is unencrypted. Use HTTPS unless this server is on a trusted local network.",
+          color = MaterialTheme.colorScheme.error,
+          style = MaterialTheme.typography.bodySmall,
+        )
       }
       OutlinedTextField(
         value = username,
