@@ -157,12 +157,12 @@ fun AboutScreen(
               color = MaterialTheme.colorScheme.onSurface,
             )
             Text(
-              text = "Copyright © 2026 Revenge contributors.",
+              text = "Copyright © 2026 Tirth Saraiya and contributors.",
               style = MaterialTheme.typography.bodySmall,
               color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Text(
-              text = "Revenge is licensed under GNU GPL version 3.0 only. You may redistribute and modify it under that licence. This program comes without warranty.",
+              text = "Revenge is licensed under GNU GPL version 3.0 only. You may redistribute and modify it under that licence. This program comes with ABSOLUTELY NO WARRANTY.",
               style = MaterialTheme.typography.bodyMedium,
               color = MaterialTheme.colorScheme.onSurface,
             )
