@@ -35,7 +35,7 @@ object SpotifyAuth {
   private const val SERVER_TIME_URL = "https://open.spotify.com/api/server-time"
   private const val DEFAULT_SECRET =
     "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ" // nosemgrep: revenge-hardcoded-credential -- public TOTP
-    // seed, not a user credential.
+  // seed, not a user credential.
   private const val DEFAULT_VERSION = "5"
   private const val USER_AGENT =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) " +
