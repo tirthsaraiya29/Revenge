@@ -1037,7 +1037,7 @@ internal fun revengeApp(activity: MainActivity, initialRoute: String) {
             },
       ) {
         Row(Modifier.fillMaxSize()) {
-          if (useRail) {
+          if (useRail && navBarVisible) {
             AppNavigationRail(
               navigationItems = navigationItems,
               currentRoute = currentRoute,
