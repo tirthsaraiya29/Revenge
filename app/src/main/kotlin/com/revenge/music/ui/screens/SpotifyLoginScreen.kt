@@ -1,7 +1,9 @@
 package com.revenge.music.ui.screens
 
 import android.annotation.SuppressLint
+import android.content.Intent
 import android.graphics.Bitmap
+import android.net.Uri
 import android.webkit.CookieManager
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
@@ -25,6 +27,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.navigation.NavController
 import com.revenge.music.spotify.SpotifyAuth
+
+private fun isTrustedSpotifyLoginUri(uri: Uri): Boolean {
+  if (!uri.scheme.equals("https", ignoreCase = true)) return false
+  val host = uri.host?.lowercase() ?: return false
+  return listOf("spotify.com", "scdn.co", "google.com", "gstatic.com", "googleapis.com", "recaptcha.net")
+    .any { host == it || host.endsWith(".$it") }
+}
 
 @SuppressLint("SetJavaScriptEnabled")
 @OptIn(ExperimentalMaterial3Api::class)
@@ -82,9 +91,7 @@ fun SpotifyLoginScreen(
       factory = { context ->
         val webView =
           WebView(context).apply {
-            // nosemgrep: revenge-webview-javascript -- Spotify OAuth page requires JS; no JS
-            // interface is added.
-            settings.javaScriptEnabled = true
+            settings.javaScriptEnabled = true // nosemgrep: revenge-webview-javascript -- HTTPS allowlist enforced below; no JS interface is exposed.
             settings.domStorageEnabled = true
             settings.setSupportMultipleWindows(true)
             settings.cacheMode = WebSettings.LOAD_DEFAULT
@@ -96,6 +103,22 @@ fun SpotifyLoginScreen(
             webChromeClient = WebChromeClient()
             webViewClient =
               object : WebViewClient() {
+                override fun shouldOverrideUrlLoading(
+                  view: WebView?,
+                  request: android.webkit.WebResourceRequest?,
+                ): Boolean {
+                  val uri = request?.url ?: return true
+                  if (isTrustedSpotifyLoginUri(uri)) return false
+                  if (uri.scheme.equals("https", ignoreCase = true) ||
+                    uri.scheme.equals("http", ignoreCase = true)
+                  ) {
+                    runCatching {
+                      view?.context?.startActivity(Intent(Intent.ACTION_VIEW, uri))
+                    }
+                  }
+                  return true
+                }
+
                 override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                   super.onPageStarted(view, url, favicon)
                   maybeCapture(CookieManager.getInstance().getCookie("https://open.spotify.com"))
