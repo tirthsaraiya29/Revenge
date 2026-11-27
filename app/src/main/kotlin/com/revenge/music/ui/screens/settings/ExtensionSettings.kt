@@ -10,6 +10,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
@@ -91,19 +92,41 @@ fun ExtensionSettingsScreen(
   val selectedAddon = addons.firstOrNull { it.id == preferredAddonId && it.enabled }
   val scrollState = rememberScrollState()
 
-  Column(
-    Modifier.windowInsetsPadding(
-        com.revenge.music.LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal),
+  Scaffold(
+    modifier =
+      Modifier.fillMaxSize().let {
+        if (scrollBehavior != null) it.nestedScroll(scrollBehavior.nestedScrollConnection) else it
+      },
+    topBar = {
+      TopAppBar(
+        title = { Text("Extension Sources") },
+        navigationIcon = {
+          if (navController != null) {
+            com.revenge.music.ui.component.IconButton(
+              onClick = { navController.navigateUp() },
+              onLongClick = navController::backToMain,
+            ) {
+              Icon(
+                painterResource(com.revenge.music.R.drawable.arrow_back),
+                contentDescription = null,
+              )
+            }
+          }
+        },
+        scrollBehavior = scrollBehavior,
       )
-      .verticalScroll(scrollState)
-      .padding(horizontal = 16.dp),
-  ) {
-    Spacer(
-      Modifier.windowInsetsPadding(
-        com.revenge.music.LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Top),
-      ),
-    )
-    Spacer(Modifier.height(16.dp))
+    },
+  ) { padding ->
+    Column(
+      Modifier.fillMaxSize()
+        .padding(padding)
+        .windowInsetsPadding(
+          com.revenge.music.LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal),
+        )
+        .verticalScroll(scrollState)
+        .padding(horizontal = 16.dp),
+    ) {
+      Spacer(Modifier.height(16.dp))
 
     val uriHandler = LocalUriHandler.current
 
@@ -297,21 +320,5 @@ fun ExtensionSettingsScreen(
       )
     }
   }
-  TopAppBar(
-    title = { Text("Extension Sources") },
-    navigationIcon = {
-      if (navController != null) {
-        com.revenge.music.ui.component.IconButton(
-          onClick = { navController.navigateUp() },
-          onLongClick = navController::backToMain,
-        ) {
-          Icon(
-            painterResource(com.revenge.music.R.drawable.arrow_back),
-            contentDescription = null,
-          )
-        }
-      }
-    },
-    scrollBehavior = scrollBehavior,
-  )
+}
 }

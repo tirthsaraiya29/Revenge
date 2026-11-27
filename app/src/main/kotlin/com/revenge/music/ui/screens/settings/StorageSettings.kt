@@ -8,6 +8,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
@@ -18,11 +19,13 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
@@ -79,9 +82,10 @@ fun StorageSettings(
 
   val context = LocalContext.current
   val database = LocalDatabase.current
-  val imageDiskCache = context.imageLoader.diskCache ?: return
-  val playerCache = LocalPlayerConnection.current?.service?.playerCache ?: return
-  val downloadCache = LocalPlayerConnection.current?.service?.downloadCache ?: return
+  val imageDiskCache = remember(context) { context.imageLoader.diskCache }
+  val playerConnection = LocalPlayerConnection.current
+  val playerCache = playerConnection?.service?.playerCache
+  val downloadCache = playerConnection?.service?.downloadCache
 
   val coroutineScope = rememberCoroutineScope()
   val songCacheString = stringResource(R.string.song_cache).lowercase()
@@ -146,14 +150,14 @@ fun StorageSettings(
   var cacheUsage by remember { androidx.compose.runtime.mutableLongStateOf(0L) }
   var onConfirmAction by remember { mutableStateOf<() -> Unit>({}) }
 
-  var imageCacheSize by remember {
-    androidx.compose.runtime.mutableLongStateOf(imageDiskCache.size)
+  var imageCacheSize by remember(imageDiskCache) {
+    androidx.compose.runtime.mutableLongStateOf(imageDiskCache?.size ?: 0L)
   }
-  var playerCacheSize by remember {
-    androidx.compose.runtime.mutableLongStateOf(tryOrNull { playerCache.cacheSpace } ?: 0)
+  var playerCacheSize by remember(playerCache) {
+    androidx.compose.runtime.mutableLongStateOf(tryOrNull { playerCache?.cacheSpace } ?: 0L)
   }
-  var downloadCacheSize by remember {
-    mutableLongStateOf(tryOrNull { downloadCache.cacheSpace } ?: 0)
+  var downloadCacheSize by remember(downloadCache) {
+    mutableLongStateOf(tryOrNull { downloadCache?.cacheSpace } ?: 0L)
   }
   val imageCacheProgress by
     animateFloatAsState(
@@ -168,36 +172,41 @@ fun StorageSettings(
       label = "playerCacheProgress",
     )
 
-  LaunchedEffect(maxImageCacheSize) {
+  LaunchedEffect(maxImageCacheSize, imageDiskCache) {
     SingletonImageLoader.reset()
     if (maxImageCacheSize == 0) {
-      coroutineScope.launch(Dispatchers.IO) { imageDiskCache.clear() }
+      coroutineScope.launch(Dispatchers.IO) { imageDiskCache?.clear() }
     }
   }
-  LaunchedEffect(maxSongCacheSize) {
+  LaunchedEffect(maxSongCacheSize, playerCache) {
     if (maxSongCacheSize == 0) {
       coroutineScope.launch(Dispatchers.IO) {
-        playerCache.keys.forEach { key -> playerCache.removeResource(key) }
+        playerCache?.let { cache ->
+          cache.keys.forEach { key -> cache.removeResource(key) }
+        }
       }
     }
   }
 
   LaunchedEffect(imageDiskCache) {
+    val cache = imageDiskCache ?: return@LaunchedEffect
     while (isActive) {
       delay(500)
-      imageCacheSize = imageDiskCache.size
+      imageCacheSize = cache.size
     }
   }
   LaunchedEffect(playerCache) {
+    val cache = playerCache ?: return@LaunchedEffect
     while (isActive) {
       delay(500)
-      playerCacheSize = tryOrNull { playerCache.cacheSpace } ?: 0
+      playerCacheSize = tryOrNull { cache.cacheSpace } ?: 0L
     }
   }
   LaunchedEffect(downloadCache) {
+    val cache = downloadCache ?: return@LaunchedEffect
     while (isActive) {
       delay(500)
-      downloadCacheSize = tryOrNull { downloadCache.cacheSpace } ?: 0
+      downloadCacheSize = tryOrNull { cache.cacheSpace } ?: 0L
     }
   }
 
@@ -223,7 +232,9 @@ fun StorageSettings(
       onDismiss = { clearCacheDialog = false },
       onConfirm = {
         coroutineScope.launch(Dispatchers.IO) {
-          playerCache.keys.forEach { key -> playerCache.removeResource(key) }
+          playerCache?.let { cache ->
+            cache.keys.forEach { key -> cache.removeResource(key) }
+          }
         }
         clearCacheDialog = false
       },
@@ -248,8 +259,8 @@ fun StorageSettings(
             song.thumbnailUrl?.let { urlsToPreserve.add(it.encodeUtf8().sha256().hex()) }
             song.album?.thumbnailUrl?.let { urlsToPreserve.add(it.encodeUtf8().sha256().hex()) }
           }
-          val directory = imageDiskCache.directory.toFile()
-          if (directory.exists() && directory.isDirectory) {
+          val directory = imageDiskCache?.directory?.toFile()
+          if (directory != null && directory.exists() && directory.isDirectory) {
             directory.listFiles()?.forEach { file ->
               if (file.isFile && !file.name.startsWith("journal")) {
                 val isPreserved = urlsToPreserve.any { hash -> file.name.startsWith(hash) }
@@ -301,20 +312,37 @@ fun StorageSettings(
     )
   }
 
-  Column(
-    Modifier.windowInsetsPadding(
-        LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal),
+  Scaffold(
+    modifier = Modifier.fillMaxSize().nestedScroll(scrollBehavior.nestedScrollConnection),
+    topBar = {
+      TopAppBar(
+        title = { Text(stringResource(R.string.storage)) },
+        navigationIcon = {
+          IconButton(
+            onClick = navController::navigateUp,
+            onLongClick = navController::backToMain,
+          ) {
+            Icon(
+              painterResource(R.drawable.arrow_back),
+              contentDescription = null,
+            )
+          }
+        },
+        scrollBehavior = scrollBehavior,
       )
-      .verticalScroll(scrollState)
-      .padding(horizontal = 16.dp),
-  ) {
-    Spacer(
-      Modifier.windowInsetsPadding(
-        LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Top),
-      ),
-    )
-
-    Spacer(modifier = Modifier.height(16.dp))
+    },
+  ) { padding ->
+    Column(
+      modifier =
+        Modifier.fillMaxSize()
+          .padding(padding)
+          .windowInsetsPadding(
+            LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal),
+          )
+          .verticalScroll(scrollState)
+          .padding(horizontal = 16.dp),
+    ) {
+      Spacer(modifier = Modifier.height(16.dp))
 
     Material3SettingsGroup(
       scrollState = scrollState,
@@ -410,19 +438,5 @@ fun StorageSettings(
       ),
     )
   }
-
-  TopAppBar(
-    title = { Text(stringResource(R.string.storage)) },
-    navigationIcon = {
-      IconButton(
-        onClick = navController::navigateUp,
-        onLongClick = navController::backToMain,
-      ) {
-        Icon(
-          painterResource(R.drawable.arrow_back),
-          contentDescription = null,
-        )
-      }
-    },
-  )
+}
 }

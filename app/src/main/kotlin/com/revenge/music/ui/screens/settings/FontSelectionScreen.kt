@@ -5,6 +5,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -18,11 +19,13 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -117,23 +120,35 @@ fun FontSelectionScreen(
       }
     }
 
-  Column(
-    Modifier.windowInsetsPadding(
-        LocalPlayerAwareWindowInsets.current.only(
-          androidx.compose.foundation.layout.WindowInsetsSides.Horizontal,
-        ),
+  Scaffold(
+    modifier = Modifier.fillMaxSize().nestedScroll(scrollBehavior.nestedScrollConnection),
+    topBar = {
+      TopAppBar(
+        title = { Text(stringResource(R.string.app_font)) },
+        navigationIcon = {
+          IconButton(
+            onClick = navController::navigateUp,
+            onLongClick = { navController.popBackStack() },
+          ) {
+            Icon(
+              painter = painterResource(R.drawable.arrow_back),
+              contentDescription = null,
+            )
+          }
+        },
+        scrollBehavior = scrollBehavior,
       )
-      .fillMaxSize()
-      .padding(horizontal = 16.dp),
-  ) {
-    Spacer(
-      Modifier.windowInsetsPadding(
-        LocalPlayerAwareWindowInsets.current.only(
-          androidx.compose.foundation.layout.WindowInsetsSides.Top,
-        ),
-      ),
-    )
-    Spacer(modifier = Modifier.height(16.dp))
+    },
+  ) { padding ->
+    Column(
+      Modifier.fillMaxSize()
+        .padding(padding)
+        .windowInsetsPadding(
+          LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal),
+        )
+        .padding(horizontal = 16.dp),
+    ) {
+      Spacer(modifier = Modifier.height(16.dp))
 
     // Typography Preview Card
     Card(
@@ -307,26 +322,10 @@ fun FontSelectionScreen(
       Spacer(modifier = Modifier.height(36.dp))
       Spacer(
         Modifier.windowInsetsPadding(
-          LocalPlayerAwareWindowInsets.current.only(
-            androidx.compose.foundation.layout.WindowInsetsSides.Bottom,
-          ),
+          LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Bottom),
         ),
       )
     }
   }
-
-  TopAppBar(
-    title = { Text(stringResource(R.string.app_font)) },
-    navigationIcon = {
-      IconButton(
-        onClick = navController::navigateUp,
-        onLongClick = { navController.popBackStack() },
-      ) {
-        Icon(
-          painter = painterResource(R.drawable.arrow_back),
-          contentDescription = null,
-        )
-      }
-    },
-  )
+}
 }

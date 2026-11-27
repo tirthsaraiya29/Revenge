@@ -7,6 +7,7 @@ import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
@@ -15,10 +16,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -131,21 +134,49 @@ fun BackupAndRestore(
     currentScreen = BackupSubScreen.MAIN
   }
 
-  Crossfade(targetState = currentScreen, label = "BackupSubScreen") { screen ->
-    Column(
-      Modifier.windowInsetsPadding(
-          LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal),
-        )
-        .verticalScroll(rememberScrollState())
-        .padding(horizontal = 16.dp),
-    ) {
-      Spacer(
-        Modifier.windowInsetsPadding(
-          LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Top),
-        ),
-      )
+  val titleRes =
+    when (currentScreen) {
+      BackupSubScreen.MAIN -> stringResource(R.string.backup_restore)
+      BackupSubScreen.IMPORT -> "Import"
+    }
 
-      when (screen) {
+  Scaffold(
+    modifier = Modifier.fillMaxSize().nestedScroll(scrollBehavior.nestedScrollConnection),
+    topBar = {
+      TopAppBar(
+        title = { Text(titleRes) },
+        navigationIcon = {
+          IconButton(
+            onClick = {
+              if (currentScreen != BackupSubScreen.MAIN) {
+                currentScreen = BackupSubScreen.MAIN
+              } else {
+                navController.navigateUp()
+              }
+            },
+            onLongClick = navController::backToMain,
+          ) {
+            Icon(
+              painterResource(R.drawable.arrow_back),
+              contentDescription = null,
+            )
+          }
+        },
+        scrollBehavior = scrollBehavior,
+      )
+    },
+  ) { padding ->
+    Crossfade(targetState = currentScreen, label = "BackupSubScreen") { screen ->
+      Column(
+        Modifier.fillMaxSize()
+          .padding(padding)
+          .windowInsetsPadding(
+            LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal),
+          )
+          .verticalScroll(rememberScrollState())
+          .padding(horizontal = 16.dp),
+      ) {
+        when (screen) {
         BackupSubScreen.MAIN -> {
 
           Spacer(modifier = Modifier.height(16.dp))
@@ -229,32 +260,7 @@ fun BackupAndRestore(
       )
     }
   }
-  val titleRes =
-    when (currentScreen) {
-      BackupSubScreen.MAIN -> stringResource(R.string.backup_restore)
-      BackupSubScreen.IMPORT -> "Import"
-    }
-
-  TopAppBar(
-    title = { Text(titleRes) },
-    navigationIcon = {
-      IconButton(
-        onClick = {
-          if (currentScreen != BackupSubScreen.MAIN) {
-            currentScreen = BackupSubScreen.MAIN
-          } else {
-            navController.navigateUp()
-          }
-        },
-        onLongClick = navController::backToMain,
-      ) {
-        Icon(
-          painterResource(R.drawable.arrow_back),
-          contentDescription = null,
-        )
-      }
-    },
-  )
+}
 
   AddToPlaylistDialogOnline(
     isVisible = showChoosePlaylistDialogOnline,

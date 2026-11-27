@@ -4,6 +4,7 @@ import android.app.Activity
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
@@ -14,6 +15,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -21,6 +23,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -94,19 +97,31 @@ fun HapticsSettings(
     )
   }
 
-  Column(
-    Modifier.windowInsetsPadding(
-        LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal),
+  Scaffold(
+    modifier = Modifier.fillMaxSize().nestedScroll(scrollBehavior.nestedScrollConnection),
+    topBar = {
+      TopAppBar(
+        title = { Text(stringResource(R.string.haptics)) },
+        navigationIcon = {
+          IconButton(onClick = navController::navigateUp, onLongClick = navController::backToMain) {
+            Icon(painterResource(R.drawable.arrow_back), contentDescription = null)
+          }
+        },
+        scrollBehavior = scrollBehavior,
       )
-      .verticalScroll(scrollState)
-      .padding(horizontal = 16.dp),
-  ) {
-    Spacer(
-      Modifier.windowInsetsPadding(
-        LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Top),
-      ),
-    )
-    Spacer(modifier = Modifier.height(16.dp))
+    },
+  ) { padding ->
+    Column(
+      modifier =
+        Modifier.fillMaxSize()
+          .padding(padding)
+          .windowInsetsPadding(
+            LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal),
+          )
+          .verticalScroll(scrollState)
+          .padding(horizontal = 16.dp),
+    ) {
+      Spacer(modifier = Modifier.height(16.dp))
 
     Material3SettingsGroup(
       scrollState = scrollState,
@@ -267,14 +282,5 @@ fun HapticsSettings(
       ),
     )
   }
-
-  TopAppBar(
-    title = { Text(stringResource(R.string.haptics)) },
-    navigationIcon = {
-      IconButton(onClick = navController::navigateUp, onLongClick = navController::backToMain) {
-        Icon(painterResource(R.drawable.arrow_back), contentDescription = null)
-      }
-    },
-    scrollBehavior = scrollBehavior,
-  )
+}
 }

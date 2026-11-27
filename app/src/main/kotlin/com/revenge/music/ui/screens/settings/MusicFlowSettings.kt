@@ -3,6 +3,7 @@ package com.revenge.music.ui.screens.settings
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
@@ -11,12 +12,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -121,48 +124,51 @@ fun MusicFlowSettings(
       ),
     )
 
-  Column(
-    Modifier.windowInsetsPadding(
-        LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal),
+  Scaffold(
+    modifier = Modifier.fillMaxSize().nestedScroll(scrollBehavior.nestedScrollConnection),
+    topBar = {
+      TopAppBar(
+        title = { Text(stringResource(R.string.music_flow)) },
+        navigationIcon = {
+          IconButton(onClick = navController::navigateUp, onLongClick = navController::backToMain) {
+            Icon(
+              painterResource(R.drawable.arrow_back),
+              contentDescription = stringResource(R.string.back_button_desc),
+            )
+          }
+        },
+        scrollBehavior = scrollBehavior,
       )
-      .verticalScroll(scrollState)
-      .padding(horizontal = 16.dp),
-  ) {
-    Spacer(
-      Modifier.windowInsetsPadding(
-        LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Top),
-      ),
-    )
-    Spacer(modifier = Modifier.height(16.dp))
-    Material3SettingsGroup(
-      scrollState = scrollState,
-      title = stringResource(R.string.music_flow),
-      items = general,
-    )
-    Spacer(modifier = Modifier.height(16.dp))
-    Material3SettingsGroup(
-      scrollState = scrollState,
-      title = stringResource(R.string.appearance),
-      items = visuals,
-    )
-    Spacer(modifier = Modifier.height(16.dp))
-    Spacer(
-      Modifier.windowInsetsPadding(
-        LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Bottom),
-      ),
-    )
-  }
-
-  TopAppBar(
-    title = { Text(stringResource(R.string.music_flow)) },
-    navigationIcon = {
-      IconButton(onClick = navController::navigateUp, onLongClick = navController::backToMain) {
-        Icon(
-          painterResource(R.drawable.arrow_back),
-          contentDescription = stringResource(R.string.back_button_desc),
-        )
-      }
     },
-    scrollBehavior = scrollBehavior,
-  )
+  ) { padding ->
+    Column(
+      modifier =
+        Modifier.fillMaxSize()
+          .padding(padding)
+          .windowInsetsPadding(
+            LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal),
+          )
+          .verticalScroll(scrollState)
+          .padding(horizontal = 16.dp),
+    ) {
+      Spacer(modifier = Modifier.height(16.dp))
+      Material3SettingsGroup(
+        scrollState = scrollState,
+        title = stringResource(R.string.music_flow),
+        items = general,
+      )
+      Spacer(modifier = Modifier.height(16.dp))
+      Material3SettingsGroup(
+        scrollState = scrollState,
+        title = stringResource(R.string.appearance),
+        items = visuals,
+      )
+      Spacer(modifier = Modifier.height(16.dp))
+      Spacer(
+        Modifier.windowInsetsPadding(
+          LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Bottom),
+        ),
+      )
+    }
+  }
 }

@@ -3,6 +3,7 @@ package com.revenge.music.ui.screens.settings
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
@@ -12,6 +13,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -25,6 +27,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -315,44 +318,55 @@ fun PlayerSettings(
     )
   }
 
-  Column(
-    Modifier.windowInsetsPadding(
-        LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal),
-      )
-      .verticalScroll(scrollState)
-      .padding(horizontal = 16.dp),
-  ) {
-    var showCrossfadeBetaDialog by remember { mutableStateOf(false) }
-
-    if (showCrossfadeBetaDialog) {
-      DefaultDialog(
-        onDismiss = { showCrossfadeBetaDialog = false },
-        title = { Text(stringResource(R.string.crossfade_beta_title)) },
-        buttons = {
-          TextButton(onClick = { showCrossfadeBetaDialog = false }) {
-            Text(stringResource(R.string.cancel))
-          }
-          TextButton(
-            onClick = {
-              showCrossfadeBetaDialog = false
-              onCrossfadeEnabledChange(true)
-            },
-          ) {
-            Text(stringResource(R.string.enable))
+  Scaffold(
+    modifier = Modifier.fillMaxSize().nestedScroll(scrollBehavior.nestedScrollConnection),
+    topBar = {
+      TopAppBar(
+        title = { Text(stringResource(R.string.player_and_audio)) },
+        navigationIcon = {
+          IconButton(onClick = navController::navigateUp, onLongClick = navController::backToMain) {
+            Icon(painterResource(R.drawable.arrow_back), contentDescription = null)
           }
         },
-      ) {
-        Text(stringResource(R.string.crossfade_beta_message))
+        scrollBehavior = scrollBehavior,
+      )
+    },
+  ) { padding ->
+    Column(
+      modifier =
+        Modifier.fillMaxSize()
+          .padding(padding)
+          .windowInsetsPadding(
+            LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal),
+          )
+          .verticalScroll(scrollState)
+          .padding(horizontal = 16.dp),
+    ) {
+      var showCrossfadeBetaDialog by remember { mutableStateOf(false) }
+
+      if (showCrossfadeBetaDialog) {
+        DefaultDialog(
+          onDismiss = { showCrossfadeBetaDialog = false },
+          title = { Text(stringResource(R.string.crossfade_beta_title)) },
+          buttons = {
+            TextButton(onClick = { showCrossfadeBetaDialog = false }) {
+              Text(stringResource(R.string.cancel))
+            }
+            TextButton(
+              onClick = {
+                showCrossfadeBetaDialog = false
+                onCrossfadeEnabledChange(true)
+              },
+            ) {
+              Text(stringResource(R.string.enable))
+            }
+          },
+        ) {
+          Text(stringResource(R.string.crossfade_beta_message))
+        }
       }
-    }
 
-    Spacer(
-      Modifier.windowInsetsPadding(
-        LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Top),
-      ),
-    )
-
-    Spacer(modifier = Modifier.height(16.dp))
+      Spacer(modifier = Modifier.height(16.dp))
 
     Material3SettingsGroup(
       scrollState = scrollState,
@@ -1408,13 +1422,5 @@ fun PlayerSettings(
       ),
     )
   }
-
-  TopAppBar(
-    title = { Text(stringResource(R.string.player_and_audio)) },
-    navigationIcon = {
-      IconButton(onClick = navController::navigateUp, onLongClick = navController::backToMain) {
-        Icon(painterResource(R.drawable.arrow_back), contentDescription = null)
-      }
-    },
-  )
+}
 }
