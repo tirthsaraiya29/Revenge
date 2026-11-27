@@ -406,8 +406,8 @@ class App : Application(), SingletonImageLoader.Factory, Configuration.Provider 
   }
 
   private fun buildProxy(type: Proxy.Type, rawUrl: String): Proxy {
-    val normalized = if (rawUrl.contains("://")) rawUrl else "http://$rawUrl"
-    val uri = URI(normalized)
+    // The HTTP scheme here describes the proxy transport, not the destination request.
+    val uri = if (rawUrl.contains("://")) URI(rawUrl) else URI("http", "//$rawUrl", null)
     val host = uri.host ?: throw IllegalArgumentException("Proxy URL has no host")
     val port = if (uri.port > 0) uri.port else DEFAULT_PROXY_PORT
     return Proxy(type, InetSocketAddress(host, port))
