@@ -1,124 +1,100 @@
 package com.revenge.music.utils.potoken
 
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonNull
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonPrimitive
-import kotlinx.serialization.json.long
-import okio.ByteString.Companion.decodeBase64
-import okio.ByteString.Companion.toByteString
+import android.content.Context
+import android.util.Base64
+import android.webkit.WebView
+import kotlin.coroutines.resume
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONTokener
+import timber.log.Timber
 
 /**
- * Parses the raw challenge data obtained from the Create endpoint and returns an object that can be
- * embedded in a JavaScript snippet.
+ * Small helpers shared by the hidden WebViews: injecting string literals safely, awaiting
+ * `evaluateJavascript`, reading bundled assets and moving binary token data across the JS
+ * boundary as base64.
  */
-fun parseChallengeData(rawChallengeData: String): String {
-  val scrambled = Json.parseToJsonElement(rawChallengeData).jsonArray
+object JavaScriptUtil {
+  private const val TAG = "JavaScriptUtil"
 
-  val challengeData =
-    if (scrambled.size > 1 && scrambled[1].jsonPrimitive.isString) {
-      val descrambled = descramble(scrambled[1].jsonPrimitive.content)
-      Json.parseToJsonElement(descrambled).jsonArray
-    } else {
-      scrambled[0].jsonArray
+  /** JavaScript string literal for [value] (org.json escaping is valid JS). */
+  fun quote(value: String): String = org.json.JSONObject.quote(value)
+
+  /** Decodes the JSON value returned by `evaluateJavascript`; null/undefined become null. */
+  fun decode(raw: String?): String? {
+    if (raw == null) return null
+    val value = raw.trim()
+    if (value.isEmpty() || value == "null" || value == "undefined") return null
+    return try {
+      when (val parsed = JSONTokener(value).nextValue()) {
+        is String -> parsed
+        null -> null
+        else -> parsed.toString()
+      }
+    } catch (error: Exception) {
+      null
+    }
+  }
+
+  /** Evaluates [script] on the main thread and returns the raw callback value. */
+  suspend fun evaluate(webView: WebView, script: String): String? =
+    withContext(Dispatchers.Main) {
+      suspendCancellableCoroutine { continuation ->
+        webView.evaluateJavascript(script) { value ->
+          if (continuation.isActive) continuation.resume(value)
+        }
+      }
     }
 
-  val messageId = challengeData[0].jsonPrimitive.content
-  val interpreterHash = challengeData[3].jsonPrimitive.content
-  val program = challengeData[4].jsonPrimitive.content
-  val globalName = challengeData[5].jsonPrimitive.content
-  val clientExperimentsStateBlob = challengeData[7].jsonPrimitive.content
+  /** Reads a bundled asset, returning null when it is missing. */
+  fun readAsset(context: Context, path: String): String? =
+    try {
+      context.assets.open(path).bufferedReader().use { it.readText() }
+    } catch (error: Exception) {
+      Timber.tag(TAG).w(error, "Unable to read asset %s", path)
+      null
+    }
 
-  val privateDoNotAccessOrElseSafeScriptWrappedValue =
-    challengeData[1].takeIf { it !is JsonNull }?.jsonArray?.find { it.jsonPrimitive.isString }
-  val privateDoNotAccessOrElseTrustedResourceUrlWrappedValue =
-    challengeData[2].takeIf { it !is JsonNull }?.jsonArray?.find { it.jsonPrimitive.isString }
+  /** Renders [bytes] as a JS `Uint8Array` literal. */
+  fun toJsUint8Array(bytes: ByteArray): String =
+    "new Uint8Array([" + bytes.joinToString(",") { (it.toInt() and 0xFF).toString() } + "])"
 
-  return Json.encodeToString(
-    JsonObject.serializer(),
-    JsonObject(
-      mapOf(
-        "messageId" to JsonPrimitive(messageId),
-        "interpreterJavascript" to
-          JsonObject(
-            mapOf(
-              "privateDoNotAccessOrElseSafeScriptWrappedValue" to
-                (privateDoNotAccessOrElseSafeScriptWrappedValue ?: JsonNull),
-              "privateDoNotAccessOrElseTrustedResourceUrlWrappedValue" to
-                (privateDoNotAccessOrElseTrustedResourceUrlWrappedValue ?: JsonNull),
-            ),
-          ),
-        "interpreterHash" to JsonPrimitive(interpreterHash),
-        "program" to JsonPrimitive(program),
-        "globalName" to JsonPrimitive(globalName),
-        "clientExperimentsStateBlob" to JsonPrimitive(clientExperimentsStateBlob),
-      ),
-    ),
-  )
-}
+  /** Parses a JSON array of byte values emitted by the WebView. */
+  fun jsonArrayToBytes(raw: String?): ByteArray? {
+    val text = decode(raw) ?: return null
+    return try {
+      val array = JSONArray(text)
+      ByteArray(array.length()) { index -> (array.optInt(index, 0) and 0xFF).toByte() }
+    } catch (error: Exception) {
+      null
+    }
+  }
 
-/**
- * Parses the raw integrity token data obtained from the GenerateIT endpoint to a JavaScript
- * `Uint8Array` that can be embedded directly in JavaScript code, and a [Long] representing the
- * duration of this token in seconds.
- */
-fun parseIntegrityTokenData(rawIntegrityTokenData: String): Pair<String, Long> {
-  val integrityTokenData = Json.parseToJsonElement(rawIntegrityTokenData).jsonArray
-  return base64ToU8(integrityTokenData[0].jsonPrimitive.content) to
-    integrityTokenData[1].jsonPrimitive.long
-}
+  fun toBase64(bytes: ByteArray): String = Base64.encodeToString(bytes, Base64.NO_WRAP)
 
-/**
- * Converts a string (usually the identifier used as input to `obtainPoToken`) to a JavaScript
- * `Uint8Array` that can be embedded directly in JavaScript code.
- */
-fun stringToU8(identifier: String): String {
-  return newUint8Array(identifier.toByteArray())
-}
+  fun fromBase64(base64: String): ByteArray? =
+    try {
+      Base64.decode(base64, Base64.DEFAULT)
+    } catch (error: Exception) {
+      null
+    }
 
-/**
- * Takes a poToken encoded as a sequence of bytes represented as integers separated by commas (e.g.
- * "97,98,99" would be "abc"), which is the output of `Uint8Array::toString()` in JavaScript, and
- * converts it to the specific base64 representation for poTokens.
- */
-fun u8ToBase64(poToken: String): String {
-  return poToken
-    .split(",")
-    .map { it.toUByte().toByte() }
-    .toByteArray()
-    .toByteString()
-    .base64()
-    .replace("+", "-")
-    .replace("/", "_")
-}
-
-/** Takes the scrambled challenge, decodes it from base64, adds 97 to each byte. */
-private fun descramble(scrambledChallenge: String): String {
-  return base64ToByteString(scrambledChallenge)
-    .map { (it + 97).toByte() }
-    .toByteArray()
-    .decodeToString()
-}
-
-/**
- * Decodes a base64 string encoded in the specific base64 representation used by YouTube, and
- * returns a JavaScript `Uint8Array` that can be embedded directly in JavaScript code.
- */
-private fun base64ToU8(base64: String): String {
-  return newUint8Array(base64ToByteString(base64))
-}
-
-private fun newUint8Array(contents: ByteArray): String {
-  return "new Uint8Array([" +
-    contents.joinToString(separator = ",") { it.toUByte().toString() } +
-    "])"
-}
-
-/** Decodes a base64 string encoded in the specific base64 representation used by YouTube. */
-private fun base64ToByteString(base64: String): ByteArray {
-  val base64Mod = base64.replace('-', '+').replace('_', '/').replace('.', '=')
-
-  return (base64Mod.decodeBase64() ?: throw PoTokenException("Cannot base64 decode")).toByteArray()
+  /** JS helpers: base64-encode a `Uint8Array` and UTF-8 encode a string without Kotlin help. */
+  const val JS_BASE64_HELPER =
+    """
+    function __revengeToBase64(bytes) {
+      var binary = '';
+      for (var i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+      return btoa(binary);
+    }
+    function __revengeUtf8Bytes(text) {
+      if (typeof TextEncoder !== 'undefined') return new TextEncoder().encode(text);
+      var escaped = unescape(encodeURIComponent(text));
+      var bytes = new Uint8Array(escaped.length);
+      for (var i = 0; i < escaped.length; i++) bytes[i] = escaped.charCodeAt(i);
+      return bytes;
+    }
+    """
 }

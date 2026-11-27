@@ -1,363 +1,316 @@
 package com.revenge.music.utils.potoken
 
+import android.annotation.SuppressLint
 import android.content.Context
-import android.webkit.ConsoleMessage
+import android.os.Handler
+import android.os.Looper
 import android.webkit.JavascriptInterface
-import android.webkit.WebChromeClient
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebView
-import androidx.annotation.MainThread
-import androidx.collection.ArrayMap
-import com.revenge.innertube.YouTube
-import com.revenge.music.BuildConfig
-import java.time.Instant
-import java.time.temporal.ChronoUnit
-import java.util.Collections
-import kotlin.coroutines.Continuation
+import android.webkit.WebViewClient
+import com.revenge.innertube.models.YouTubeClient
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
-import kotlinx.coroutines.CoroutineExceptionHandler
+import kotlinx.coroutines.CancellableContinuation
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.MainScope
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
-import okhttp3.Headers.Companion.toHeaders
+import kotlinx.coroutines.withTimeoutOrNull
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
+import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
+import org.json.JSONObject
 import timber.log.Timber
 
-class PoTokenWebView
-private constructor(
-  context: Context,
-  // to be used exactly once only during initialization!
-  private val continuation: Continuation<PoTokenWebView>,
+/**
+ * Hidden WebView runtime for BotGuard PO tokens.
+ *
+ * The bundled `po_token.html` implements the BotGuard client (interpreter execution, snapshot and
+ * minter creation). This class loads that page, fetch/executes the remote challenge, exchanges the
+ * snapshot for an integrity token and mints the two tokens the web client needs. All calls cross
+ * the JS boundary through a narrow [Bridge]; results are correlated by label.
+ *
+ * Renders are disposable: [close] tears the WebView down, and a renderer crash merely fails the
+ * pending request instead of the process.
+ */
+class PoTokenWebView private constructor(
+  private val webView: WebView,
+  private val callbacks: ConcurrentHashMap<String, CancellableContinuation<String>>,
 ) {
-  private val webView = WebView(context)
-  private val scope = MainScope()
-  private val poTokenContinuations =
-    Collections.synchronizedMap(ArrayMap<String, Continuation<String>>())
-  private val exceptionHandler = CoroutineExceptionHandler { _, t ->
-    onInitializationErrorCloseAndCancel(t)
-  }
-  private lateinit var expirationInstant: Instant
-
-  // region Initialization
-  init {
-    val webViewSettings = webView.settings
-    //noinspection SetJavaScriptEnabled we want to use JavaScript!
-    // nosemgrep: revenge-webview-javascript -- BotGuard/PO-token requires the YouTube JS runtime.
-    webViewSettings.javaScriptEnabled = true
-    webViewSettings.userAgentString = USER_AGENT
-    webViewSettings.blockNetworkLoads = true // the WebView does not need internet access
-
-    // so that we can run async functions and get back the result
-    webView.addJavascriptInterface(this, JS_INTERFACE)
-
-    webView.webChromeClient =
-      object : WebChromeClient() {
-        override fun onConsoleMessage(m: ConsoleMessage): Boolean {
-          val msg = m.message()
-          // Log all console messages for debugging
-          when (m.messageLevel()) {
-            ConsoleMessage.MessageLevel.ERROR -> Timber.tag(TAG).e("JS: $msg")
-            ConsoleMessage.MessageLevel.WARNING -> Timber.tag(TAG).w("JS: $msg")
-            else -> Timber.tag(TAG).d("JS: $msg")
-          }
-
-          if (msg.contains("Uncaught")) {
-            val fmt = "\"$msg\", source: ${m.sourceId()} (${m.lineNumber()})"
-            val exception = BadWebViewException(fmt)
-            Timber.tag(TAG).e("This WebView implementation is broken: $fmt")
-
-            onInitializationErrorCloseAndCancel(exception)
-            popAllPoTokenContinuations().forEach { (_, cont) ->
-              cont.resumeWithException(exception)
-            }
-          }
-          return super.onConsoleMessage(m)
-        }
-      }
+  private val mainHandler = Handler(Looper.getMainLooper())
+  private val http: OkHttpClient by lazy {
+    OkHttpClient.Builder()
+      .connectTimeout(20, TimeUnit.SECONDS)
+      .readTimeout(20, TimeUnit.SECONDS)
+      .writeTimeout(20, TimeUnit.SECONDS)
+      .retryOnConnectionFailure(true)
+      .build()
   }
 
-  /**
-   * Must be called right after instantiating [PoTokenWebView] to perform the actual initialization.
-   * This will asynchronously go through all the steps needed to load BotGuard, run it, and obtain
-   * an `integrityToken`.
-   */
-  private fun loadHtmlAndObtainBotguard() {
-    Timber.tag(TAG).d("loadHtmlAndObtainBotguard() called")
+  /** Mints the player-request and streaming-data tokens bound to [visitorData] / [videoId]. */
+  suspend fun generateTokens(videoId: String, visitorData: String): PoTokenResult? {
+    val challenge = fetchChallenge(videoId, visitorData) ?: return null
+    val run =
+      awaitJs(
+        "run",
+        """
+        (async function () {
+          var result = await runBotGuard(${challenge.toString()});
+          window.__revengeSignal = result.webPoSignalOutput;
+          return JSON.stringify({ botguardResponse: result.botguardResponse });
+        })()
+        """
+          .trimIndent(),
+      ) ?: return null
+    val botguardResponse =
+      runCatching { JSONObject(run).optString("botguardResponse") }.getOrNull()
+        ?.takeIf { it.isNotBlank() } ?: return null
 
-    scope.launch(exceptionHandler) {
-      val html =
-        withContext(Dispatchers.IO) {
-          webView.context.assets.open("po_token.html").bufferedReader().use { it.readText() }
-        }
-
-      // calls downloadAndRunBotguard() when the page has finished loading
-      val data = html.replaceFirst("</script>", "\n$JS_INTERFACE.downloadAndRunBotguard()</script>")
-      webView.loadDataWithBaseURL("https://www.youtube.com", data, "text/html", "utf-8", null)
-    }
-  }
-
-  /**
-   * Called during initialization by the JavaScript snippet appended to the HTML page content in
-   * [loadHtmlAndObtainBotguard] after the WebView content has been loaded.
-   */
-  @JavascriptInterface
-  fun downloadAndRunBotguard() {
-    Timber.tag(TAG).d("downloadAndRunBotguard() called")
-
-    makeBotguardServiceRequest(
-      "https://www.youtube.com/api/jnn/v1/Create",
-      "[ \"$REQUEST_KEY\" ]",
-    ) { responseBody ->
-      val parsedChallengeData = parseChallengeData(responseBody)
-      webView.evaluateJavascript(
-        """try {
-                    data = $parsedChallengeData
-                    runBotGuard(data).then(function (result) {
-                        this.webPoSignalOutput = result.webPoSignalOutput
-                        $JS_INTERFACE.onRunBotguardResult(result.botguardResponse)
-                    }, function (error) {
-                        $JS_INTERFACE.onJsInitializationError(error + "\n" + error.stack)
-                    })
-                } catch (error) {
-                    $JS_INTERFACE.onJsInitializationError(error + "\n" + error.stack)
-                }""",
-        null,
+    val integrityBytes = fetchIntegrity(botguardResponse, visitorData) ?: return null
+    val minterReady =
+      awaitJs(
+        "minter",
+        """
+        (async function () {
+          await createPoTokenMinter(
+            window.__revengeSignal,
+            ${JavaScriptUtil.toJsUint8Array(integrityBytes)}
+          );
+          return 'ok';
+        })()
+        """
+          .trimIndent(),
       )
-    }
+    if (minterReady == null) return null
+
+    val playerToken = mintToken(visitorData) ?: return null
+    val streamingToken = mintToken(videoId)
+    return PoTokenResult(
+      playerRequestPoToken = playerToken,
+      streamingDataPoToken = streamingToken ?: playerToken,
+      visitorData = visitorData,
+    )
   }
 
-  /**
-   * Called during initialization by the JavaScript snippets from either [downloadAndRunBotguard] or
-   * [onRunBotguardResult].
-   */
-  @JavascriptInterface
-  fun onJsInitializationError(error: String) {
-    if (BuildConfig.DEBUG) {
-      Timber.tag(TAG).e("Initialization error from JavaScript: $error")
-    }
-    onInitializationErrorCloseAndCancel(buildExceptionForJsError(error))
-  }
-
-  /**
-   * Called during initialization by the JavaScript snippet from [downloadAndRunBotguard] after
-   * obtaining the BotGuard execution output [botguardResponse].
-   */
-  @JavascriptInterface
-  fun onRunBotguardResult(botguardResponse: String) {
-    Timber.tag(TAG).d("botguardResponse: $botguardResponse")
-    makeBotguardServiceRequest(
-      "https://www.youtube.com/api/jnn/v1/GenerateIT",
-      "[ \"$REQUEST_KEY\", \"$botguardResponse\" ]",
-    ) { responseBody ->
-      Timber.tag(TAG).d("GenerateIT response: $responseBody")
-      try {
-        val (integrityToken, expirationTimeInSeconds) = parseIntegrityTokenData(responseBody)
-        Timber.tag(TAG)
-          .d(
-            "Parsed integrityToken (${integrityToken.take(50)}...), expires in $expirationTimeInSeconds sec",
-          )
-
-        // leave 10 minutes of margin just to be sure
-        expirationInstant =
-          Instant.now().plusSeconds(expirationTimeInSeconds).minus(10, ChronoUnit.MINUTES)
-
-        // Store integrityToken and create the minter callback ONCE
-        // NOTE: createPoTokenMinter is now async, so we use .then()
-        Timber.tag(TAG).d("Evaluating createPoTokenMinter JavaScript...")
-        webView.evaluateJavascript(
-          """try {
-                        console.log('[JS] Setting integrityToken and calling createPoTokenMinter...');
-                        this.integrityToken = $integrityToken
-                        console.log('[JS] integrityToken set, now calling createPoTokenMinter...');
-                        createPoTokenMinter(webPoSignalOutput, integrityToken).then(function() {
-                            console.log('[JS] createPoTokenMinter .then() resolved!');
-                            $JS_INTERFACE.onMinterCreated()
-                        }).catch(function(error) {
-                            console.log('[JS] createPoTokenMinter .catch() error: ' + error);
-                            $JS_INTERFACE.onJsInitializationError(error + "\n" + (error.stack || ''))
-                        })
-                    } catch (error) {
-                        console.log('[JS] createPoTokenMinter SYNC error: ' + error);
-                        $JS_INTERFACE.onJsInitializationError(error + "\n" + error.stack)
-                    }""",
-          null,
-        )
-      } catch (e: Exception) {
-        Timber.tag(TAG).e(e, "Failed to parse integrity token data: ${e.message}")
-        onInitializationErrorCloseAndCancel(
-          PoTokenException("parseIntegrityTokenData failed: ${e.message}"),
-        )
-      }
-    }
-  }
-
-  /** Called during initialization after the poToken minter has been created successfully. */
-  @JavascriptInterface
-  fun onMinterCreated() {
-    Timber.tag(TAG).d("poToken minter created successfully, initialization complete")
-    continuation.resume(this)
-  }
-
-  // endregion
-
-  // region Obtaining poTokens
-  suspend fun generatePoToken(identifier: String): String {
-    return withContext(Dispatchers.Main) {
-      suspendCancellableCoroutine { cont ->
-        Timber.tag(TAG).d("generatePoToken() called with identifier $identifier")
-        addPoTokenEmitter(identifier, cont)
-        // NOTE: obtainPoToken is now async, so we use .then()
-        webView.evaluateJavascript(
-          """try {
-                        identifier = "$identifier"
-                        u8Identifier = ${stringToU8(identifier)}
-                        obtainPoToken(u8Identifier).then(function(poTokenU8) {
-                            poTokenU8String = poTokenU8.join(",")
-                            $JS_INTERFACE.onObtainPoTokenResult(identifier, poTokenU8String)
-                        }).catch(function(error) {
-                            $JS_INTERFACE.onObtainPoTokenError(identifier, error + "\n" + (error.stack || ''))
-                        })
-                    } catch (error) {
-                        $JS_INTERFACE.onObtainPoTokenError(identifier, error + "\n" + error.stack)
-                    }""",
-          null,
-        )
-      }
-    }
-  }
-
-  /**
-   * Called by the JavaScript snippet from [generatePoToken] when an error occurs in calling the
-   * JavaScript `obtainPoToken()` function.
-   */
-  @JavascriptInterface
-  fun onObtainPoTokenError(identifier: String, error: String) {
-    if (BuildConfig.DEBUG) {
-      Timber.tag(TAG).e("obtainPoToken error from JavaScript: $error")
-    }
-    popPoTokenContinuation(identifier)?.resumeWithException(buildExceptionForJsError(error))
-  }
-
-  /**
-   * Called by the JavaScript snippet from [generatePoToken] with the original identifier and the
-   * result of the JavaScript `obtainPoToken()` function.
-   */
-  @JavascriptInterface
-  fun onObtainPoTokenResult(identifier: String, poTokenU8: String) {
-    Timber.tag(TAG)
-      .d("Generated poToken (before decoding): identifier=$identifier poTokenU8=$poTokenU8")
-    val poToken =
-      try {
-        u8ToBase64(poTokenU8)
-      } catch (t: Throwable) {
-        popPoTokenContinuation(identifier)?.resumeWithException(t)
-        return
-      }
-
-    Timber.tag(TAG).d("Generated poToken: identifier=$identifier poToken=$poToken")
-    popPoTokenContinuation(identifier)?.resume(poToken)
-  }
-
-  val isExpired: Boolean
-    get() = Instant.now().isAfter(expirationInstant)
-
-  // endregion
-
-  // region Handling multiple emitters
-  private fun addPoTokenEmitter(identifier: String, continuation: Continuation<String>) {
-    poTokenContinuations[identifier] = continuation
-  }
-
-  private fun popPoTokenContinuation(identifier: String): Continuation<String>? {
-    return poTokenContinuations.remove(identifier)
-  }
-
-  private fun popAllPoTokenContinuations(): Map<String, Continuation<String>> {
-    val result = poTokenContinuations.toMap()
-    poTokenContinuations.clear()
-    return result
-  }
-
-  // endregion
-
-  // region Utils
-  private fun makeBotguardServiceRequest(
-    url: String,
-    data: String,
-    handleResponseBody: (String) -> Unit,
-  ) {
-    scope.launch(exceptionHandler) {
-      val requestBuilder =
-        okhttp3.Request.Builder()
-          .post(data.toRequestBody())
-          .headers(
-            mapOf(
-                "User-Agent" to USER_AGENT,
-                "Accept" to "application/json",
-                "Content-Type" to "application/json+protobuf",
-                "x-goog-api-key" to GOOGLE_API_KEY,
-                "x-user-agent" to "grpc-web-javascript/0.1",
-              )
-              .toHeaders(),
-          )
-          .url(url)
-      val response =
-        withContext(Dispatchers.IO) { httpClient.newCall(requestBuilder.build()).execute() }
-      val httpCode = response.code
-      if (httpCode != 200) {
-        onInitializationErrorCloseAndCancel(PoTokenException("Invalid response code: $httpCode"))
-      } else {
-        val body = withContext(Dispatchers.IO) { response.body!!.string() }
-        handleResponseBody(body)
-      }
-    }
-  }
-
-  private fun onInitializationErrorCloseAndCancel(error: Throwable) {
-    close()
-    continuation.resumeWithException(error)
-  }
-
-  @MainThread
+  /** Fails pending calls and destroys the WebView on the main thread. */
   fun close() {
-    scope.cancel()
-
-    webView.clearHistory()
-    webView.clearCache(true)
-
-    webView.loadUrl("about:blank")
-
-    webView.onPause()
-    webView.removeAllViews()
-    webView.destroy()
+    val view = webView
+    for (label in callbacks.keys.toList()) {
+      callbacks.remove(label)?.let { continuation ->
+        if (continuation.isActive) continuation.resume(ERROR_PREFIX + "closed")
+      }
+    }
+    mainHandler.post {
+      runCatching {
+        view.removeJavascriptInterface(BRIDGE_NAME)
+        view.stopLoading()
+        view.destroy()
+      }
+    }
   }
 
-  // endregion
+  private suspend fun awaitJs(label: String, expression: String): String? {
+    val quotedLabel = JavaScriptUtil.quote(label)
+    val raw =
+      withTimeoutOrNull(JS_TIMEOUT_MS) {
+        suspendCancellableCoroutine<String> { continuation ->
+          callbacks[label] = continuation
+          continuation.invokeOnCancellation { callbacks.remove(label) }
+          mainHandler.post {
+            val script =
+              """
+              (function () {
+                function fail(e) {
+                  window.$BRIDGE_NAME.onError($quotedLabel, String((e && e.message) || e));
+                }
+                try {
+                  Promise.resolve((async function () { return ($expression); })())
+                    .then(function (r) {
+                      window.$BRIDGE_NAME.onResult(
+                        $quotedLabel,
+                        typeof r === 'string' ? r : JSON.stringify(r)
+                      );
+                    })
+                    .catch(fail);
+                } catch (e) {
+                  fail(e);
+                }
+              })();
+              """
+                .trimIndent()
+            webView.evaluateJavascript(script, null)
+          }
+        }
+      }
+    callbacks.remove(label)
+    if (raw == null) return null
+    if (raw.startsWith(ERROR_PREFIX)) {
+      Timber.tag(TAG).w("JS %s failed: %s", label, raw.removePrefix(ERROR_PREFIX))
+      return null
+    }
+    return raw
+  }
+
+  private suspend fun mintToken(identifier: String): String? =
+    awaitJs(
+      "mint-" + identifier.hashCode(),
+      """
+      (async function () {
+        var bytes = await obtainPoToken(__revengeUtf8Bytes(${JavaScriptUtil.quote(identifier)}));
+        return __revengeToBase64(bytes);
+      })()
+      """
+        .trimIndent(),
+    )
+
+  private fun fetchChallenge(videoId: String, visitorData: String): JSONObject? {
+    val client =
+      JSONObject()
+        .put("clientName", "WEB")
+        .put("clientVersion", "2.20260213.01.00")
+        .put("hl", "en")
+        .put("gl", "US")
+        .put("visitorData", visitorData)
+    val body =
+      JSONObject()
+        .put("context", JSONObject().put("client", client))
+        .put("videoId", videoId)
+        .put("identifier", visitorData)
+    return postJson(CHALLENGE_URL, body)
+  }
+
+  private fun fetchIntegrity(botguardResponse: String, visitorData: String): ByteArray? {
+    val body =
+      JSONObject()
+        .put("botguardResponse", botguardResponse)
+        .put("identifier", visitorData)
+    val response = postJson(INTEGRITY_URL, body) ?: return null
+    val value = response.opt("integrityToken") ?: response.opt("token") ?: return null
+    return when (value) {
+      is String -> JavaScriptUtil.fromBase64(value)
+      is JSONArray -> ByteArray(value.length()) { index ->
+        (value.optInt(index, 0) and 0xFF).toByte()
+      }
+      else -> null
+    }
+  }
+
+  private fun postJson(url: String, body: JSONObject): JSONObject? {
+    return try {
+      val request =
+        Request.Builder()
+          .url(url)
+          .header("User-Agent", YouTubeClient.USER_AGENT_WEB)
+          .header("Content-Type", "application/json")
+          .header("Origin", YOUTUBE_ORIGIN)
+          .header("Accept", "application/json")
+          .post(body.toString().toRequestBody(JSON_MEDIA_TYPE))
+          .build()
+      http.newCall(request).execute().use { response ->
+        if (!response.isSuccessful) {
+          Timber.tag(TAG).w("HTTP %d for %s", response.code, url)
+          null
+        } else {
+          val text = response.body?.string()
+          if (text.isNullOrBlank()) null else runCatching { JSONObject(text) }.getOrNull()
+        }
+      }
+    } catch (error: Exception) {
+      Timber.tag(TAG).w(error, "POST %s failed", url)
+      null
+    }
+  }
+
+  /** Narrow JS-to-Kotlin bridge. Only these three calls are reachable from the page. */
+  private class Bridge(
+    private val resultSink: (String, String) -> Unit,
+    private val errorSink: (String, String) -> Unit,
+    private val logSink: (String) -> Unit,
+  ) {
+    @JavascriptInterface
+    fun onResult(label: String, value: String) = resultSink(label, value)
+
+    @JavascriptInterface
+    fun onError(label: String, message: String) = errorSink(label, message)
+
+    @JavascriptInterface
+    fun onLog(message: String) = logSink(message)
+  }
 
   companion object {
     private const val TAG = "PoTokenWebView"
-    // Public Innertube web-client API key (shipped in every YouTube web page), not a secret.
-    // nosemgrep: revenge-hardcoded-credential
-    private const val GOOGLE_API_KEY = "AIzaSyDyT5W0Jh49F30Pqqtyfdf7pDLFKLJoAnw"
-    private const val REQUEST_KEY = "O43z0dpjhgX20SCx4KAo"
-    private const val USER_AGENT =
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
-        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.3"
-    private const val JS_INTERFACE = "PoTokenWebView"
+    private const val BRIDGE_NAME = "RevengeBridge"
+    private const val ERROR_PREFIX = "__REVENGE_ERROR__:"
+    private const val HTML_ASSET = "po_token.html"
+    private const val YOUTUBE_ORIGIN = "https://www.youtube.com"
+    private const val INNERTUBE_API_KEY = "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
+    private const val CHALLENGE_URL =
+      "$YOUTUBE_ORIGIN/api/jnn/_/v1/challenge?key=$INNERTUBE_API_KEY"
+    private const val INTEGRITY_URL =
+      "$YOUTUBE_ORIGIN/api/jnn/_/v1/integrity?key=$INNERTUBE_API_KEY"
+    private const val LOAD_TIMEOUT_MS = 15_000L
+    private const val JS_TIMEOUT_MS = 25_000L
+    private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
 
-    private val httpClient = OkHttpClient.Builder().proxy(YouTube.proxy).build()
-
+    /**
+     * Builds a hidden WebView, loads the bundled BotGuard client and waits until its script has
+     * run. Must be called from a coroutine; creation itself happens on the main thread.
+     */
+    @SuppressLint("SetJavaScriptEnabled", "JavascriptInterface")
     suspend fun getNewPoTokenGenerator(context: Context): PoTokenWebView {
-      return withContext(Dispatchers.Main) {
-        suspendCancellableCoroutine { cont ->
-          val potWv = PoTokenWebView(context, cont)
-          potWv.loadHtmlAndObtainBotguard()
+      val html = JavaScriptUtil.readAsset(context, HTML_ASSET)
+        ?: throw PoTokenException("Missing $HTML_ASSET")
+      val callbacks = ConcurrentHashMap<String, CancellableContinuation<String>>()
+      val bridge =
+        Bridge(
+          resultSink = { label, value ->
+            callbacks.remove(label)?.let { if (it.isActive) it.resume(value) }
+          },
+          errorSink = { label, message ->
+            callbacks.remove(label)?.let { if (it.isActive) it.resume(ERROR_PREFIX + message) }
+          },
+          logSink = { message -> Timber.tag(TAG).d("%s", message) },
+        )
+      val ready = CompletableDeferred<Unit>()
+      val view =
+        withContext(Dispatchers.Main) {
+          val webView = WebView(context.applicationContext)
+          webView.settings.javaScriptEnabled = true
+          webView.settings.domStorageEnabled = true
+          webView.settings.allowFileAccess = false
+          webView.settings.allowContentAccess = false
+          webView.settings.blockNetworkLoads = false
+          webView.addJavascriptInterface(bridge, BRIDGE_NAME)
+          webView.webViewClient =
+            object : WebViewClient() {
+              override fun onPageFinished(view: WebView?, url: String?) {
+                ready.complete(Unit)
+              }
+
+              override fun onRenderProcessGone(
+                view: WebView?,
+                detail: RenderProcessGoneDetail?,
+              ): Boolean {
+                ready.completeExceptionally(PoTokenException("Renderer process gone"))
+                runCatching { view?.destroy() }
+                return true
+              }
+            }
+          webView.loadDataWithBaseURL(YOUTUBE_ORIGIN, html, "text/html", "UTF-8", null)
+          webView
         }
+      val instance = PoTokenWebView(view, callbacks)
+      val loaded = withTimeoutOrNull(LOAD_TIMEOUT_MS) { runCatching { ready.await() }.isSuccess }
+      if (loaded != true) {
+        instance.close()
+        throw PoTokenException("Timed out loading $HTML_ASSET")
       }
+      JavaScriptUtil.evaluate(view, JavaScriptUtil.JS_BASE64_HELPER)
+      return instance
     }
   }
 }

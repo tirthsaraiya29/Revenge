@@ -1,209 +1,92 @@
 package com.revenge.music.utils
 
-import io.ktor.client.HttpClient
-import io.ktor.client.call.body
-import io.ktor.client.engine.okhttp.OkHttp
-import io.ktor.client.plugins.ResponseException
-import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
-import io.ktor.client.plugins.defaultRequest
-import io.ktor.client.request.*
-import io.ktor.http.*
-import io.ktor.serialization.kotlinx.json.json
+import java.net.HttpURLConnection
+import java.net.URL
+import java.net.URLEncoder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
-import timber.log.Timber
+import org.json.JSONObject
 
+data class WikipediaThumbnail(val source: String?)
+
+data class WikipediaSummary(
+    val extract: String?,
+    val title: String?,
+    val thumbnail: WikipediaThumbnail?,
+)
+
+/** Best-effort English Wikipedia lookups; every failure resolves to `null`. */
 object Wikipedia {
-  private val client by lazy {
-    HttpClient(OkHttp) {
-      install(ContentNegotiation) {
-        json(
-          Json {
-            isLenient = true
-            ignoreUnknownKeys = true
-          },
-        )
-      }
-      defaultRequest { url("https://en.wikipedia.org/api/rest_v1/") }
-      expectSuccess = true
+    private const val HOST = "https://en.wikipedia.org"
+    private const val TIMEOUT_MS = 10_000
+
+    suspend fun fetchArtistBio(name: String): WikipediaSummary? = withContext(Dispatchers.IO) {
+        val cleanName = name.trim()
+        if (cleanName.isEmpty()) return@withContext null
+        summaryFor(cleanName) ?: firstSearchResult(cleanName)?.let { summaryFor(it) }
     }
-  }
 
-  @Serializable data class WikiThumbnail(val source: String? = null)
-
-  @Serializable
-  data class WikiSummary(
-    val title: String? = null,
-    val extract: String? = null,
-    val description: String? = null,
-    val thumbnail: WikiThumbnail? = null,
-    val type: String? = null,
-  )
-
-  suspend fun fetchSummary(title: String): WikiSummary? = runCatching {
-    client
-      .get("page/summary/${title.replace(" ", "_").encodeURLQueryComponent()}")
-      .body<WikiSummary>()
-  }
-    .onFailure {
-      if (it is ResponseException && it.response.status == HttpStatusCode.NotFound) {
-        Timber.d("No Wikipedia summary found for: $title")
-      } else {
-        Timber.w("Failed to fetch Wikipedia summary for: $title (${it.message})")
-      }
-    }
-    .getOrNull()
-    ?.takeIf { it.extract != null && !it.extract.contains("may refer to", ignoreCase = true) }
-
-  private suspend fun fetchPageSummary(title: String): String? = fetchSummary(title)?.extract
-
-  suspend fun searchWikipedia(
-    query: String,
-    filterKeywords: List<String> = emptyList(),
-  ): WikiSummary? =
-    withContext(Dispatchers.IO) {
-      runCatching {
-        val enc = java.net.URLEncoder.encode(query, "UTF-8")
-        val url =
-          java.net.URL(
-            "https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=$enc&utf8=&format=json",
-          )
-        val conn = url.openConnection() as java.net.HttpURLConnection
-        conn.setRequestProperty("User-Agent", "Revenge/1.0 (Android; support@revenge.app)")
-        conn.connectTimeout = 4000
-        conn.readTimeout = 4000
-        val text = conn.inputStream.bufferedReader().use { it.readText() }
-        val root = org.json.JSONObject(text).optJSONObject("query") ?: return@runCatching null
-        val searchList = root.optJSONArray("search") ?: return@runCatching null
-        for (i in 0 until minOf(searchList.length(), 5)) {
-          val item = searchList.getJSONObject(i)
-          val itemTitle = item.optString("title")
-          val snippet = item.optString("snippet")
-          val matchesKeyword =
-            filterKeywords.isEmpty() ||
-              filterKeywords.any {
-                snippet.contains(it, ignoreCase = true) || itemTitle.contains(it, ignoreCase = true)
-              }
-          if (matchesKeyword) {
-            val summary = fetchSummary(itemTitle)
-            if (summary != null && !summary.extract.isNullOrBlank()) {
-              return@runCatching summary
-            }
-          }
+    suspend fun fetchSongStory(title: String, artist: String, album: String?): WikipediaSummary? =
+        withContext(Dispatchers.IO) {
+            val query = listOfNotNull(
+                title.trim().takeIf { it.isNotEmpty() },
+                artist.trim().takeIf { it.isNotEmpty() },
+                album?.trim()?.takeIf { it.isNotEmpty() },
+            ).joinToString(" ")
+            if (query.isEmpty()) return@withContext null
+            firstSearchResult(query)?.let { summaryFor(it) }
         }
-        null
-      }
-        .getOrNull()
+
+    private fun firstSearchResult(query: String): String? {
+        val url = "$HOST/w/api.php?action=query&format=json&list=search&srlimit=1&srsearch=" +
+            URLEncoder.encode(query, Charsets.UTF_8.name())
+        val json = request(url) ?: return null
+        return try {
+            JSONObject(json)
+                .getJSONObject("query")
+                .getJSONArray("search")
+                .optJSONObject(0)
+                ?.optString("title")
+                ?.takeIf { it.isNotBlank() }
+        } catch (_: Exception) {
+            null
+        }
     }
 
-  suspend fun fetchArtistBio(artistName: String): WikiSummary? {
-    val clean = artistName.replace(Regex("(?i)\\s*-\\s*Topic|\\s*\\(.*\\)"), "").trim()
-    if (clean.isBlank()) return null
-    val direct =
-      fetchSummary("$clean (musician)")
-        ?: fetchSummary("$clean (singer)")
-        ?: fetchSummary("$clean (composer)")
-        ?: fetchSummary(clean)?.takeIf {
-          val desc = it.description.orEmpty().lowercase()
-          val ext = it.extract.orEmpty().lowercase()
-          val musicKeywords =
-            listOf(
-              "music",
-              "singer",
-              "composer",
-              "artist",
-              "band",
-              "song",
-              "rapper",
-              "producer",
-              "playback",
+    private fun summaryFor(title: String): WikipediaSummary? {
+        val url = "$HOST/api/rest_v1/page/summary/" + URLEncoder.encode(title, Charsets.UTF_8.name())
+        val json = request(url) ?: return null
+        return try {
+            val root = JSONObject(json)
+            val extract = root.optString("extract").takeIf { it.isNotBlank() }
+            val summaryTitle = root.optString("title").takeIf { it.isNotBlank() }
+            if (extract == null && summaryTitle == null) return null
+            val thumbnail = root.optJSONObject("thumbnail")
+                ?.optString("source")
+                ?.takeIf { it.isNotBlank() }
+            WikipediaSummary(
+                extract = extract,
+                title = summaryTitle,
+                thumbnail = thumbnail?.let(::WikipediaThumbnail),
             )
-          musicKeywords.any { kw -> desc.contains(kw) || ext.contains(kw) }
+        } catch (_: Exception) {
+            null
         }
-    if (direct != null) return direct
-
-    return searchWikipedia(
-      clean,
-      listOf("singer", "composer", "musician", "band", "music", "artist", "rapper", "soundtrack"),
-    )
-  }
-
-  suspend fun fetchSongStory(
-    songTitle: String,
-    artistName: String?,
-    albumTitle: String?,
-  ): WikiSummary? {
-    val cleanTitle =
-      songTitle
-        .replace(
-          Regex("(?i)\\s*\\(From.*?\\)|\\s*\\[.*?\\]|\\s*\\(Official.*?\\)|\\s*\\(Lyric.*?\\)"),
-          "",
-        )
-        .trim()
-    if (cleanTitle.isNotBlank()) {
-      val direct =
-        fetchSummary("$cleanTitle (song)")
-          ?: if (artistName != null) fetchSummary("$cleanTitle ($artistName song)") else null
-      if (direct != null) return direct
     }
 
-    // Check for movie/soundtrack in title e.g. "(From OG)"
-    val fromMatch = Regex("(?i)\\(From\\s+[\"']?(.*?)[\"']?\\)").find(songTitle)
-    if (fromMatch != null) {
-      val movieName = fromMatch.groupValues[1].trim()
-      if (movieName.isNotBlank()) {
-        val ostSummary = fetchSummary("$movieName (soundtrack)") ?: fetchSummary(movieName)
-        if (ostSummary != null) return ostSummary
-      }
-    }
-
-    if (!albumTitle.isNullOrBlank() && !albumTitle.equals("Unknown", ignoreCase = true)) {
-      val albumSummary =
-        fetchSummary("$albumTitle (soundtrack)")
-          ?: fetchSummary("$albumTitle (album)")
-          ?: fetchSummary(albumTitle)
-      if (albumSummary != null) return albumSummary
-    }
-
-    if (cleanTitle.isNotBlank()) {
-      return searchWikipedia(
-        "$cleanTitle ${artistName.orEmpty()}",
-        listOf("song", "soundtrack", "album", "single", "composed", "film", "music"),
-      )
-    }
-    return null
-  }
-
-  suspend fun fetchAlbumInfo(albumTitle: String, artistName: String?): String? {
-    if (artistName != null) {
-      val preciseQueries = listOf("$albumTitle ($artistName album)", "$albumTitle ($artistName)")
-      for (query in preciseQueries) {
-        val summary = fetchPageSummary(query)
-        if (summary != null && !summary.contains("may refer to", ignoreCase = true)) {
-          return summary
+    private fun request(url: String): String? {
+        var connection: HttpURLConnection? = null
+        return try {
+            connection = URL(url).openConnection() as HttpURLConnection
+            connection.connectTimeout = TIMEOUT_MS
+            connection.readTimeout = TIMEOUT_MS
+            connection.setRequestProperty("User-Agent", "RevengeMusic/1.0")
+            if (connection.responseCode !in 200..299) return null
+            connection.inputStream.bufferedReader().use { it.readText() }
+        } catch (_: Exception) {
+            null
+        } finally {
+            connection?.disconnect()
         }
-      }
     }
-
-    val genericQueries = listOf("$albumTitle (album)", albumTitle)
-
-    for (query in genericQueries) {
-      val summary = fetchPageSummary(query)
-      if (summary != null && !summary.contains("may refer to", ignoreCase = true)) {
-        if (artistName != null) {
-          if (summary.contains(artistName, ignoreCase = true)) {
-            return summary
-          }
-        } else {
-          return summary
-        }
-      }
-    }
-
-    return null
-  }
-
-  suspend fun fetchPlaylistInfo(playlistTitle: String): String? = fetchPageSummary(playlistTitle)
 }

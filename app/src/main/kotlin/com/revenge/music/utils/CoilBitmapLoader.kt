@@ -3,11 +3,11 @@ package com.revenge.music.utils
 import android.content.Context
 import android.graphics.Bitmap
 import android.util.LruCache
-import androidx.core.graphics.drawable.toBitmap
 import coil3.SingletonImageLoader
 import coil3.request.CachePolicy
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
+import coil3.toBitmap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -40,7 +40,12 @@ object CoilBitmapLoader {
                 .build()
             val result = runCatching { SingletonImageLoader.get(context).execute(request) }
                 .getOrNull() as? SuccessResult ?: return@withContext null
-            val bitmap = result.drawable.toBitmap(width.takeIf { it > 0 } ?: 0, height.takeIf { it > 0 } ?: 0)
+            val image = result.image
+            val bitmap = if (width > 0 && height > 0) {
+                image.toBitmap(width, height)
+            } else {
+                image.toBitmap(image.width, image.height)
+            }
             val software = if (bitmap.config == Bitmap.Config.HARDWARE) {
                 bitmap.copy(Bitmap.Config.ARGB_8888, false)
             } else {

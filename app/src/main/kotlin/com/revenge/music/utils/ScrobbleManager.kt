@@ -1,6 +1,7 @@
 package com.revenge.music.utils
 
 import com.revenge.core.models.MediaMetadata
+import com.revenge.music.utils.lastfm.LastFM
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.floor
 import kotlinx.coroutines.CoroutineScope

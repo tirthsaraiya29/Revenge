@@ -4,21 +4,20 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
 import android.util.Base64
-import androidx.core.graphics.drawable.toBitmap
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import coil3.SingletonImageLoader
 import coil3.request.CachePolicy
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
+import coil3.toBitmap
 import java.io.File
 import java.io.FileOutputStream
 import java.security.MessageDigest
 import java.security.SecureRandom
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.runBlocking
 import timber.log.Timber
 
 /**
@@ -111,9 +110,13 @@ object AutomotiveArtwork {
     }
 
     private fun fetchBitmap(context: Context, url: String): Bitmap? {
-        val network = runCatching { decode(context, url, allowNetwork = true) }.getOrNull()
+        val network = runCatching {
+            runBlocking { decode(context, url, allowNetwork = true) }
+        }.getOrNull()
         if (network != null) return network
-        return runCatching { decode(context, url, allowNetwork = false) }.getOrNull()
+        return runCatching {
+            runBlocking { decode(context, url, allowNetwork = false) }
+        }.getOrNull()
     }
 
     private suspend fun decode(context: Context, url: String, allowNetwork: Boolean): Bitmap? {
@@ -125,7 +128,7 @@ object AutomotiveArtwork {
             .build()
         val result = SingletonImageLoader.get(context).execute(request)
         if (result !is SuccessResult) return null
-        return result.drawable.toBitmap(IMAGE_SIZE, IMAGE_SIZE)
+        return result.image.toBitmap(IMAGE_SIZE, IMAGE_SIZE)
     }
 
     private fun trim(directory: File) {
@@ -167,7 +170,7 @@ object AutomotiveArtwork {
 
 fun MediaMetadata.withAutomotiveArtworkUri(context: Context): MediaMetadata {
     val mapped = AutomotiveArtwork.contentUriFor(context, artworkUri) ?: return this
-    return MediaMetadata.Builder(this).setArtworkUri(mapped).build()
+    return buildUpon().setArtworkUri(mapped).build()
 }
 
 fun MediaItem.withAutomotiveArtworkUri(context: Context): MediaItem {

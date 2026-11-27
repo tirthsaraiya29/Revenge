@@ -115,7 +115,7 @@ object YTPlayerUtils : IYTPlayerUtils {
         val mime = if (separator >= 0) mimeType.substring(0, separator).trim() else mimeType
         val codec = Regex("codecs?=([^;]+)").find(mimeType)
             ?.groupValues?.getOrNull(1)?.trim()?.trim('"')
-        val quality = audioQuality ?: quality
+        val qualityText = audioQuality ?: quality
         return PlaybackData(
             url = url,
             mimeType = mime,
@@ -124,8 +124,8 @@ object YTPlayerUtils : IYTPlayerUtils {
             bitrate = bitrate,
             sampleRate = audioSampleRate,
             channels = audioChannels,
-            quality = quality.orEmpty(),
-            qualityLabel = quality.orEmpty(),
+            quality = qualityText.orEmpty(),
+            qualityLabel = qualityText.orEmpty(),
             loudnessDb = loudnessDb,
             expiresAt = System.currentTimeMillis() + expiresInSeconds * 1000L,
             itag = itag,
