@@ -109,12 +109,13 @@ fun SettingsScreen(
   val scrollState = rememberScrollState()
   Box(Modifier.fillMaxSize()) {
     Column(
-    Modifier.fillMaxSize().windowInsetsPadding(
-        LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal),
-      )
-      .verticalScroll(scrollState)
-      .padding(horizontal = 16.dp),
-  ) {
+      Modifier.fillMaxSize()
+        .windowInsetsPadding(
+          LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal),
+        )
+        .verticalScroll(scrollState)
+        .padding(horizontal = 16.dp),
+    ) {
     Spacer(
       Modifier.windowInsetsPadding(
         LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Top),
@@ -513,7 +514,7 @@ fun SettingsScreen(
   }
 
     TopAppBar(
-    modifier = Modifier.align(Alignment.TopCenter),
+      modifier = Modifier.align(Alignment.TopCenter),
     title = {
       androidx.compose.animation.AnimatedVisibility(
         visible = scrollState.value > 100,
