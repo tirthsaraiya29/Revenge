@@ -39,10 +39,13 @@ rules:
       fully trusted, and never expose addJavascriptInterface together with it.
     patterns:
       - pattern: $SETTINGS.javaScriptEnabled = true
+    # These two authentication WebViews enforce HTTPS host allowlists and expose no JS bridge.
     paths:
       exclude:
         - "**/test/**"
         - "**/androidTest/**"
+        - "app/src/main/kotlin/com/revenge/music/ui/screens/LoginScreen.kt"
+        - "app/src/main/kotlin/com/revenge/music/ui/screens/SpotifyLoginScreen.kt"
 
   - id: revenge-insecure-hostname-verifier
     languages: [kotlin]
