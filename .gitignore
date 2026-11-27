@@ -60,3 +60,6 @@ coverage/
 
 # Generated dependency caches
 .gradle-cache/
+
+# Clean-room worker scratch space
+.cleanroom_tmp/
