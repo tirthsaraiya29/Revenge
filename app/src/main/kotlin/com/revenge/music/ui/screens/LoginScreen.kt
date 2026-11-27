@@ -161,7 +161,9 @@ fun LoginScreen(navController: NavController) {
       factory = {
         val webView =
           WebView(it).apply {
-            settings.javaScriptEnabled = true // nosemgrep: revenge-webview-javascript -- trusted Google/YouTube sign-in hosts only; no JS interface is exposed.
+            settings.javaScriptEnabled =
+              true // nosemgrep: revenge-webview-javascript -- trusted Google/YouTube sign-in hosts
+              // only; no JS interface is exposed.
             settings.domStorageEnabled = true
             settings.setSupportMultipleWindows(true)
             CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
