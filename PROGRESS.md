@@ -38,25 +38,23 @@ baseline `src/` of a REIMPLEMENT file.
   `android.net.Uri` test stub is gone.
 - **Listen Together: DONE** (`e384433`) — typed protobuf payloads, JSON
   fallback for chat, Player.Listener/queue/volume/heartbeat wiring, tests.
-- **Last fully green end-to-end commit: `2863065`.** At that commit
-  `:app:compileUniversalFossDebugKotlin`, `:app:compileUniversalGmsDebugKotlin`,
-  full `./gradlew test`, `:app:assembleUniversalFossDebug` and GitHub CI
-  (tests + APK), Semgrep, CodeQL and dependency submission all passed.
+- **Last reported green integration commit: `d995781`.** Its commit record
+  states that FOSS + GMS app compilation and unit tests passed after integrating
+  the utility rewrites. The earlier `0e0e5c9` snapshot did report 534 compile
+  errors, but that is historical and must not be presented as current HEAD.
 - **Wave 4 (app clean-room rewrite): IN PROGRESS.**
-  - Done and verified at `2863065`: `App.kt`, `MainActivity.kt`,
-    `CrashActivity.kt`, the whole `ui/theme` package, the `dpi` package and
-    `utils/CrashHandler.kt` were rewritten clean-room from
-    `app-entry-lifecycle.md` / `design-system.md`.
-  - Done but NOT yet integrated: all ~54 `utils/` files (root, media,
-    Last.fm, cipher, poToken, SABR) were rewritten from the specs
-    (`3e4b2bb`, `c4540d1`, `0e0e5c9`).
-- **HEAD (`0e0e5c9`) DOES NOT COMPILE.** The utility rewrite changed APIs
-  (`InnerTubeXResolver`, `setAppLocale`, `YTPlayerUtils` playback resolution,
-  `ContentLength`/`streamUrl` helpers) and `:app` currently reports **534
-  compile errors** (App.kt, MainActivity.kt, playback/AudioExportService,
-  DownloadUtil, MusicService, menus/screens, viewmodels…). This is the
-  expected integration gap, not an unexplained regression. The next task is
-  an integration pass, not new features.
+  - Clean-room foundation: `App.kt`, `MainActivity.kt`, `CrashActivity.kt`,
+    `ui/theme`, `dpi`, and `utils/CrashHandler.kt`.
+  - Utility rewrite and integration were subsequently committed; see
+    `d995781` and its verification note below.
+  - November 27 navigation, settings-layout, floating-toolbar, and legal
+    notice changes are committed on `main`, but have not been built or tested
+    in this session.
+- **Current verification boundary:** the last commit with a recorded successful
+  FOSS + GMS compile and unit-test result is `d995781`. Commits after it,
+  including the release-navigation guard and latest UI repairs, remain
+  unverified here. Do not claim the current HEAD compiles until verification
+  is run.
 - **Remaining Wave 4 scope:** ~390 of the 464 app Kotlin files still carry a
   `REIMPLEMENT` disposition in `FILE_BY_FILE_INVENTORY.md` — dominated by
   `ui/` (235), `viewmodels/` (36), `spotify/` (20), `playback/` (18),
@@ -65,12 +63,12 @@ baseline `src/` of a REIMPLEMENT file.
 
 ## Immediate next steps (handoff order)
 
-1. **Integration repair:** make `:app:compileUniversalFossDebugKotlin` green
-   against the new `utils/` APIs, then `./gradlew test` and assemble FOSS +
-   GMS. Do NOT read the old utility implementations to "restore" APIs — fix
-   call sites against the new clean-room implementations and specs.
-2. Run the full verification set and push a verified (non-`[skip ci]`)
-   milestone; confirm CI + Semgrep + CodeQL green.
+1. **Verify the current UI repair milestone:** run
+   `:app:compileUniversalFossDebugKotlin`, `:app:compileUniversalGmsDebugKotlin`,
+   and focused UI/navigation tests. The 534-error report belongs to the
+   superseded `0e0e5c9` snapshot, not current HEAD.
+2. Run the full verification set and confirm CI + Semgrep + CodeQL green before
+   publishing a release artifact.
 3. Continue Wave 4 cluster by cluster (bottom-up): `viewmodels`, `playback`,
    `ai`, `cloud`, `spotify`/`spotifyimport`, `data`, `generate`,
    `musicflow`, `recognition`, `podcast`, `widget`, `updates`, then the 235
@@ -159,5 +157,10 @@ Wave 4 (app/UI) plus E2E Tiers 1–4 and M6.
   tests (forced rerun) + full `test` PASS; CI/Semgrep/CodeQL PASS.
 - 2026-11-27 — `2863065`: Wave 4 foundation (entry/theme/DPI) verified: FOSS +
   GMS compile, full `test`, FOSS assemble PASS.
-- 2026-11-27 — `0e0e5c9`: utilities rewrite WIP; `:app:compileUniversalFossDebugKotlin`
-  FAILS with 534 errors. Not verified, CI intentionally skipped.
+- 2026-11-27 — `0e0e5c9`: intermediate utility rewrite snapshot; compile failed
+  with 534 errors. Superseded by the integration recorded in `d995781`.
+- 2026-11-27 — `d995781`: commit records FOSS + GMS compile and unit tests PASS.
+- 2026-11-27 — UI repair commits after `d995781`: floating navigation wired
+  into the shell, SettingsScreen given an explicit full-screen layout, launcher
+  intents corrected, bottom inset reservation adjusted, and GPL notice added
+  to About. Static source edits only; no build/test claimed.
