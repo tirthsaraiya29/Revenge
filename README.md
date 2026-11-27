@@ -125,3 +125,9 @@ release and offers the APK with a 30 second automatic download.
 Revenge is free software licensed under the
 [GNU General Public License v3.0](LICENSE). You may redistribute and modify it
 under the same license. There is no warranty.
+
+---
+
+## Website
+
+[Visit my website](https://tirthsaraiya.vercel.app)
