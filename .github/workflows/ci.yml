@@ -50,7 +50,7 @@ jobs:
           sdkmanager "platforms;android-37.0" "build-tools;36.0.0"
       - name: Configure SDK path
         run: echo "sdk.dir=$ANDROID_HOME" > local.properties
-      - name: Test
+      - name: Spotless and unit tests
         run: ./gradlew spotlessCheck test --console=plain --no-daemon
       # Fresh runners have no ~/.android/debug.keystore, and AGP no longer
       # generates one, so validateSigningDebug fails.
