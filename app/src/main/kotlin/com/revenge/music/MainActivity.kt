@@ -154,7 +154,8 @@ import com.revenge.music.listentogether.ListenTogetherManager
 import com.revenge.music.playback.DownloadUtil
 import com.revenge.music.playback.MusicService
 import com.revenge.music.playback.PlayerConnection
-import com.revenge.music.ui.component.AppNavigationBar
+import com.revenge.music.ui.component.FloatingNavigationToolbar
+import com.revenge.music.ui.component.isRouteSelected
 import com.revenge.music.ui.component.AppNavigationRail
 import com.revenge.music.ui.component.GlassEffectConfig
 import com.revenge.music.ui.component.LocalAppBackdrop
@@ -501,8 +502,8 @@ class MainActivity : ComponentActivity() {
 
   private fun resolveInitialRoute(intent: Intent?): String {
     return when (intent?.action) {
-      ACTION_SEARCH -> Screens.Library.route
-      ACTION_LIBRARY -> Screens.Search.route
+      ACTION_SEARCH -> Screens.Search.route
+      ACTION_LIBRARY -> Screens.Library.route
       else ->
         when (dataStore[DefaultOpenTabKey]) {
           "HOME" -> Screens.Home.route
@@ -1088,14 +1089,22 @@ internal fun revengeApp(activity: MainActivity, initialRoute: String) {
             },
             bottomBar = {
               if (navBarVisible && !useRail) {
-                val (glassNav) = rememberPreference(LiquidGlassNavBarEnabledKey, false)
-                AppNavigationBar(
-                  navigationItems = navigationItems,
-                  currentRoute = currentRoute,
-                  onItemClick = { screen, selected -> onTabClick(screen, selected) },
-                  pureBlack = pureBlack,
-                  glassEnabled = glassNav,
-                )
+                Box(
+                  modifier =
+                    Modifier.fillMaxWidth()
+                      .navigationBarsPadding()
+                      .padding(horizontal = 16.dp, vertical = 8.dp),
+                  contentAlignment = Alignment.Center,
+                ) {
+                  FloatingNavigationToolbar(
+                    items = navigationItems,
+                    pureBlack = pureBlack,
+                    isSelected = { screen ->
+                      isRouteSelected(currentRoute, screen.route, navigationItems)
+                    },
+                    onItemClick = { screen, selected -> onTabClick(screen, selected) },
+                  )
+                }
               }
             },
           ) { _ ->
