@@ -128,7 +128,6 @@ import com.revenge.core.constants.LastAiRecommendationUpdateDayKey
 import com.revenge.core.constants.LastOpenedVersionCodeKey
 import com.revenge.core.constants.ListenTogetherInTopBarKey
 import com.revenge.core.constants.ListenTogetherUsernameKey
-import com.revenge.core.constants.LiquidGlassNavBarEnabledKey
 import com.revenge.core.constants.MiniPlayerBottomSpacing
 import com.revenge.core.constants.MiniPlayerHeight
 import com.revenge.core.constants.PauseListenHistoryKey
