@@ -1,51 +1,67 @@
 package com.revenge.music.utils
 
-import android.content.ContentUris
-import android.os.Build
-import android.provider.MediaStore
-import android.util.Size
+import android.content.Context
+import android.media.MediaMetadataRetriever
+import android.net.Uri
 import coil3.ImageLoader
-import coil3.Uri
-import coil3.asImage
 import coil3.decode.DataSource
 import coil3.fetch.FetchResult
 import coil3.fetch.Fetcher
 import coil3.fetch.ImageFetchResult
+import coil3.fetch.SourceFetchResult
 import coil3.request.Options
-import coil3.toAndroidUri
+import java.nio.ByteBuffer
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
+/**
+ * Coil fetcher that reads embedded cover art from a local audio file when the requested data is a
+ * media file URI/path rather than an image. Non-audio URIs are left to Coil's default fetchers.
+ */
 class LocalAlbumArtFetcher(
-  private val albumId: Long,
-  private val options: Options,
+    private val context: Context,
+    private val data: String,
 ) : Fetcher {
-  override suspend fun fetch(): FetchResult? {
-    val albumUri = ContentUris.withAppendedId(MediaStore.Audio.Albums.EXTERNAL_CONTENT_URI, albumId)
-    val bitmap =
-      runCatching {
-        options.context.contentResolver.loadThumbnail(albumUri, Size(SIZE, SIZE), null)
-      }
-        .getOrNull() ?: return null
-    return ImageFetchResult(
-      image = bitmap.asImage(),
-      isSampled = false,
-      dataSource = DataSource.DISK,
-    )
-  }
 
-  class Factory : Fetcher.Factory<Uri> {
-    override fun create(data: Uri, options: Options, imageLoader: ImageLoader): Fetcher? {
-      if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return null
-      val uri = data.toAndroidUri()
-      if (uri.scheme != "content" || uri.authority != MediaStore.AUTHORITY) return null
-      val segments = uri.pathSegments
-      if (segments.size < 2 || segments[segments.size - 2] != ALBUM_ART_SEGMENT) return null
-      val albumId = segments.last().toLongOrNull() ?: return null
-      return LocalAlbumArtFetcher(albumId, options)
+    override suspend fun fetch(): FetchResult? = withContext(Dispatchers.IO) {
+        val retriever = MediaMetadataRetriever()
+        try {
+            val uri = Uri.parse(data)
+            if (uri.scheme == "content" || uri.scheme == "file") {
+                retriever.setDataSource(context, uri)
+            } else {
+                retriever.setDataSource(data)
+            }
+            val bytes = retriever.embeddedPicture ?: return@withContext null
+            val mimeType = when {
+                bytes.size >= 8 && bytes[0] == 0x89.toByte() && bytes[1] == 'P'.code.toByte() -> "image/png"
+                bytes.size >= 3 && bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte() -> "image/jpeg"
+                bytes.size >= 12 && String(bytes, 0, 4, Charsets.US_ASCII) == "RIFF" -> "image/webp"
+                else -> "image/jpeg"
+            }
+            SourceFetchResult(
+                source = coil3.decode.ImageSource(ByteBuffer.wrap(bytes), context),
+                mimeType = mimeType,
+                dataSource = DataSource.DISK,
+            )
+        } catch (_: Exception) {
+            null
+        } finally {
+            runCatching { retriever.release() }
+        }
     }
-  }
 
-  private companion object {
-    const val SIZE = 1024
-    const val ALBUM_ART_SEGMENT = "albumart"
-  }
+    class Factory(private val context: Context) : Fetcher.Factory<String> {
+        override fun create(data: String, options: Options, imageLoader: ImageLoader): Fetcher? {
+            val uri = Uri.parse(data)
+            val scheme = uri.scheme?.lowercase()
+            val looksLocal = when (scheme) {
+                null -> true
+                "file" -> true
+                "content" -> data.contains("/audio/") || data.contains("/video/")
+                else -> false
+            }
+            return if (looksLocal) LocalAlbumArtFetcher(context, data) else null
+        }
+    }
 }

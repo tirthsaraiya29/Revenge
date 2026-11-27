@@ -1,105 +1,150 @@
 package com.revenge.music.utils.cipher
 
 import android.content.Context
-import android.util.Base64
-import com.revenge.innertube.YouTube
-import java.io.File
-import java.net.HttpURLConnection
-import java.net.URL
-import java.nio.charset.StandardCharsets
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
+import java.time.LocalDate
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
+import java.time.format.DateTimeParseException
+import java.time.temporal.ChronoUnit
+import org.json.JSONObject
 import timber.log.Timber
 
 /**
- * Cosmetic "when did we add cipher support for this player" dates, shown in the song-details sheet
- * next to the player hash.
+ * Publication date of each known YouTube player build, keyed by player id.
  *
- * Pulled **purely from a remote file** on the cipher repo — `player_dates.json` is NOT bundled in
- * the APK, so adding a date is just a push to that file and already-installed apps pick it up with
- * no APK update. A small on-disk cache makes it instant/offline on later launches.
- *
- * Deliberately decoupled from [PlayerConfigStore] and the decipher path: it is a separate file old
- * apps never fetch (so it cannot affect them), it is parsed tolerantly, and every failure (no
- * network, bad JSON, no cache yet) just yields an unknown date — playback is never touched.
- *
- * File shape — a flat map, no schemaVersion, no validation: { "959dabb2": "2026-06-12", "445213fb":
- * "2026-06-10", ... }
+ * Dates are seeded from the bundled `player_dates.json` asset and extended at runtime with the
+ * entries discovered by [PlayerJsFetcher]. Each value is the UTC calendar day `yyyy-MM-dd`; it is
+ * used to prefer the newest cached player and to age out stale entries.
  */
 object PlayerDatesStore {
-  private const val TAG = "Metrolist_CipherDates"
+  private const val TAG = "PlayerDatesStore"
+  private const val BUNDLED_ASSET = "player_dates.json"
+  private const val PREFS = "cipher_player_dates"
+  private const val KEY_OVERRIDES = "overrides"
 
-  private val REMOTE_URL by lazy {
-    val encoded =
-      "aHR0cHM6Ly9yYXcuZ2l0aHVidXNlcmNvbnRlbnQuY29tL01ldHJvbGlzdEdyb3VwL01ldHJvbGlzdC9tYWluL2FwcC9zcmMvbWFpbi9hc3NldHMvcGxheWVyX2RhdGVzLmpzb24="
-    String(Base64.decode(encoded, Base64.DEFAULT), StandardCharsets.UTF_8)
-  }
+  private val dateFormat: DateTimeFormatter = DateTimeFormatter.ISO_LOCAL_DATE
+  private val lock = Any()
 
-  // Own dir, NOT the shared cipher_cache (PlayerJsFetcher purges/wipes that one).
-  private const val CACHE_DIR = "cipher_dates"
-  private const val CACHE_FILE = "player_dates.json"
+  @Volatile private var bundled: Map<String, String>? = null
+  @Volatile private var overrides: MutableMap<String, String>? = null
+  @Volatile private var loaded = false
 
-  @Volatile private var dates: Map<String, String> = emptyMap()
-
-  /**
-   * Tolerant parse of a flat `hash -> date` object. Non-string values are skipped; never throws.
-   */
-  internal fun parse(text: String): Map<String, String> = runCatching {
-    val root = Json.parseToJsonElement(text) as? JsonObject ?: return emptyMap()
-    buildMap {
-      for ((hash, value) in root) {
-        (value as? JsonPrimitive)?.takeIf { it.isString }?.content?.let { put(hash, it) }
-      }
-    }
-  }
-    .getOrDefault(emptyMap())
-
-  /**
-   * Load the last-fetched cache (instant/offline), then refresh from the remote file in the
-   * background.
-   */
   fun initialize(context: Context) {
-    val cache = File(File(context.filesDir, CACHE_DIR).apply { mkdirs() }, CACHE_FILE)
-
-    dates =
-      runCatching { if (cache.exists()) parse(cache.readText()) else emptyMap() }
-        .getOrDefault(emptyMap())
-
-    Thread {
-      runCatching {
-        val body = fetchRemote()
-        val remote = parse(body)
-        if (remote.isNotEmpty()) {
-          dates = remote // the remote file is the single source of truth
-          runCatching { cache.writeText(body) } // persist for the next launch / offline
-        }
-      }
-        .onFailure { Timber.tag(TAG).d("dates refresh skipped: ${it.message}") }
+    synchronized(lock) {
+      if (loaded) return
+      bundled = readBundled(context)
+      overrides = readOverrides(context).toMutableMap()
+      loaded = true
+      Timber.tag(TAG)
+        .d("Loaded %d bundled and %d runtime player dates", bundled?.size ?: 0, overrides?.size ?: 0)
     }
-      .apply {
-        isDaemon = true
-        name = "PlayerDatesRefresh"
-      }
-      .start()
   }
 
-  /** Onboarding date for [hash] (`YYYY-MM-DD`), or null if unknown. */
-  fun get(hash: String?): String? = hash?.let { dates[it] }
+  /** Date for [playerId], preferring a runtime entry over the bundled snapshot. */
+  fun dateFor(playerId: String): String? {
+    val state = ensureLoaded() ?: return null
+    return state.second[playerId] ?: state.first[playerId]
+  }
 
-  private fun fetchRemote(): String {
-    val url = URL(REMOTE_URL)
-    val conn =
-      (YouTube.proxy?.let { url.openConnection(it) } ?: url.openConnection()) as HttpURLConnection
+  /** Records that [playerId] was seen today (or on [date]); persists the runtime override. */
+  fun put(playerId: String, date: String = today()) {
+    val context = contextOrNull() ?: return
+    val normalized = parseDate(date)?.format(dateFormat) ?: return
+    synchronized(lock) {
+      ensureLoadedLocked(context)
+      val map = overrides ?: mutableMapOf<String, String>().also { overrides = it }
+      if (map[playerId] == normalized) return
+      map[playerId] = normalized
+      writeOverridesLocked(context, map)
+    }
+  }
+
+  /** True when [playerId] has no known date or its date is within [ttlDays] of today. */
+  fun isFresh(playerId: String, ttlDays: Int): Boolean {
+    val date = parseDate(dateFor(playerId)) ?: return true
+    val ageDays = ChronoUnit.DAYS.between(date, LocalDate.now(ZoneOffset.UTC))
+    return ageDays <= ttlDays
+  }
+
+  fun all(): Map<String, String> {
+    val state = ensureLoaded() ?: return emptyMap()
+    return state.first + state.second
+  }
+
+  fun clearRuntime() {
+    val context = contextOrNull() ?: return
+    synchronized(lock) {
+      overrides = mutableMapOf()
+      context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove(KEY_OVERRIDES).apply()
+    }
+  }
+
+  fun today(): String = LocalDate.now(ZoneOffset.UTC).format(dateFormat)
+
+  private fun ensureLoaded(): Pair<Map<String, String>, Map<String, String>>? {
+    val context = contextOrNull() ?: return null
+    synchronized(lock) {
+      ensureLoadedLocked(context)
+      return (bundled ?: emptyMap()) to (overrides ?: emptyMap())
+    }
+  }
+
+  private fun ensureLoadedLocked(context: Context) {
+    if (loaded) return
+    bundled = readBundled(context)
+    overrides = readOverrides(context).toMutableMap()
+    loaded = true
+  }
+
+  private fun readBundled(context: Context): Map<String, String> =
+    try {
+      val text = context.assets.open(BUNDLED_ASSET).bufferedReader().use { it.readText() }
+      parse(text)
+    } catch (error: Exception) {
+      Timber.tag(TAG).w(error, "Unable to read bundled player dates")
+      emptyMap()
+    }
+
+  private fun readOverrides(context: Context): Map<String, String> =
+    try {
+      val text =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_OVERRIDES, null)
+      if (text.isNullOrBlank()) emptyMap() else parse(text)
+    } catch (error: Exception) {
+      Timber.tag(TAG).w(error, "Unable to read stored player dates")
+      emptyMap()
+    }
+
+  private fun writeOverridesLocked(context: Context, map: Map<String, String>) {
+    try {
+      val json = JSONObject(map).toString()
+      context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+        .putString(KEY_OVERRIDES, json)
+        .apply()
+    } catch (error: Exception) {
+      Timber.tag(TAG).w(error, "Unable to persist player dates")
+    }
+  }
+
+  private fun parse(text: String): Map<String, String> {
+    val root = JSONObject(text)
+    val result = LinkedHashMap<String, String>(root.length())
+    for (key in root.keys()) {
+      val date = parseDate(root.optString(key, "")) ?: continue
+      result[key] = date.format(dateFormat)
+    }
+    return result
+  }
+
+  private fun parseDate(value: String?): LocalDate? {
+    if (value.isNullOrBlank()) return null
     return try {
-      conn.run {
-        connectTimeout = 10_000
-        readTimeout = 10_000
-        setRequestProperty("User-Agent", "Mozilla/5.0")
-        inputStream.bufferedReader().use { it.readText() }
-      }
-    } finally {
-      conn.disconnect() // release the socket immediately, including on the error path
+      LocalDate.parse(value, dateFormat)
+    } catch (error: DateTimeParseException) {
+      null
     }
   }
+
+  private fun contextOrNull(): Context? =
+    if (CipherDeobfuscator.isInitialized) CipherDeobfuscator.appContext else null
 }

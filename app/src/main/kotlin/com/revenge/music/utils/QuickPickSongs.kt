@@ -1,35 +1,34 @@
 package com.revenge.music.utils
 
-import com.revenge.innertube.models.SongItem
+import com.revenge.core.db.entities.Song
+import com.revenge.innertube.models.filterBlockedArtists
+import com.revenge.innertube.models.filterExplicit
+import com.revenge.innertube.models.filterVideoSongs
 
-object QuickPickSongs {
-    fun filterQuickPickSongs(
-        songs: List<SongItem>,
-        excludedSongIds: Set<String>,
-        blockedArtists: Set<String>,
-        hideExplicit: Boolean,
-        hideVideoSongs: Boolean,
-    ): List<SongItem> {
-        val seen = HashSet<String>()
-        return songs.filter { song ->
-            if (song.id.isBlank()) return@filter false
-            if (song.id in excludedSongIds) return@filter false
-            if (!seen.add(song.id)) return@filter false
-            if (isBlocked(song, blockedArtists)) return@filter false
-            if (hideExplicit && song.explicit) return@filter false
-            if (hideVideoSongs && song.isVideoSong && !song.isPodcastEpisode) return@filter false
-            true
-        }
-    }
+fun filterQuickPickSongs(
+    songs: List<Song>,
+    excludedSongIds: Set<String>,
+    blockedArtists: Set<String>,
+    hideExplicit: Boolean,
+    hideVideoSongs: Boolean,
+): List<Song> {
+    val allowedIds = songs
+        .asSequence()
+        .filterNot { it.song.hideFromQuickPicks }
+        .filterNot { it.id in excludedSongIds }
+        .map { it.toCarouselSong() }
+        .toList()
+        .filterBlockedArtists(blockedArtists)
+        .filterExplicit(hideExplicit)
+        .filterVideoSongs(hideVideoSongs)
+        .map { it.id }
+        .toHashSet()
 
-    private fun isBlocked(song: SongItem, blockedArtists: Set<String>): Boolean {
-        if (blockedArtists.isEmpty()) return false
-        return song.artists.any { artist ->
-            blockedArtists.any { entry ->
-                val id = entry.substringBefore("||")
-                val name = entry.substringAfter("||", "")
-                artist.id == id || (name.isNotBlank() && artist.name.equals(name, ignoreCase = true))
-            }
-        }
-    }
+    return songs
+        .asSequence()
+        .filterNot { it.song.hideFromQuickPicks }
+        .filterNot { it.id in excludedSongIds }
+        .filter { it.id in allowedIds }
+        .distinctBy { it.id }
+        .toList()
 }
