@@ -20,29 +20,61 @@ baseline `src/` of a REIMPLEMENT file.
 - `docs/provenance/M2_GATE_DECISIONS.md` — all 119 BLOCKED dispositions (RESOLVED).
 - `docs/specs/` — clean-room specifications for implementation workers.
 
-## Current milestone
+## Current milestone (2026-11-27)
 
 - Phase 0 baseline freeze: DONE (`audit/baseline-11ae6207` = `11ae6207`).
 - Phase 1 provenance audit: DONE (8 deliverables).
 - **M2 BLOCKED gate: RESOLVED** (119/119 recorded in `M2_GATE_DECISIONS.md`).
 - **Wave 0 foundation remediation: DONE** (see below).
-- **Build and CI: GREEN at `f974ce8`** — GitHub Actions CI (full unit test
-  suite + FOSS universal debug APK upload), Semgrep, CodeQL and Gradle
-  dependency submission all pass. Locally the same commit passes
-  `./gradlew test` and `:app:assembleUniversalFossDebug`; the `gms` flavor also
-  compiles.
-- **Waves 1–3 and Wave 5 clean-room modules: implemented** (`:domain`,
-  `:metadata`, `:dsp-core`, `:core`, `:playback`, `:innertube`, `:lyrics`,
-  `:audio-dsp`, `:usbaudio`, `:canvas`, `:applecanvas`, `:artistvideo`), with
-  specs in `docs/specs/` and independent review fixes applied.
-- **Wave 4 (app shell / design system / screens): NOT STARTED as a dedicated
-  pass.** Existing app UI compiles and its tests pass, but the Wave 4
-  design-system spec (`docs/specs/design-system.md`) still needs to be applied
-  screen by screen and reviewed.
-- Known review residuals still to close: legacy `com.revenge.music.playback.*`
-  namespace migration, Listen Together typed protobuf mapping and outbound
-  player/queue/volume/heartbeat wiring, and the playback test `android.net.Uri`
-  stub.
+- **Waves 1–3 and Wave 5 modules: implemented** (`:domain`, `:metadata`,
+  `:dsp-core`, `:core`, `:playback`, `:innertube`, `:lyrics`, `:audio-dsp`,
+  `:usbaudio`, `:canvas`, `:applecanvas`, `:artistvideo`), with specs in
+  `docs/specs/` and review fixes applied.
+- **Split-package elimination: DONE** (`40d6f0c`) — `:core` uses
+  `com.revenge.core.*`, `:lyrics` uses `com.revenge.lyrics.*`, `:playback`
+  uses only `com.revenge.playback.*` (duplicate tree deleted), and the
+  `android.net.Uri` test stub is gone.
+- **Listen Together: DONE** (`e384433`) — typed protobuf payloads, JSON
+  fallback for chat, Player.Listener/queue/volume/heartbeat wiring, tests.
+- **Last fully green end-to-end commit: `2863065`.** At that commit
+  `:app:compileUniversalFossDebugKotlin`, `:app:compileUniversalGmsDebugKotlin`,
+  full `./gradlew test`, `:app:assembleUniversalFossDebug` and GitHub CI
+  (tests + APK), Semgrep, CodeQL and dependency submission all passed.
+- **Wave 4 (app clean-room rewrite): IN PROGRESS.**
+  - Done and verified at `2863065`: `App.kt`, `MainActivity.kt`,
+    `CrashActivity.kt`, the whole `ui/theme` package, the `dpi` package and
+    `utils/CrashHandler.kt` were rewritten clean-room from
+    `app-entry-lifecycle.md` / `design-system.md`.
+  - Done but NOT yet integrated: all ~54 `utils/` files (root, media,
+    Last.fm, cipher, poToken, SABR) were rewritten from the specs
+    (`3e4b2bb`, `c4540d1`, `0e0e5c9`).
+- **HEAD (`0e0e5c9`) DOES NOT COMPILE.** The utility rewrite changed APIs
+  (`InnerTubeXResolver`, `setAppLocale`, `YTPlayerUtils` playback resolution,
+  `ContentLength`/`streamUrl` helpers) and `:app` currently reports **534
+  compile errors** (App.kt, MainActivity.kt, playback/AudioExportService,
+  DownloadUtil, MusicService, menus/screens, viewmodels…). This is the
+  expected integration gap, not an unexplained regression. The next task is
+  an integration pass, not new features.
+- **Remaining Wave 4 scope:** ~390 of the 464 app Kotlin files still carry a
+  `REIMPLEMENT` disposition in `FILE_BY_FILE_INVENTORY.md` — dominated by
+  `ui/` (235), `viewmodels/` (36), `spotify/` (20), `playback/` (18),
+  `widget/` (15), `updates/` (15), plus smaller packages — and the Wave 4
+  resources (`REPLACE`, 218 PNG/XML assets).
+
+## Immediate next steps (handoff order)
+
+1. **Integration repair:** make `:app:compileUniversalFossDebugKotlin` green
+   against the new `utils/` APIs, then `./gradlew test` and assemble FOSS +
+   GMS. Do NOT read the old utility implementations to "restore" APIs — fix
+   call sites against the new clean-room implementations and specs.
+2. Run the full verification set and push a verified (non-`[skip ci]`)
+   milestone; confirm CI + Semgrep + CodeQL green.
+3. Continue Wave 4 cluster by cluster (bottom-up): `viewmodels`, `playback`,
+   `ai`, `cloud`, `spotify`/`spotifyimport`, `data`, `generate`,
+   `musicflow`, `recognition`, `podcast`, `widget`, `updates`, then the 235
+   `ui/` files (components → menus → screens), each followed by compile/test.
+4. Replace the Wave 4 resources marked `REPLACE` and then close E2E Tiers 1–4
+   and M6 gates.
 
 ## Wave 0 — completed and verified
 
@@ -80,13 +112,27 @@ Verified:
 
 ## Next steps
 
-1. Finish Wave 1 specs/implementations; run `:domain:test :metadata:test
-   :dsp-core:test` and full `./gradlew test`.
-2. Wave 2 — persistence, USB, DSP, playback (largest wave).
-3. Wave 3 — InnerTube + seven lyric providers + `:lyrics`.
-4. Wave 4 — app shell, Compose design system, core screens.
-5. Wave 5 — advanced capabilities, integrations, widgets, updater.
-6. E2E tracks Tiers 1–4 in parallel; M6 release gates.
+See "Immediate next steps (handoff order)" above. Historical plan retained in
+`docs/provenance/REIMPLEMENTATION_ROADMAP.md`; the only remaining wave is
+Wave 4 (app/UI) plus E2E Tiers 1–4 and M6.
+
+## Repo/CI operational notes
+
+- Last verified green commit: `2863065`. Green CI references: `40d6f0c`,
+  `e384433` (CI, Semgrep, CodeQL, dependency submission all success).
+- CodeQL uses `build-mode: manual` and compiles `:app` — buildless mode cannot
+  extract Kotlin (fixed in `2fe352b`).
+- CI generates `~/.android/debug.keystore` before assembling (`f974ce8`);
+  without it `validateSigningDebug` fails on fresh runners.
+- Semgrep: 10 findings were annotated with justified `// nosemgrep` and the
+  cleartext rule now excludes XML parser feature URIs.
+- Local assemble: Android Studio keeps a handle on
+  `app/build/outputs/apk/universalFoss/debug`. Workaround used:
+  `./gradlew :app:assembleUniversalFossDebug -I <init script that redirects
+  :app layout.buildDirectory>`.
+- Watcher commits use `[skip ci]` for unverified snapshots; never stage
+  `local.properties`, keystores, `.env`, `google-services.json`; never
+  force-push or amend. `.cleanroom_tmp/` is gitignored (agent scratch).
 
 ## Known constraints / risks
 
@@ -103,3 +149,13 @@ Verified:
 ## Verification log
 
 - 2026-11-26 — Wave 0: projects PASS; app+lyrics compile PASS.
+- 2026-11-26 — Full suite green (`f974ce8`): 21 modules, CI + assemble + Semgrep
+  + CodeQL + dependency submission PASS.
+- 2026-11-27 — `40d6f0c`: namespace migration; local `test` + FOSS assemble +
+  GMS compile PASS; CI/Semgrep/CodeQL PASS.
+- 2026-11-27 — `e384433`: Listen Together typed protocol; app Listen Together
+  tests (forced rerun) + full `test` PASS; CI/Semgrep/CodeQL PASS.
+- 2026-11-27 — `2863065`: Wave 4 foundation (entry/theme/DPI) verified: FOSS +
+  GMS compile, full `test`, FOSS assemble PASS.
+- 2026-11-27 — `0e0e5c9`: utilities rewrite WIP; `:app:compileUniversalFossDebugKotlin`
+  FAILS with 534 errors. Not verified, CI intentionally skipped.

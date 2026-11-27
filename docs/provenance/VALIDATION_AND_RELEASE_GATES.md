@@ -3,6 +3,14 @@
 **Baseline Reference:** `11ae62071f96db3b70557867ab1254dbcc5b125e` (`1,547/1,547` baseline unit tests passed across `21` modules / `304` XML suites)
 **Purpose:** Define non-negotiable build, static analysis, licensing, provenance/similarity, E2E Tiers 1–4, Tier-5 adversarial, and disclosure gates for M2–M6.
 
+> **Current gate status (2026-11-27):** Waves 1–3/5 and the M2 BLOCKED gate are
+> complete; Wave 4 (app clean-room rewrite) is in progress. The **last fully
+> green commit is `2863065`** (G-BUILD-2/3, FOSS+GMS compile, CI, Semgrep,
+> CodeQL all pass). HEAD `0e0e5c9` is a WIP utility-rewrite snapshot with 534
+> `:app` compile errors and intentionally did not run CI. Gates G-BUILD-3/4/5,
+> G-E2E, similarity and M6 remain open. See `PROGRESS.md` for the live status;
+> this document remains the authoritative gate definition.
+
 ---
 
 ## 1. Phase 0 Verified Baseline (M1.1 Benchmark)
