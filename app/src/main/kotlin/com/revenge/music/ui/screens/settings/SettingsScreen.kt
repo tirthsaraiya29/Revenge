@@ -6,9 +6,11 @@ import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import android.widget.Toast
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
@@ -26,6 +28,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
@@ -104,8 +107,9 @@ fun SettingsScreen(
     )
 
   val scrollState = rememberScrollState()
-  Column(
-    Modifier.windowInsetsPadding(
+  Box(Modifier.fillMaxSize()) {
+    Column(
+    Modifier.fillMaxSize().windowInsetsPadding(
         LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal),
       )
       .verticalScroll(scrollState)
@@ -116,6 +120,7 @@ fun SettingsScreen(
         LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Top),
       ),
     )
+    Spacer(Modifier.height(56.dp))
     Text(
       text = stringResource(R.string.settings),
       style = MaterialTheme.typography.displaySmall.copy(fontWeight = FontWeight.SemiBold),
@@ -507,7 +512,8 @@ fun SettingsScreen(
     )
   }
 
-  TopAppBar(
+    TopAppBar(
+    modifier = Modifier.align(Alignment.TopCenter),
     title = {
       androidx.compose.animation.AnimatedVisibility(
         visible = scrollState.value > 100,
@@ -525,5 +531,6 @@ fun SettingsScreen(
         )
       }
     },
-  )
+    )
+  }
 }
