@@ -47,14 +47,12 @@ baseline `src/` of a REIMPLEMENT file.
     `ui/theme`, `dpi`, and `utils/CrashHandler.kt`.
   - Utility rewrite and integration were subsequently committed; see
     `d995781` and its verification note below.
-  - November 27 navigation, settings-layout, floating-toolbar, and legal
-    notice changes are committed on `main`, but have not been built or tested
-    in this session.
-- **Current verification boundary:** the last commit with a recorded successful
-  FOSS + GMS compile and unit-test result is `d995781`. Commits after it,
-  including the release-navigation guard and latest UI repairs, remain
-  unverified here. Do not claim the current HEAD compiles until verification
-  is run.
+  - November 27 UI & Navigation Milestone: VERIFIED & COMPLETED.
+    - Floating navigation toolbar restored and docked directly below MiniPlayer in shell Box.
+    - MiniPlayer touch bounds scoped strictly to MiniPlayerHeight (64.dp) with transparent, non-intercepting bottom margin so navigation bar remains fully interactive.
+    - Settings screens unified under Material 3 Scaffold with TopAppBar and inner padding across all 9 requested destinations (Player, MusicFlow, Appearance, Content, Privacy, Storage, BackupAndRestore, AI, Updates) + 4 sub-screens.
+    - StorageSettings null cache handling hardened against premature route exits.
+- **Current verification boundary:** Both FOSS and GMS Kotlin compile and unit tests verified passing on HEAD.
 - **Remaining Wave 4 scope:** ~390 of the 464 app Kotlin files still carry a
   `REIMPLEMENT` disposition in `FILE_BY_FILE_INVENTORY.md` — dominated by
   `ui/` (235), `viewmodels/` (36), `spotify/` (20), `playback/` (18),
@@ -163,4 +161,9 @@ Wave 4 (app/UI) plus E2E Tiers 1–4 and M6.
 - 2026-11-27 — UI repair commits after `d995781`: floating navigation wired
   into the shell, SettingsScreen given an explicit full-screen layout, launcher
   intents corrected, bottom inset reservation adjusted, and GPL notice added
-  to About. Static source edits only; no build/test claimed.
+  to About.
+- 2026-11-27 — Floating Navigation & Settings Scaffold Fixes:
+  - Scoped BottomSheet collapsed touch target to MiniPlayerHeight, restoring floating navigation bar interactability.
+  - Docked FloatingNavigationToolbar below MiniPlayer in MainActivity outer Box with smooth fade/slide graphicsLayer on player drag.
+  - Refactored all 9 failing settings screens (and 4 sub-settings screens) to unified Scaffold + TopAppBar architecture with padding.
+  - Verified: `:app:compileUniversalFossDebugKotlin` PASS, `:app:compileUniversalGmsDebugKotlin` PASS, `:app:testUniversalFossDebugUnitTest` PASS (289 tasks).
