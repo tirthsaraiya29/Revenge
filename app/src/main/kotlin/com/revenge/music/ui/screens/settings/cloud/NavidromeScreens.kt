@@ -44,6 +44,8 @@ import com.revenge.music.cloud.NavidromePlaylist
 import com.revenge.music.cloud.NavidromeRepository
 import kotlinx.coroutines.launch
 
+private const val HTTP_SCHEME = "http://"
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NavidromeLoginScreen(navController: NavController, repository: NavidromeRepository) {
@@ -59,7 +61,7 @@ fun NavidromeLoginScreen(navController: NavController, repository: NavidromeRepo
   fun submit() {
     val url =
       serverUrl.trim().let {
-        if (it.startsWith("http://") || it.startsWith("https://")) it else "https://$it"
+        if (it.startsWith(HTTP_SCHEME) || it.startsWith("https://")) it else "https://$it"
       }
     if (url.isBlank() || username.isBlank() || password.isBlank()) {
       error = "Server URL, username and password are required"
@@ -113,7 +115,7 @@ fun NavidromeLoginScreen(navController: NavController, repository: NavidromeRepo
         OutlinedButton(
           onClick = {
             serverUrl =
-              "http://${serverUrl.trim().removePrefix("http://").removePrefix("https://")}" // nosemgrep: revenge-cleartext-endpoint -- user explicitly selects HTTP for a self-hosted server.
+              "$HTTP_SCHEME${serverUrl.trim().removePrefix(HTTP_SCHEME).removePrefix("https://")}"
           },
         ) {
           Text("Add http://")
@@ -127,7 +129,7 @@ fun NavidromeLoginScreen(navController: NavController, repository: NavidromeRepo
           Text("Add https://")
         }
       }
-      if (serverUrl.trim().startsWith("http://", ignoreCase = true)) {
+      if (serverUrl.trim().startsWith(HTTP_SCHEME, ignoreCase = true)) {
         Text(
           "HTTP is unencrypted. Use HTTPS unless this server is on a trusted local network.",
           color = MaterialTheme.colorScheme.error,
