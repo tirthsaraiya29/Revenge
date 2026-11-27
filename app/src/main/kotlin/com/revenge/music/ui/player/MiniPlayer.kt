@@ -125,6 +125,7 @@ import com.revenge.music.updates.AudioDeviceBottomSheet
 import com.revenge.music.updates.isBluetoothHeadphoneConnected
 import com.revenge.music.utils.rememberEnumPreference
 import com.revenge.music.utils.rememberPreference
+import com.revenge.music.utils.shouldUseDarkTheme
 import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlinx.coroutines.Dispatchers
@@ -163,9 +164,7 @@ private fun NewMiniPlayer(progressState: ProgressState, modifier: Modifier = Mod
   val isSystemInDarkTheme = isSystemInDarkTheme()
   val darkTheme by rememberEnumPreference(DarkModeKey, defaultValue = DarkMode.AUTO)
   val useDarkTheme =
-    remember(darkTheme, isSystemInDarkTheme) {
-      if (darkTheme == DarkMode.AUTO) isSystemInDarkTheme else darkTheme == DarkMode.ON
-    }
+    remember(darkTheme, isSystemInDarkTheme) { shouldUseDarkTheme(darkTheme, isSystemInDarkTheme) }
 
   val miniPlayerBackground by
     rememberEnumPreference(

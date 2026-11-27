@@ -241,6 +241,7 @@ import com.revenge.music.utils.isLocalMediaId
 import com.revenge.music.utils.makeTimeString
 import com.revenge.music.utils.rememberEnumPreference
 import com.revenge.music.utils.rememberPreference
+import com.revenge.music.utils.shouldUseDarkTheme
 import com.revenge.usbaudio.DacDeviceState
 import dagger.hilt.android.EntryPointAccessors
 import java.io.File
@@ -343,9 +344,7 @@ fun BottomSheetPlayer(
   val isSystemInDarkTheme = isSystemInDarkTheme()
   val darkTheme by rememberEnumPreference(DarkModeKey, defaultValue = DarkMode.AUTO)
   val useDarkTheme =
-    remember(darkTheme, isSystemInDarkTheme) {
-      if (darkTheme == DarkMode.AUTO) isSystemInDarkTheme else darkTheme == DarkMode.ON
-    }
+    remember(darkTheme, isSystemInDarkTheme) { shouldUseDarkTheme(darkTheme, isSystemInDarkTheme) }
 
   val dataSaverEnabled by
     rememberPreference(key = com.revenge.core.constants.DataSaverEnabledKey, defaultValue = false)
