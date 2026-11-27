@@ -36,15 +36,25 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - name: Scan
+      - name: Scan and print findings
+        shell: bash
         run: |
-          semgrep scan \
-            --config .semgrep/rules.yml \
-            --sarif --output semgrep.sarif \
-            --error \
-            --exclude app/src/test \
-            --exclude "**/build/**" \
-            .
+          set +e
+          semgrep scan --config .semgrep/rules.yml --json --output semgrep.json --error --exclude app/src/test --exclude "**/build/**" .
+          scan_status=$?
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path("semgrep.json")
+          if p.exists():
+              data = json.loads(p.read_text())
+              for finding in data.get("results", []):
+                  loc = finding.get("start", {})
+                  print(f"SEMGREP: {finding.get('check_id')} {finding.get('path')}:{loc.get('line')}:{loc.get('col')} — {finding.get('extra', {}).get('message', '')}")
+              print(f"Semgrep findings: {len(data.get('results', []))}")
+          PY
+          semgrep scan --config .semgrep/rules.yml --sarif --output semgrep.sarif --exclude app/src/test --exclude "**/build/**" . || true
+          exit "$scan_status"
       - name: Upload SARIF
         if: always() && hashFiles('semgrep.sarif') != ''
         uses: github/codeql-action/upload-sarif@v3
