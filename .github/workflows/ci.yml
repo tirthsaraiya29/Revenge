@@ -19,6 +19,8 @@ on:
       - "gradlew.bat"
       - "gradle.properties"
       - "gradle/**"
+      - "gradle.properties"
+      - "gradle/**"
       - ".github/workflows/ci.yml"
   pull_request:
     branches: [main]
