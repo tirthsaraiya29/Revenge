@@ -17,6 +17,7 @@ on:
       - "**/*.hpp"
       - "gradlew"
       - "gradlew.bat"
+      - ".github/workflows/ci.yml"
   pull_request:
     branches: [main]
     paths: *code-paths
