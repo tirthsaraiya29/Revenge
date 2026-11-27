@@ -32,13 +32,14 @@ private fun isTrustedSpotifyLoginUri(uri: Uri): Boolean {
   if (!uri.scheme.equals("https", ignoreCase = true)) return false
   val host = uri.host?.lowercase() ?: return false
   return listOf(
-    "spotify.com",
-    "scdn.co",
-    "google.com",
-    "gstatic.com",
-    "googleapis.com",
-    "recaptcha.net",
-  ).any { host == it || host.endsWith(".$it") }
+      "spotify.com",
+      "scdn.co",
+      "google.com",
+      "gstatic.com",
+      "googleapis.com",
+      "recaptcha.net",
+    )
+    .any { host == it || host.endsWith(".$it") }
 }
 
 @SuppressLint("SetJavaScriptEnabled")
@@ -97,7 +98,9 @@ fun SpotifyLoginScreen(
       factory = { context ->
         val webView =
           WebView(context).apply {
-            settings.javaScriptEnabled = true // nosemgrep: revenge-webview-javascript -- HTTPS allowlist enforced below; no JS interface is exposed.
+            settings.javaScriptEnabled =
+              true // nosemgrep: revenge-webview-javascript -- HTTPS allowlist enforced below
+              //; no JS interface is exposed.
             settings.domStorageEnabled = true
             settings.setSupportMultipleWindows(true)
             settings.cacheMode = WebSettings.LOAD_DEFAULT
