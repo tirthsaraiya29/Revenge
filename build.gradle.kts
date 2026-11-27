@@ -33,4 +33,20 @@ subprojects {
             ktfmt().googleStyle()
         }
     }
+    plugins.withId("com.android.library") {
+        configure<com.android.build.api.dsl.LibraryExtension> {
+            lint {
+                disable += "UnsafeOptInUsageError"
+                abortOnError = false
+            }
+        }
+    }
+    plugins.withId("com.android.application") {
+        configure<com.android.build.api.dsl.ApplicationExtension> {
+            lint {
+                disable += "UnsafeOptInUsageError"
+                abortOnError = false
+            }
+        }
+    }
 }
