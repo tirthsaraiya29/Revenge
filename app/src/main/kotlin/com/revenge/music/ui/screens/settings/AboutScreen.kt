@@ -140,6 +140,39 @@ fun AboutScreen(
     ) {
       item { AboutAppCard() }
 
+      item {
+        Card(
+          modifier = Modifier.fillMaxWidth(),
+          colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+          shape = RoundedCornerShape(20.dp),
+        ) {
+          Column(
+            modifier = Modifier.fillMaxWidth().padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+          ) {
+            Text(
+              text = "Legal",
+              style = MaterialTheme.typography.titleMedium,
+              fontWeight = FontWeight.SemiBold,
+              color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+              text = "Copyright © 2026 Revenge contributors.",
+              style = MaterialTheme.typography.bodySmall,
+              color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+              text = "Revenge is licensed under GNU GPL version 3.0 only. You may redistribute and modify it under that licence. This program comes without warranty.",
+              style = MaterialTheme.typography.bodyMedium,
+              color = MaterialTheme.colorScheme.onSurface,
+            )
+            TextButton(onClick = { uriHandler.openUri("https://www.gnu.org/licenses/gpl-3.0.html") }) {
+              Text("View GNU GPL v3.0 licence")
+            }
+          }
+        }
+      }
+
       if (contributors.isNotEmpty()) {
         item {
           Column(modifier = Modifier.fillMaxWidth()) {
