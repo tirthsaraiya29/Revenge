@@ -98,9 +98,7 @@ fun SpotifyLoginScreen(
       factory = { context ->
         val webView =
           WebView(context).apply {
-            settings.javaScriptEnabled =
-              true // nosemgrep: revenge-webview-javascript -- HTTPS allowlist enforced below;
-              // no JS interface is exposed.
+            settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
             settings.setSupportMultipleWindows(true)
             settings.cacheMode = WebSettings.LOAD_DEFAULT
