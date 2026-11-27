@@ -40,6 +40,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
+import com.revenge.core.constants.MiniPlayerHeight
 import com.revenge.core.constants.NavigationBarAnimationSpec
 import kotlin.math.pow
 import kotlinx.coroutines.CoroutineScope
@@ -118,15 +119,22 @@ fun BottomSheet(
       Box(
         modifier =
           Modifier.graphicsLayer { alpha = 1f - (state.progress * 4).coerceAtMost(1f) }
-            .clickable(
-              interactionSource = remember { MutableInteractionSource() },
-              indication = null,
-              onClick = { if (isExpandable) state.expandSoft() },
-            )
             .fillMaxWidth()
             .height(state.collapsedBound),
-        content = collapsedContent,
-      )
+      ) {
+        Box(
+          modifier =
+            Modifier
+              .fillMaxWidth()
+              .height(MiniPlayerHeight)
+              .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = { if (isExpandable) state.expandSoft() },
+              ),
+          content = collapsedContent,
+        )
+      }
     }
   }
 }

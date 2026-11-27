@@ -76,12 +76,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.hapticfeedback.HapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
@@ -873,11 +875,14 @@ internal fun revengeApp(activity: MainActivity, initialRoute: String) {
     val navBarVisible = isNavigationBarRoute(currentRoute, useRail)
     val playerVisible = isPlayerRoute(currentRoute) && playerConnection != null
 
+    val navBarHeight = if (navBarVisible && !useRail) (SlimNavBarHeight + MiniPlayerBottomSpacing) else 0.dp
+    val playerCollapsedBound = (if (playerVisible) MiniPlayerHeight else 0.dp) + navBarHeight
+
     val playerSheetState =
       rememberBottomSheetState(
         dismissedBound = 0.dp,
         expandedBound = heightDp.dp,
-        collapsedBound = MiniPlayerHeight,
+        collapsedBound = playerCollapsedBound,
       )
 
     var expandQueueRequested by remember { mutableStateOf(false) }
@@ -1117,26 +1122,7 @@ internal fun revengeApp(activity: MainActivity, initialRoute: String) {
                 }
               }
             },
-            bottomBar = {
-              if (navBarVisible && !useRail) {
-                Box(
-                  modifier =
-                    Modifier.fillMaxWidth()
-                      .navigationBarsPadding()
-                      .padding(horizontal = 16.dp, vertical = 8.dp),
-                  contentAlignment = Alignment.Center,
-                ) {
-                  FloatingNavigationToolbar(
-                    items = navigationItems,
-                    pureBlack = pureBlack,
-                    isSelected = { screen ->
-                      isRouteSelected(currentRoute, screen.route, navigationItems)
-                    },
-                    onItemClick = { screen, selected -> onTabClick(screen, selected) },
-                  )
-                }
-              }
-            },
+            bottomBar = {},
           ) { _ ->
             NavHost(
               navController = navController,
@@ -1189,6 +1175,37 @@ internal fun revengeApp(activity: MainActivity, initialRoute: String) {
             showLyricsRequested = showLyricsRequested,
             onLyricsShown = { showLyricsRequested = false },
           )
+        }
+
+        if (navBarVisible && !useRail) {
+          val navBarAlpha = (1f - playerSheetState.progress * 2.5f).coerceIn(0f, 1f)
+          val navBarTranslationY = with(LocalDensity.current) { (playerSheetState.progress * 60.dp.toPx()) }
+          if (navBarAlpha > 0.01f) {
+            Box(
+              modifier =
+                Modifier.fillMaxWidth()
+                  .align(Alignment.BottomCenter)
+                  .graphicsLayer {
+                    alpha = navBarAlpha
+                    translationY = navBarTranslationY
+                  }
+                  .navigationBarsPadding()
+                  .padding(horizontal = 16.dp, vertical = 8.dp),
+              contentAlignment = Alignment.Center,
+            ) {
+              FloatingNavigationToolbar(
+                items = navigationItems,
+                pureBlack = pureBlack,
+                isSelected = { screen ->
+                  isRouteSelected(currentRoute, screen.route, navigationItems)
+                },
+                onItemClick = { screen, selected -> onTabClick(screen, selected) },
+                onMusicRecognitionClick = { navController.navigate("recognition") },
+                musicRecognitionContentDescription = stringResource(R.string.recognition),
+                onSearchLongClick = { navController.navigate("recognition") },
+              )
+            }
+          }
         }
 
         if (showAudioDevices) {
