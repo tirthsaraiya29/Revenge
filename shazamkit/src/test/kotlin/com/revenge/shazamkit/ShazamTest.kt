@@ -168,6 +168,9 @@ class ShazamTest {
 
   @Test
   fun `no match status has a default message`() {
-    assertEquals("No matches found", (RecognitionStatus.NoMatch() as RecognitionStatus.NoMatch).message)
+    assertEquals(
+      "No matches found",
+      (RecognitionStatus.NoMatch() as RecognitionStatus.NoMatch).message,
+    )
   }
 }

@@ -54,11 +54,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
+import com.revenge.core.constants.ThumbnailCornerRadius
+import com.revenge.core.db.entities.RecognitionHistory
 import com.revenge.music.LocalDatabase
 import com.revenge.music.LocalPlayerAwareWindowInsets
 import com.revenge.music.R
-import com.revenge.core.constants.ThumbnailCornerRadius
-import com.revenge.core.db.entities.RecognitionHistory
 import com.revenge.music.ui.component.DefaultDialog
 import com.revenge.music.ui.component.IconButton
 import com.revenge.music.ui.component.LocalMenuState

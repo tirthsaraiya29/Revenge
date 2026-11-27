@@ -59,11 +59,26 @@ object PlaybackAction {
   const val SET_VOLUME = "set_volume"
 }
 
-enum class ConnectionState { DISCONNECTED, CONNECTING, CONNECTED, RECONNECTING, ERROR }
+enum class ConnectionState {
+  DISCONNECTED,
+  CONNECTING,
+  CONNECTED,
+  RECONNECTING,
+  ERROR,
+}
 
-enum class RoomRole { NONE, HOST, GUEST }
+enum class RoomRole {
+  NONE,
+  HOST,
+  GUEST,
+}
 
-enum class LogLevel { INFO, DEBUG, WARNING, ERROR }
+enum class LogLevel {
+  INFO,
+  DEBUG,
+  WARNING,
+  ERROR,
+}
 
 data class LogEntry(
   val timestamp: String,
@@ -110,8 +125,7 @@ data class UpdateRoomSettingsPayload(
   @SerialName("allow_participant_control") val allowParticipantControl: Boolean = false,
 )
 
-@Serializable
-data class CreateRoomPayload(val username: String = "")
+@Serializable data class CreateRoomPayload(val username: String = "")
 
 @Serializable
 data class JoinRoomPayload(
@@ -119,8 +133,7 @@ data class JoinRoomPayload(
   val username: String = "",
 )
 
-@Serializable
-data class ApproveJoinPayload(@SerialName("user_id") val userId: String = "")
+@Serializable data class ApproveJoinPayload(@SerialName("user_id") val userId: String = "")
 
 @Serializable
 data class RejectJoinPayload(
@@ -141,8 +154,7 @@ data class PlaybackActionPayload(
   @SerialName("server_time") val serverTime: Long? = null,
 )
 
-@Serializable
-data class BufferReadyPayload(@SerialName("track_id") val trackId: String = "")
+@Serializable data class BufferReadyPayload(@SerialName("track_id") val trackId: String = "")
 
 @Serializable
 data class KickUserPayload(
@@ -150,8 +162,7 @@ data class KickUserPayload(
   val reason: String? = null,
 )
 
-@Serializable
-data class TransferHostPayload(@SerialName("new_host_id") val newHostId: String = "")
+@Serializable data class TransferHostPayload(@SerialName("new_host_id") val newHostId: String = "")
 
 @Serializable
 data class SuggestTrackPayload(@SerialName("track_info") val trackInfo: TrackInfo = TrackInfo())
@@ -208,8 +219,7 @@ data class JoinApprovedPayload(
   val state: RoomState? = null,
 )
 
-@Serializable
-data class JoinRejectedPayload(val reason: String? = null)
+@Serializable data class JoinRejectedPayload(val reason: String? = null)
 
 @Serializable
 data class UserJoinedPayload(
@@ -229,8 +239,7 @@ data class BufferWaitPayload(
   @SerialName("waiting_for") val waitingFor: List<String> = emptyList(),
 )
 
-@Serializable
-data class BufferCompletePayload(@SerialName("track_id") val trackId: String = "")
+@Serializable data class BufferCompletePayload(@SerialName("track_id") val trackId: String = "")
 
 @Serializable
 data class ErrorPayload(
@@ -244,8 +253,7 @@ data class HostChangedPayload(
   @SerialName("new_host_name") val newHostName: String = "",
 )
 
-@Serializable
-data class KickedPayload(val reason: String? = null)
+@Serializable data class KickedPayload(val reason: String? = null)
 
 @Serializable
 data class SyncStatePayload(
@@ -280,8 +288,7 @@ data class UserDisconnectedPayload(
   val username: String = "",
 )
 
-@Serializable
-data class RepliedMessage(val username: String = "", val message: String = "")
+@Serializable data class RepliedMessage(val username: String = "", val message: String = "")
 
 @Serializable
 data class ChatPayload(
@@ -309,8 +316,7 @@ sealed class ListenTogetherEvent {
 
   data class RoomCreated(val roomCode: String, val userId: String) : ListenTogetherEvent()
 
-  data class JoinRequestReceived(val userId: String, val username: String) :
-    ListenTogetherEvent()
+  data class JoinRequestReceived(val userId: String, val username: String) : ListenTogetherEvent()
 
   data class JoinApproved(val roomCode: String, val userId: String, val state: RoomState?) :
     ListenTogetherEvent()
@@ -348,8 +354,7 @@ sealed class ListenTogetherEvent {
 
   data class ChatMessageReceived(val payload: ChatMessagePayload) : ListenTogetherEvent()
 
-  data class LocalSuggestionApproved(val payload: SuggestionApprovedPayload) :
-    ListenTogetherEvent()
+  data class LocalSuggestionApproved(val payload: SuggestionApprovedPayload) : ListenTogetherEvent()
 
   data class RoomSettingsChanged(val allowParticipantControl: Boolean) : ListenTogetherEvent()
 }

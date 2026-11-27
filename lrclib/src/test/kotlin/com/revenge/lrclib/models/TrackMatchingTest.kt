@@ -64,7 +64,8 @@ class TrackMatchingTest {
 
   @Test
   fun `track decodes with unknown keys ignored`() {
-    val fixture = """
+    val fixture =
+      """
       {
         "id": 7,
         "trackName": "Song",
@@ -75,7 +76,8 @@ class TrackMatchingTest {
         "instrumental": false,
         "lang": "en"
       }
-    """.trimIndent()
+      """
+        .trimIndent()
 
     val decoded = json.decodeFromString<Track>(fixture)
 

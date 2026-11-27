@@ -31,14 +31,14 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
-import com.revenge.music.LocalPlayerAwareWindowInsets
-import com.revenge.music.R
 import com.revenge.core.constants.EnableClickHapticsKey
 import com.revenge.core.constants.EnableLongPressHapticsKey
 import com.revenge.core.constants.EnableScrollEdgeHapticsKey
 import com.revenge.core.constants.EnableSliderHapticsKey
 import com.revenge.core.constants.HapticIntensity
 import com.revenge.core.constants.HapticIntensityKey
+import com.revenge.music.LocalPlayerAwareWindowInsets
+import com.revenge.music.R
 import com.revenge.music.ui.component.EnumDialog
 import com.revenge.music.ui.component.IconButton
 import com.revenge.music.ui.component.Material3SettingsGroup

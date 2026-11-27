@@ -180,10 +180,7 @@ fun CrashScreen(
         shape = MaterialTheme.shapes.medium,
       ) {
         Box(
-          modifier =
-            Modifier.fillMaxSize()
-              .verticalScroll(rememberScrollState())
-              .padding(12.dp),
+          modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp),
         ) {
           Box(modifier = Modifier.horizontalScroll(rememberScrollState())) {
             Text(

@@ -55,8 +55,12 @@ fun JellyfinLoginScreen(navController: NavController, repository: JellyfinReposi
   val scope = rememberCoroutineScope()
 
   fun submit() {
-    // nosemgrep: revenge-cleartext-endpoint -- user-supplied LAN Jellyfin server; HTTP is a supported local setup.
-    val url = serverUrl.trim().let { if (it.startsWith("http://") || it.startsWith("https://")) it else "http://$it" }
+    // nosemgrep: revenge-cleartext-endpoint -- user-supplied LAN Jellyfin server; HTTP is a
+    // supported local setup.
+    val url =
+      serverUrl.trim().let {
+        if (it.startsWith("http://") || it.startsWith("https://")) it else "http://$it"
+      }
     if (url.isBlank() || username.isBlank() || password.isBlank()) {
       error = "Server URL, username and password are required"
       return
@@ -64,18 +68,20 @@ fun JellyfinLoginScreen(navController: NavController, repository: JellyfinReposi
     error = null
     loading = true
     scope.launch {
-      repository.login(url, username, password).fold(
-        onSuccess = {
-          Toast.makeText(context, "Connected to ${url.trimEnd('/')}", Toast.LENGTH_SHORT).show()
-          navController.navigate("settings/jellyfin_dashboard") {
-            popUpTo("settings/jellyfin_login") { inclusive = true }
-          }
-        },
-        onFailure = {
-          error = it.localizedMessage ?: "Could not connect to the server"
-          loading = false
-        },
-      )
+      repository
+        .login(url, username, password)
+        .fold(
+          onSuccess = {
+            Toast.makeText(context, "Connected to ${url.trimEnd('/')}", Toast.LENGTH_SHORT).show()
+            navController.navigate("settings/jellyfin_dashboard") {
+              popUpTo("settings/jellyfin_login") { inclusive = true }
+            }
+          },
+          onFailure = {
+            error = it.localizedMessage ?: "Could not connect to the server"
+            loading = false
+          },
+        )
     }
   }
 
@@ -104,11 +110,22 @@ fun JellyfinLoginScreen(navController: NavController, repository: JellyfinReposi
         modifier = Modifier.fillMaxWidth(),
       )
       Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        // nosemgrep: revenge-cleartext-endpoint -- user-supplied LAN Jellyfin server; HTTP is a supported local setup.
-        OutlinedButton(onClick = { serverUrl = "http://${serverUrl.trim().removePrefix("http://").removePrefix("https://")}" }) {
+        // nosemgrep: revenge-cleartext-endpoint -- user-supplied LAN Jellyfin server; HTTP is a
+        // supported local setup.
+        OutlinedButton(
+          onClick = {
+            serverUrl =
+              "http://${serverUrl.trim().removePrefix("http://").removePrefix("https://")}"
+          },
+        ) {
           Text("Add http://")
         }
-        OutlinedButton(onClick = { serverUrl = "https://${serverUrl.trim().removePrefix("http://").removePrefix("https://")}" }) {
+        OutlinedButton(
+          onClick = {
+            serverUrl =
+              "https://${serverUrl.trim().removePrefix("http://").removePrefix("https://")}"
+          },
+        ) {
           Text("Add https://")
         }
       }
@@ -124,7 +141,8 @@ fun JellyfinLoginScreen(navController: NavController, repository: JellyfinReposi
         onValueChange = { password = it },
         label = { Text("Password") },
         singleLine = true,
-        visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+        visualTransformation =
+          if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
         trailingIcon = {
           IconButton(onClick = { passwordVisible = !passwordVisible }) {
             Text(if (passwordVisible) "Hide" else "Show")
@@ -181,32 +199,50 @@ fun JellyfinDashboardScreen(navController: NavController, repository: JellyfinRe
             enabled = !busy,
             onClick = {
               scope.launch {
-                repository.ping().fold(
-                  onSuccess = { Toast.makeText(context, it, Toast.LENGTH_SHORT).show() },
-                  onFailure = {
-                    Toast.makeText(context, it.localizedMessage ?: "Ping failed", Toast.LENGTH_SHORT).show()
-                  },
-                )
+                repository
+                  .ping()
+                  .fold(
+                    onSuccess = { Toast.makeText(context, it, Toast.LENGTH_SHORT).show() },
+                    onFailure = {
+                      Toast.makeText(
+                          context,
+                          it.localizedMessage ?: "Ping failed",
+                          Toast.LENGTH_SHORT,
+                        )
+                        .show()
+                    },
+                  )
               }
             },
-          ) { Text("Test Ping") }
+          ) {
+            Text("Test Ping")
+          }
           Button(
             enabled = !busy,
             onClick = {
               busy = true
               scope.launch {
-                repository.syncPlaylistsAndSongs().fold(
-                  onSuccess = { count ->
-                    Toast.makeText(context, "Synced $count songs", Toast.LENGTH_SHORT).show()
-                  },
-                  onFailure = {
-                    Toast.makeText(context, it.localizedMessage ?: "Sync failed", Toast.LENGTH_SHORT).show()
-                  },
-                )
+                repository
+                  .syncPlaylistsAndSongs()
+                  .fold(
+                    onSuccess = { count ->
+                      Toast.makeText(context, "Synced $count songs", Toast.LENGTH_SHORT).show()
+                    },
+                    onFailure = {
+                      Toast.makeText(
+                          context,
+                          it.localizedMessage ?: "Sync failed",
+                          Toast.LENGTH_SHORT,
+                        )
+                        .show()
+                    },
+                  )
                 refresh()
               }
             },
-          ) { Text(if (busy) "Working..." else "Sync to Library") }
+          ) {
+            Text(if (busy) "Working..." else "Sync to Library")
+          }
         }
       }
       HorizontalDivider()
@@ -231,7 +267,9 @@ fun JellyfinDashboardScreen(navController: NavController, repository: JellyfinRe
           }
         },
         modifier = Modifier.fillMaxWidth().padding(16.dp),
-      ) { Text("Log out") }
+      ) {
+        Text("Log out")
+      }
     }
   }
 }

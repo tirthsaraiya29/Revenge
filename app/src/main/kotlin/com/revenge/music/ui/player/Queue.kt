@@ -114,9 +114,6 @@ import androidx.media3.common.Timeline
 import androidx.media3.exoplayer.source.ShuffleOrder.DefaultShuffleOrder
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
-import com.revenge.music.LocalListenTogetherManager
-import com.revenge.music.LocalPlayerConnection
-import com.revenge.music.R
 import com.revenge.core.constants.ListItemHeight
 import com.revenge.core.constants.PlayerBackgroundStyle
 import com.revenge.core.constants.QueueEditLockKey
@@ -126,6 +123,9 @@ import com.revenge.core.extensions.metadata
 import com.revenge.core.extensions.move
 import com.revenge.core.extensions.toggleRepeatMode
 import com.revenge.core.models.MediaMetadata
+import com.revenge.music.LocalListenTogetherManager
+import com.revenge.music.LocalPlayerConnection
+import com.revenge.music.R
 import com.revenge.music.ui.component.ActionPromptDialog
 import com.revenge.music.ui.component.BottomSheet
 import com.revenge.music.ui.component.BottomSheetState

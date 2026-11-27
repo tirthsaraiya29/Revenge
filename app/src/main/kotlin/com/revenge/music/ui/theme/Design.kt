@@ -2,20 +2,16 @@ package com.revenge.music.ui.theme
 
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 
 /**
  * Revenge Unified Design Tokens
  *
- * Professional, music-centric, restrained, and intentional design language.
- * Clean surfaces, balanced spacing, cohesive typography, and purposeful micro-interactions.
+ * Professional, music-centric, restrained, and intentional design language. Clean surfaces,
+ * balanced spacing, cohesive typography, and purposeful micro-interactions.
  */
-
 object RevengeColor {
   // Pure Black Dark Palette (Default Premium Dark Mode)
   val DarkCanvas = Color(0xFF0C0D12)
@@ -149,6 +145,8 @@ object RevengeMotion {
   val exitEasing = CubicBezierEasing(0.4f, 0.0f, 1.0f, 1.0f)
 
   fun <T> quickTween() = tween<T>(durationMillis = durationQuick, easing = standardEasing)
+
   fun <T> standardTween() = tween<T>(durationMillis = durationStandard, easing = standardEasing)
+
   fun <T> deliberateTween() = tween<T>(durationMillis = durationDeliberate, easing = standardEasing)
 }

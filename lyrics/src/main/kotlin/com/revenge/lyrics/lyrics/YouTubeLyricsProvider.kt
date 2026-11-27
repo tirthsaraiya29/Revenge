@@ -7,27 +7,28 @@ import kotlinx.coroutines.CancellationException
 
 object YouTubeLyricsProvider : LyricsProvider {
 
-    override val name: String = "YouTube Music"
+  override val name: String = "YouTube Music"
 
-    override fun isEnabled(context: Context): Boolean = true
+  override fun isEnabled(context: Context): Boolean = true
 
-    override suspend fun getLyrics(
-        id: String,
-        title: String,
-        artist: String,
-        duration: Int,
-        album: String?,
-    ): Result<String> = try {
-        val next = YouTube.next(WatchEndpoint(videoId = id)).getOrNull()
-            ?: throw IllegalStateException("Lyrics endpoint not found")
-        val endpoint = next.lyricsEndpoint
-            ?: throw IllegalStateException("Lyrics endpoint not found")
-        val lyrics = YouTube.lyrics(endpoint).getOrNull()
-            ?: throw IllegalStateException("Lyrics unavailable")
-        Result.success(lyrics)
+  override suspend fun getLyrics(
+    id: String,
+    title: String,
+    artist: String,
+    duration: Int,
+    album: String?,
+  ): Result<String> =
+    try {
+      val next =
+        YouTube.next(WatchEndpoint(videoId = id)).getOrNull()
+          ?: throw IllegalStateException("Lyrics endpoint not found")
+      val endpoint = next.lyricsEndpoint ?: throw IllegalStateException("Lyrics endpoint not found")
+      val lyrics =
+        YouTube.lyrics(endpoint).getOrNull() ?: throw IllegalStateException("Lyrics unavailable")
+      Result.success(lyrics)
     } catch (cancellation: CancellationException) {
-        throw cancellation
+      throw cancellation
     } catch (error: Exception) {
-        Result.failure(error)
+      Result.failure(error)
     }
 }

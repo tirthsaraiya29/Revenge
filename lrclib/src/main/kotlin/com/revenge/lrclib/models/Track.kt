@@ -1,8 +1,8 @@
 package com.revenge.lrclib.models
 
-import kotlinx.serialization.Serializable
 import kotlin.math.abs
 import kotlin.math.max
+import kotlinx.serialization.Serializable
 
 @Serializable
 data class Track(
@@ -59,7 +59,8 @@ internal fun List<Track>.bestMatchingForRelaxed(duration: Int): Track? {
   }
   val inRange = filter { abs(it.duration.toInt() - duration) <= 5 }
   if (inRange.isEmpty()) return null
-  return inRange.filter { it.syncedLyrics != null }
+  return inRange
+    .filter { it.syncedLyrics != null }
     .minByOrNull { abs(it.duration.toInt() - duration) }
     ?: inRange.minByOrNull { abs(it.duration.toInt() - duration) }
 }
@@ -83,7 +84,8 @@ private fun List<Track>.findBestNamedMatch(trackName: String, artistName: String
   var best: Track? = null
   var bestScore = Double.NEGATIVE_INFINITY
   for (track in this) {
-    val average = (similarity(trackName, track.trackName) + similarity(artistName, track.artistName)) / 2.0
+    val average =
+      (similarity(trackName, track.trackName) + similarity(artistName, track.artistName)) / 2.0
     if (average <= 0.6) continue
     val total = average + if (track.syncedLyrics != null) 0.1 else 0.0
     if (total > bestScore) {

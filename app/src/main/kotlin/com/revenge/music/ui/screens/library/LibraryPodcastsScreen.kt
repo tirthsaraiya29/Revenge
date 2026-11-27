@@ -24,11 +24,11 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
+import com.revenge.core.constants.CONTENT_TYPE_HEADER
+import com.revenge.core.constants.CONTENT_TYPE_PLAYLIST
 import com.revenge.innertube.models.PlaylistItem
 import com.revenge.music.LocalPlayerAwareWindowInsets
 import com.revenge.music.R
-import com.revenge.core.constants.CONTENT_TYPE_HEADER
-import com.revenge.core.constants.CONTENT_TYPE_PLAYLIST
 import com.revenge.music.ui.component.EmptyPlaceholder
 import com.revenge.music.ui.component.NavigationTitle
 import com.revenge.music.ui.component.YouTubeListItem

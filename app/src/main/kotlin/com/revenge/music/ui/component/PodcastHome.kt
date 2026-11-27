@@ -23,16 +23,16 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
-import com.revenge.innertube.models.SongItem
-import com.revenge.music.LocalPlayerConnection
-import com.revenge.music.R
 import com.revenge.core.constants.ThumbnailCornerRadius
 import com.revenge.core.db.entities.Playlist
 import com.revenge.core.extensions.toMediaItem
 import com.revenge.core.models.toMediaMetadata
-import com.revenge.playback.queues.ListQueue
+import com.revenge.innertube.models.SongItem
+import com.revenge.music.LocalPlayerConnection
+import com.revenge.music.R
 import com.revenge.music.utils.EpisodeProgress
 import com.revenge.music.utils.listItemShape
+import com.revenge.playback.queues.ListQueue
 
 /**
  * The top of the Podcast chip: followed shows, episodes in progress and the latest episodes of the

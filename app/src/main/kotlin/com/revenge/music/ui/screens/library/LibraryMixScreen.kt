@@ -45,9 +45,6 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
 import androidx.navigation.compose.currentBackStackEntryAsState
-import com.revenge.music.LocalPlayerAwareWindowInsets
-import com.revenge.music.LocalPlayerConnection
-import com.revenge.music.R
 import com.revenge.core.constants.AlbumViewTypeKey
 import com.revenge.core.constants.CONTENT_TYPE_HEADER
 import com.revenge.core.constants.CONTENT_TYPE_PLAYLIST
@@ -70,6 +67,9 @@ import com.revenge.core.db.entities.Artist
 import com.revenge.core.db.entities.Playlist
 import com.revenge.core.db.entities.PlaylistEntity
 import com.revenge.core.extensions.reversed
+import com.revenge.music.LocalPlayerAwareWindowInsets
+import com.revenge.music.LocalPlayerConnection
+import com.revenge.music.R
 import com.revenge.music.ui.component.AlbumGridItem
 import com.revenge.music.ui.component.AlbumListItem
 import com.revenge.music.ui.component.ArtistGridItem

@@ -57,25 +57,30 @@ private val json = Json {
   ignoreUnknownKeys = true
 }
 
-private fun target(title: String = "Song", artist: String = "Artist", duration: Int = 100): TrackTarget =
-  TrackTarget(title, title, artist, duration)
+private fun target(
+  title: String = "Song",
+  artist: String = "Artist",
+  duration: Int = 100,
+): TrackTarget = TrackTarget(title, title, artist, duration)
 
 private fun line(
   timestamp: Long,
   texts: List<String>,
   background: Boolean = false,
   oppositeTurn: Boolean = false,
-): LyricsContent = LyricsContent(
-  timestamp = timestamp,
-  endtime = timestamp + 1000,
-  duration = 1000,
-  text = texts.mapIndexed { index, text ->
-    val start = timestamp + index * 300
-    LyricText(text, start, start + 300, 300)
-  },
-  background = background,
-  oppositeTurn = oppositeTurn,
-)
+): LyricsContent =
+  LyricsContent(
+    timestamp = timestamp,
+    endtime = timestamp + 1000,
+    duration = 1000,
+    text =
+      texts.mapIndexed { index, text ->
+        val start = timestamp + index * 300
+        LyricText(text, start, start + 300, 300)
+      },
+    background = background,
+    oppositeTurn = oppositeTurn,
+  )
 
 class PaxsenixCoreTest {
   @Before
@@ -112,8 +117,10 @@ class PaxsenixCoreTest {
   fun `remix and mixed variants are penalised`() {
     val wanted = target()
     val original = SearchResult("1", trackName = "Song", artistName = "Artist", duration = 100_000)
-    val remix = SearchResult("2", trackName = "Song remix", artistName = "Artist", duration = 100_000)
-    val mixed = SearchResult("3", trackName = "Song mixed", artistName = "Artist", duration = 100_000)
+    val remix =
+      SearchResult("2", trackName = "Song remix", artistName = "Artist", duration = 100_000)
+    val mixed =
+      SearchResult("3", trackName = "Song mixed", artistName = "Artist", duration = 100_000)
 
     val ranked = PaxsenixCore.rank(listOf(remix, mixed, original), wanted)
 
@@ -140,29 +147,32 @@ class PaxsenixCoreTest {
 
   @Test
   fun `plain text content skips blank words and lines`() {
-    val content = listOf(
-      line(0, listOf("Hello", " ", "world")),
-      line(1000, listOf(" ", "  ")),
-      line(2000, listOf("second")),
-    )
+    val content =
+      listOf(
+        line(0, listOf("Hello", " ", "world")),
+        line(1000, listOf(" ", "  ")),
+        line(2000, listOf("second")),
+      )
 
     assertEquals("Hello world\nsecond", PaxsenixCore.plainTextFromContent(content))
   }
 
   @Test
   fun `lrc content emits the exact expected document`() {
-    val content = listOf(
-      LyricsContent(
-        timestamp = 61_500,
-        endtime = 62_000,
-        duration = 500,
-        oppositeTurn = true,
-        text = listOf(
-          LyricText("Hello", 61_500, 61_800, 300),
-          LyricText("world", 61_800, 62_000, 200),
+    val content =
+      listOf(
+        LyricsContent(
+          timestamp = 61_500,
+          endtime = 62_000,
+          duration = 500,
+          oppositeTurn = true,
+          text =
+            listOf(
+              LyricText("Hello", 61_500, 61_800, 300),
+              LyricText("world", 61_800, 62_000, 200),
+            ),
         ),
-      ),
-    )
+      )
 
     assertEquals(
       "[01:01.50]{agent:v2}Hello world\n<Hello:61.5:61.8|world:61.8:62.0>\n",
@@ -172,19 +182,25 @@ class PaxsenixCoreTest {
 
   @Test
   fun `lrc content uses the right agent tag`() {
-    assertTrue(PaxsenixCore.lrcFromContent(listOf(line(0, listOf("a"), background = true))).contains("{bg}"))
-    assertTrue(PaxsenixCore.lrcFromContent(listOf(line(0, listOf("a"), oppositeTurn = true))).contains("{agent:v2}"))
+    assertTrue(
+      PaxsenixCore.lrcFromContent(listOf(line(0, listOf("a"), background = true))).contains("{bg}"),
+    )
+    assertTrue(
+      PaxsenixCore.lrcFromContent(listOf(line(0, listOf("a"), oppositeTurn = true)))
+        .contains("{agent:v2}"),
+    )
     assertTrue(PaxsenixCore.lrcFromContent(listOf(line(0, listOf("a")))).contains("{agent:v1}"))
   }
 
   @Test
   fun `buildLyrics follows the documented precedence`() {
-    val full = LyricsResponse(
-      ttmlContent = "ttml",
-      elrcMultiPerson = "[00:01.00]multi",
-      elrc = "[00:01.00]single",
-      plain = "plain",
-    )
+    val full =
+      LyricsResponse(
+        ttmlContent = "ttml",
+        elrcMultiPerson = "[00:01.00]multi",
+        elrc = "[00:01.00]single",
+        plain = "plain",
+      )
     assertEquals("converted", PaxsenixCore.buildLyrics(full) { "converted" }.getOrThrow().lyrics)
     assertEquals(
       "[00:01.00]multi",
@@ -192,29 +208,37 @@ class PaxsenixCoreTest {
     )
     assertEquals(
       "[00:01.00]single",
-      PaxsenixCore.buildLyrics(full.copy(elrcMultiPerson = null, ttmlContent = null)).getOrThrow().lyrics,
+      PaxsenixCore.buildLyrics(full.copy(elrcMultiPerson = null, ttmlContent = null))
+        .getOrThrow()
+        .lyrics,
     )
     assertEquals(
       "plain",
-      PaxsenixCore.buildLyrics(full.copy(elrcMultiPerson = null, elrc = null, ttmlContent = null)).getOrThrow().lyrics,
+      PaxsenixCore.buildLyrics(full.copy(elrcMultiPerson = null, elrc = null, ttmlContent = null))
+        .getOrThrow()
+        .lyrics,
     )
     assertEquals(
       "plain",
-      PaxsenixCore.buildLyrics(full.copy(elrcMultiPerson = null, elrc = null)) { "" }.getOrThrow().lyrics,
+      PaxsenixCore.buildLyrics(full.copy(elrcMultiPerson = null, elrc = null)) { "" }
+        .getOrThrow()
+        .lyrics,
     )
   }
 
   @Test
   fun `buildLyrics distinguishes plain and syllable content`() {
-    val plainResponse = LyricsResponse(type = "Line", content = listOf(line(0, listOf("Hello", "world"))))
+    val plainResponse =
+      LyricsResponse(type = "Line", content = listOf(line(0, listOf("Hello", "world"))))
     val plain = PaxsenixCore.buildLyrics(plainResponse).getOrThrow()
     assertEquals("Hello world", plain.lyrics)
     assertFalse(plain.hasWordTimings)
 
-    val syllableResponse = LyricsResponse(
-      type = "Syllable",
-      content = listOf(line(0, listOf("Hi"))),
-    )
+    val syllableResponse =
+      LyricsResponse(
+        type = "Syllable",
+        content = listOf(line(0, listOf("Hi"))),
+      )
     val syllable = PaxsenixCore.buildLyrics(syllableResponse).getOrThrow()
     assertEquals("[00:00.00]{agent:v1}Hi\n<Hi:0.0:0.3>\n", syllable.lyrics)
     assertTrue(syllable.hasWordTimings)
@@ -226,10 +250,11 @@ class PaxsenixCoreTest {
       "Paxsenix returned no lyrics",
       PaxsenixCore.buildLyrics(LyricsResponse()).exceptionOrNull()?.message,
     )
-    val blankSyllable = LyricsResponse(
-      type = "Syllable",
-      content = listOf(line(0, listOf(" "))),
-    )
+    val blankSyllable =
+      LyricsResponse(
+        type = "Syllable",
+        content = listOf(line(0, listOf(" "))),
+      )
     assertEquals(
       "Paxsenix returned empty lyrics",
       PaxsenixCore.buildLyrics(blankSyllable).exceptionOrNull()?.message,
@@ -238,15 +263,17 @@ class PaxsenixCoreTest {
 
   @Test
   fun `dtos decode bare arrays and lyric responses`() {
-    val search = json.decodeFromString<SearchResponse>(
-      """[{"id":"a","songName":"Song","artistName":"Artist","duration":100,"extra":1}]""",
-    )
+    val search =
+      json.decodeFromString<SearchResponse>(
+        """[{"id":"a","songName":"Song","artistName":"Artist","duration":100,"extra":1}]""",
+      )
     assertEquals("Song", search.single().displayName)
     assertEquals("Artist", search.single().displayArtist)
 
-    val lyrics = json.decodeFromString<LyricsResponse>(
-      """{"type":"Syllable","content":[{"timestamp":0,"endtime":10,"duration":10,"text":[{"text":"a","timestamp":0,"endtime":10,"duration":10}]}]}""",
-    )
+    val lyrics =
+      json.decodeFromString<LyricsResponse>(
+        """{"type":"Syllable","content":[{"timestamp":0,"endtime":10,"duration":10,"text":[{"text":"a","timestamp":0,"endtime":10,"duration":10}]}]}""",
+      )
     assertEquals("Syllable", lyrics.type)
     assertEquals(1, lyrics.content.size)
   }
@@ -309,8 +336,7 @@ class PaxsenixCoreTest {
             HttpStatusCode.OK,
             """[{"id":"a","trackName":"Song","artistName":"Artist","duration":100000}]""",
           )
-        "/apple-music/lyrics" ->
-          reply(data, HttpStatusCode.OK, """{"plain":"plain lyrics"}""")
+        "/apple-music/lyrics" -> reply(data, HttpStatusCode.OK, """{"plain":"plain lyrics"}""")
         else -> reply(data, HttpStatusCode.NotFound, "")
       }
     }

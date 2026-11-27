@@ -51,12 +51,12 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
-import com.revenge.music.LocalListenTogetherManager
-import com.revenge.music.LocalPlayerConnection
-import com.revenge.music.R
 import com.revenge.core.constants.SwipeSensitivityKey
 import com.revenge.core.constants.SwipeThumbnailKey
 import com.revenge.core.extensions.togglePlayPause
+import com.revenge.music.LocalListenTogetherManager
+import com.revenge.music.LocalPlayerConnection
+import com.revenge.music.R
 import com.revenge.music.utils.rememberPreference
 import kotlin.math.abs
 import kotlin.math.exp

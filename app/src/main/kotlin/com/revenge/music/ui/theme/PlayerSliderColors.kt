@@ -20,11 +20,12 @@ object PlayerSliderColors {
     playerBackground: PlayerBackgroundStyle,
     useDarkTheme: Boolean,
   ): SliderColors {
-    val inactiveColor = when {
-      playerBackground != PlayerBackgroundStyle.DEFAULT -> Color.White.copy(alpha = 0.4f)
-      useDarkTheme -> MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
-      else -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
-    }
+    val inactiveColor =
+      when {
+        playerBackground != PlayerBackgroundStyle.DEFAULT -> Color.White.copy(alpha = 0.4f)
+        useDarkTheme -> MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
+        else -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
+      }
 
     return SliderDefaults.colors(
       thumbColor = activeColor,

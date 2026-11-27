@@ -33,10 +33,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
-import com.revenge.music.LocalPlayerAwareWindowInsets
-import com.revenge.music.R
-import com.revenge.lyrics.api.DeepLService
-import com.revenge.lyrics.api.OpenRouterService
 import com.revenge.core.constants.AiProviderKey
 import com.revenge.core.constants.AiRecommendationsKey
 import com.revenge.core.constants.AutoTranslateKey
@@ -48,7 +44,11 @@ import com.revenge.core.constants.OpenRouterBaseUrlKey
 import com.revenge.core.constants.OpenRouterModelKey
 import com.revenge.core.constants.TranslateLanguageKey
 import com.revenge.core.constants.TranslateModeKey
+import com.revenge.lyrics.api.DeepLService
+import com.revenge.lyrics.api.OpenRouterService
 import com.revenge.lyrics.lyrics.LyricsTranslationHelper
+import com.revenge.music.LocalPlayerAwareWindowInsets
+import com.revenge.music.R
 import com.revenge.music.ui.component.EnumDialog
 import com.revenge.music.ui.component.Material3SettingsGroup
 import com.revenge.music.ui.component.Material3SettingsItem

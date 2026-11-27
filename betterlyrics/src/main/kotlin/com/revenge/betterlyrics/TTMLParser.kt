@@ -16,12 +16,13 @@ private const val TTML_METADATA_NS = "http://www.w3.org/ns/ttml#metadata"
 private fun hardenedBuilder(): DocumentBuilder {
   val factory = DocumentBuilderFactory.newInstance()
   factory.isNamespaceAware = true
-  val features = listOf(
-    "http://apache.org/xml/features/disallow-doctype-decl" to true,
-    "http://xml.org/sax/features/external-general-entities" to false,
-    "http://xml.org/sax/features/external-parameter-entities" to false,
-    "http://apache.org/xml/features/nonvalidating/load-external-dtd" to false,
-  )
+  val features =
+    listOf(
+      "http://apache.org/xml/features/disallow-doctype-decl" to true,
+      "http://xml.org/sax/features/external-general-entities" to false,
+      "http://xml.org/sax/features/external-parameter-entities" to false,
+      "http://apache.org/xml/features/nonvalidating/load-external-dtd" to false,
+    )
   for ((name, value) in features) {
     try {
       factory.setFeature(name, value)
@@ -31,25 +32,25 @@ private fun hardenedBuilder(): DocumentBuilder {
   }
   try {
     factory.isXIncludeAware = false
-  } catch (_: Exception) {
-  }
+  } catch (_: Exception) {}
   try {
     factory.setExpandEntityReferences(false)
-  } catch (_: Exception) {
-  }
+  } catch (_: Exception) {}
   return factory.newDocumentBuilder().apply {
     setEntityResolver { _, _ -> InputSource(StringReader("")) }
-    setErrorHandler(object : ErrorHandler {
-      override fun warning(exception: SAXParseException) = Unit
+    setErrorHandler(
+      object : ErrorHandler {
+        override fun warning(exception: SAXParseException) = Unit
 
-      override fun error(exception: SAXParseException) {
-        throw exception
-      }
+        override fun error(exception: SAXParseException) {
+          throw exception
+        }
 
-      override fun fatalError(exception: SAXParseException) {
-        throw exception
-      }
-    })
+        override fun fatalError(exception: SAXParseException) {
+          throw exception
+        }
+      },
+    )
   }
 }
 
@@ -114,9 +115,24 @@ private fun parseTime(raw: String?): Double? {
 }
 
 private fun agentOf(element: Element): String? {
-  element.getAttributeNS(TTML_METADATA_NS, "agent").takeIf { it.isNotBlank() }?.let { return it }
-  element.getAttribute("agent").takeIf { it.isNotBlank() }?.let { return it }
-  element.getAttribute("ttm:agent").takeIf { it.isNotBlank() }?.let { return it }
+  element
+    .getAttributeNS(TTML_METADATA_NS, "agent")
+    .takeIf { it.isNotBlank() }
+    ?.let {
+      return it
+    }
+  element
+    .getAttribute("agent")
+    .takeIf { it.isNotBlank() }
+    ?.let {
+      return it
+    }
+  element
+    .getAttribute("ttm:agent")
+    .takeIf { it.isNotBlank() }
+    ?.let {
+      return it
+    }
   val attributes = element.attributes
   for (index in 0 until attributes.length) {
     val attribute = attributes.item(index)
@@ -140,7 +156,8 @@ private fun directText(element: Element): String {
   var child = element.firstChild
   while (child != null) {
     when (child.nodeType) {
-      Node.TEXT_NODE, Node.CDATA_SECTION_NODE -> builder.append(child.nodeValue ?: "")
+      Node.TEXT_NODE,
+      Node.CDATA_SECTION_NODE -> builder.append(child.nodeValue ?: "")
       Node.ELEMENT_NODE -> {
         val nested = child as Element
         if (isSpan(nested) && !isIgnoredRole(roleOf(nested)) && roleOf(nested) != "x-bg") {
@@ -262,9 +279,10 @@ object TTMLParser {
     val text = if (words.isNotEmpty()) joinWords(words) else directText(paragraph)
     if (text.isEmpty()) return null
 
-    val backgroundLines = spans
-      .filter { roleOf(it) == "x-bg" }
-      .mapNotNull { backgroundSpan -> parseBackground(backgroundSpan, startTime) }
+    val backgroundLines =
+      spans
+        .filter { roleOf(it) == "x-bg" }
+        .mapNotNull { backgroundSpan -> parseBackground(backgroundSpan, startTime) }
 
     return ParsedLine(
       text = text,
@@ -298,7 +316,13 @@ object TTMLParser {
       appendTimestampLine(builder, line.text, line.startTime, line.agent, background = false)
       appendWordTrack(builder, line.words)
       for (background in line.backgroundLines) {
-        appendTimestampLine(builder, background.text, background.startTime, agent = null, background = true)
+        appendTimestampLine(
+          builder,
+          background.text,
+          background.startTime,
+          agent = null,
+          background = true,
+        )
         appendWordTrack(builder, background.words)
       }
     }

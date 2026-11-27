@@ -33,11 +33,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.revenge.core.db.entities.LyricsEntity
+import com.revenge.core.models.MediaMetadata
+import com.revenge.lyrics.lyrics.LyricsUtils.parseLyrics
 import com.revenge.music.LocalDatabase
 import com.revenge.music.LocalPlayerConnection
-import com.revenge.core.db.entities.LyricsEntity
-import com.revenge.lyrics.lyrics.LyricsUtils.parseLyrics
-import com.revenge.core.models.MediaMetadata
 import com.revenge.music.ui.component.shimmer.ShimmerHost
 import com.revenge.music.ui.component.shimmer.TextPlaceholder
 import dagger.hilt.android.EntryPointAccessors

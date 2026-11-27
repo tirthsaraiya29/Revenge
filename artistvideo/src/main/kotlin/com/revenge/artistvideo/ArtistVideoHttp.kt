@@ -12,39 +12,42 @@ import java.util.concurrent.TimeUnit
 internal data class ArtistVideoHttpResponse(val status: Int, val body: String)
 
 internal interface ArtistVideoTransport {
-    suspend fun get(
-        target: String,
-        params: List<Pair<String, String>>,
-        headers: Map<String, String>,
-    ): ArtistVideoHttpResponse
+  suspend fun get(
+    target: String,
+    params: List<Pair<String, String>>,
+    headers: Map<String, String>,
+  ): ArtistVideoHttpResponse
 }
 
-internal fun ktorArtistVideoTransport(): ArtistVideoTransport = object : ArtistVideoTransport {
-    private val client = HttpClient(OkHttp) {
+internal fun ktorArtistVideoTransport(): ArtistVideoTransport =
+  object : ArtistVideoTransport {
+    private val client =
+      HttpClient(OkHttp) {
         expectSuccess = false
         install(ContentEncoding) {
-            gzip()
-            deflate()
+          gzip()
+          deflate()
         }
         engine {
-            config {
-                connectTimeout(15, TimeUnit.SECONDS)
-                readTimeout(30, TimeUnit.SECONDS)
-                writeTimeout(30, TimeUnit.SECONDS)
-                callTimeout(30, TimeUnit.SECONDS)
-            }
+          config {
+            connectTimeout(15, TimeUnit.SECONDS)
+            readTimeout(30, TimeUnit.SECONDS)
+            writeTimeout(30, TimeUnit.SECONDS)
+            callTimeout(30, TimeUnit.SECONDS)
+          }
         }
-    }
+      }
 
     override suspend fun get(
-        target: String,
-        params: List<Pair<String, String>>,
-        headers: Map<String, String>,
+      target: String,
+      params: List<Pair<String, String>>,
+      headers: Map<String, String>,
     ): ArtistVideoHttpResponse {
-        val response = client.get(target) {
-            params.forEach { (key, value) -> parameter(key, value) }
-            headers.forEach { (key, value) -> header(key, value) }
+      val response =
+        client.get(target) {
+          params.forEach { (key, value) -> parameter(key, value) }
+          headers.forEach { (key, value) -> header(key, value) }
         }
-        return ArtistVideoHttpResponse(response.status.value, response.bodyAsText())
+      return ArtistVideoHttpResponse(response.status.value, response.bodyAsText())
     }
-}
+  }

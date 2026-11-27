@@ -33,8 +33,7 @@ class LocalTasteScoringTest {
       )
 
     // Base score: ln(1.0 + 1000/60000) * 2.0 (PLAY_WEIGHT) + 1.5 (RECENCY_BONUS)
-    val expectedBase =
-      kotlin.math.ln(1.0 + 1000.0 / 60_000.0) * PLAY_WEIGHT + RECENCY_BONUS
+    val expectedBase = kotlin.math.ln(1.0 + 1000.0 / 60_000.0) * PLAY_WEIGHT + RECENCY_BONUS
     // In afternoon: hourBonus = 1.0
     val afternoonScore = scoreStats(baseEntity, emptySet(), "afternoon")
     assertEquals(expectedBase, afternoonScore, 0.01)

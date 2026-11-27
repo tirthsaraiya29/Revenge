@@ -6,11 +6,11 @@ import java.time.LocalDateTime
 import java.time.ZoneOffset
 
 class Converters {
-    @TypeConverter
-    fun fromTimestamp(value: Long?): LocalDateTime? =
-        value?.let { Instant.ofEpochMilli(it).atZone(ZoneOffset.UTC).toLocalDateTime() }
+  @TypeConverter
+  fun fromTimestamp(value: Long?): LocalDateTime? = value?.let {
+    Instant.ofEpochMilli(it).atZone(ZoneOffset.UTC).toLocalDateTime()
+  }
 
-    @TypeConverter
-    fun dateToTimestamp(date: LocalDateTime?): Long? =
-        date?.toInstant(ZoneOffset.UTC)?.toEpochMilli()
+  @TypeConverter
+  fun dateToTimestamp(date: LocalDateTime?): Long? = date?.toInstant(ZoneOffset.UTC)?.toEpochMilli()
 }

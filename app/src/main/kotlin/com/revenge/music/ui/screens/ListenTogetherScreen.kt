@@ -80,12 +80,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import androidx.navigation.compose.currentBackStackEntryAsState
-import com.revenge.music.LocalListenTogetherManager
-import com.revenge.music.LocalPlayerAwareWindowInsets
-import com.revenge.music.R
 import com.revenge.core.constants.AppBarHeight
 import com.revenge.core.constants.ListenTogetherInTopBarKey
 import com.revenge.core.constants.ListenTogetherUsernameKey
+import com.revenge.music.LocalListenTogetherManager
+import com.revenge.music.LocalPlayerAwareWindowInsets
+import com.revenge.music.R
 import com.revenge.music.listentogether.ConnectionState
 import com.revenge.music.listentogether.JoinRequestPayload
 import com.revenge.music.listentogether.ListenTogetherEvent

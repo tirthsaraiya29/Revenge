@@ -54,8 +54,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
-import com.revenge.music.LocalDatabase
-import com.revenge.music.R
 import com.revenge.core.constants.AiProviderKey
 import com.revenge.core.constants.AutoTranslateKey
 import com.revenge.core.constants.DeeplApiKey
@@ -67,8 +65,10 @@ import com.revenge.core.constants.TranslateLanguageKey
 import com.revenge.core.constants.TranslateModeKey
 import com.revenge.core.db.entities.LyricsEntity
 import com.revenge.core.db.entities.SongEntity
-import com.revenge.lyrics.lyrics.LyricsTranslationHelper
 import com.revenge.core.models.MediaMetadata
+import com.revenge.lyrics.lyrics.LyricsTranslationHelper
+import com.revenge.music.LocalDatabase
+import com.revenge.music.R
 import com.revenge.music.ui.component.DefaultDialog
 import com.revenge.music.ui.component.ListDialog
 import com.revenge.music.ui.component.Material3MenuGroup

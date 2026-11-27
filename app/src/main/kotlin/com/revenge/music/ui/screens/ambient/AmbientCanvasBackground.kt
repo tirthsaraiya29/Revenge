@@ -12,11 +12,11 @@ import androidx.compose.ui.platform.LocalContext
 import com.revenge.applecanvas.AppleMusicCanvasProvider
 import com.revenge.canvas.CanvasArtwork
 import com.revenge.canvas.TidalCanvasProvider
+import com.revenge.core.constants.CanvasThumbnailAnimationKey
+import com.revenge.core.constants.DataSaverEnabledKey
 import com.revenge.innertube.models.PODCAST_BROWSE_PREFIX
 import com.revenge.innertube.models.WatchEndpoint.WatchEndpointMusicSupportedConfigs.WatchEndpointMusicConfig.Companion.MUSIC_VIDEO_TYPE_PODCAST_EPISODE
 import com.revenge.music.LocalPlayerConnection
-import com.revenge.core.constants.CanvasThumbnailAnimationKey
-import com.revenge.core.constants.DataSaverEnabledKey
 import com.revenge.music.spotify.Spotify
 import com.revenge.music.ui.player.CanvasArtworkPlaybackCache
 import com.revenge.music.ui.player.CanvasArtworkPlayer

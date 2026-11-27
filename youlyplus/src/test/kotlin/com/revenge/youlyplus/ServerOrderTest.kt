@@ -13,9 +13,8 @@ import io.ktor.util.date.GMTDate
 import io.ktor.utils.io.ByteReadChannel
 import io.ktor.utils.io.InternalAPI
 import java.util.concurrent.CopyOnWriteArrayList
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -111,8 +110,8 @@ class ServerOrderTest {
   fun `duplicate documents across mirrors are delivered once`() = runBlocking {
     val engine = FakeEngine { data ->
       when (data.url.host) {
-        "lyricsplus.prjktla.my.id", "lyricsplus.atomix.one" ->
-          reply(data, HttpStatusCode.OK, """{"syncedLyrics":"same"}""")
+        "lyricsplus.prjktla.my.id",
+        "lyricsplus.atomix.one" -> reply(data, HttpStatusCode.OK, """{"syncedLyrics":"same"}""")
         else -> reply(data, HttpStatusCode.Forbidden, "")
       }
     }

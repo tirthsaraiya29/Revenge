@@ -14,7 +14,9 @@ import kotlinx.coroutines.launch
 import timber.log.Timber
 
 @HiltViewModel
-class SpotifyImportViewModel @Inject constructor(
+class SpotifyImportViewModel
+@Inject
+constructor(
   private val repository: SpotifyImportRepository,
 ) : ViewModel() {
 
@@ -161,26 +163,24 @@ class SpotifyImportViewModel @Inject constructor(
   fun importSelectedSources() {
     val state = _uiState.value
     if (!state.canImport || importJob?.isActive == true) return
-    val selected =
-      state.selectedSourceIds.mapNotNull { sourceObjects[it] }
+    val selected = state.selectedSourceIds.mapNotNull { sourceObjects[it] }
     if (selected.isEmpty()) return
-    importJob =
-      viewModelScope.launch {
-        _uiState.update { it.copy(errorMessage = null, summary = null) }
-        try {
-          val summary =
-            repository.importSources(selected) { progress ->
-              _uiState.update { it.copy(progress = progress) }
-            }
-          _uiState.update { it.copy(progress = null, summary = summary) }
-        } catch (e: CancellationException) {
-          _uiState.update { it.copy(progress = null) }
-          throw e
-        } catch (e: Throwable) {
-          _uiState.update { it.copy(progress = null) }
-          fail(e)
-        }
+    importJob = viewModelScope.launch {
+      _uiState.update { it.copy(errorMessage = null, summary = null) }
+      try {
+        val summary =
+          repository.importSources(selected) { progress ->
+            _uiState.update { it.copy(progress = progress) }
+          }
+        _uiState.update { it.copy(progress = null, summary = summary) }
+      } catch (e: CancellationException) {
+        _uiState.update { it.copy(progress = null) }
+        throw e
+      } catch (e: Throwable) {
+        _uiState.update { it.copy(progress = null) }
+        fail(e)
       }
+    }
   }
 
   fun cancelImport() {

@@ -32,10 +32,11 @@ fun RefreshAiRecommendationDialog(onDismiss: () -> Unit) {
   LaunchedEffect(Unit) {
     coroutineScope.launch {
       try {
-        AiRecommendationHelper(database).generateRecommendations(
-          context = context,
-          onLog = { log -> generationLog = log },
-        )
+        AiRecommendationHelper(database)
+          .generateRecommendations(
+            context = context,
+            onLog = { log -> generationLog = log },
+          )
         withContext(Dispatchers.Main) { onDismiss() }
       } catch (e: Exception) {
         withContext(Dispatchers.Main) {

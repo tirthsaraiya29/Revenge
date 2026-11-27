@@ -8,11 +8,6 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.revenge.innertube.YouTube
-import com.revenge.innertube.models.filterExplicit
-import com.revenge.innertube.models.filterVideoSongs
-import com.revenge.innertube.models.filterYoutubeShorts
-import com.revenge.innertube.pages.SearchSummaryPage
 import com.revenge.core.constants.HideExplicitKey
 import com.revenge.core.constants.HideVideoSongsKey
 import com.revenge.core.constants.HideYoutubeShortsKey
@@ -20,6 +15,11 @@ import com.revenge.core.models.ItemsPage
 import com.revenge.core.utils.dataStore
 import com.revenge.core.utils.get
 import com.revenge.core.utils.reportException
+import com.revenge.innertube.YouTube
+import com.revenge.innertube.models.filterExplicit
+import com.revenge.innertube.models.filterVideoSongs
+import com.revenge.innertube.models.filterYoutubeShorts
+import com.revenge.innertube.pages.SearchSummaryPage
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.net.URLDecoder

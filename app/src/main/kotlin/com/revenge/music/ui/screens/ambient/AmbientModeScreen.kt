@@ -50,9 +50,9 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
-import com.revenge.music.LocalPlayerConnection
 import com.revenge.core.constants.*
 import com.revenge.core.extensions.togglePlayPause
+import com.revenge.music.LocalPlayerConnection
 import com.revenge.music.ui.player.InlineLyricsView
 import com.revenge.music.utils.rememberPreference
 import kotlin.math.abs

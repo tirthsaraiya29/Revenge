@@ -61,8 +61,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.edit
 import androidx.navigation.NavController
-import com.revenge.music.LocalPlayerAwareWindowInsets
-import com.revenge.music.R
 import com.revenge.core.constants.AlbumArtThemeRecoloringKey
 import com.revenge.core.constants.AppFont
 import com.revenge.core.constants.AppIconTypeKey
@@ -116,6 +114,8 @@ import com.revenge.core.constants.SwipeToSongKey
 import com.revenge.core.constants.ThumbnailCornerRadiusKey
 import com.revenge.core.constants.UseNewPlayerDesignKey
 import com.revenge.core.constants.WavyPlayPauseKey
+import com.revenge.music.LocalPlayerAwareWindowInsets
+import com.revenge.music.R
 import com.revenge.music.ui.component.DefaultDialog
 import com.revenge.music.ui.component.EnumDialog
 import com.revenge.music.ui.component.IconButton
@@ -153,7 +153,8 @@ fun AppearanceSettings(
 ) {
   val scrollState = androidx.compose.foundation.rememberScrollState()
 
-  val (selectedFontValue) = rememberPreference(SelectedFontKey, defaultValue = AppFont.PLUS_JAKARTA_SANS.value)
+  val (selectedFontValue) =
+    rememberPreference(SelectedFontKey, defaultValue = AppFont.PLUS_JAKARTA_SANS.value)
   val (customFontPathValue) =
     rememberPreference(com.revenge.core.constants.CustomFontPathKey, defaultValue = "")
 

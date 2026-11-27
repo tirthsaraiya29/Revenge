@@ -3,6 +3,8 @@ package com.revenge.music.utils
 
 import android.net.ConnectivityManager
 import android.net.Uri
+import com.revenge.core.constants.AudioQuality
+import com.revenge.core.utils.reportException
 import com.revenge.innertube.NewPipeExtractor
 import com.revenge.innertube.YouTube
 import com.revenge.innertube.models.YouTubeClient
@@ -16,8 +18,6 @@ import com.revenge.innertube.models.YouTubeClient.Companion.WEB_CREATOR
 import com.revenge.innertube.models.YouTubeClient.Companion.WEB_REMIX
 import com.revenge.innertube.models.response.PlayerConfig
 import com.revenge.innertube.models.response.PlayerResponse
-import com.revenge.core.constants.AudioQuality
-import com.revenge.core.utils.reportException
 import com.revenge.music.utils.YTPlayerUtils.MAIN_CLIENT
 import com.revenge.music.utils.YTPlayerUtils.STREAM_FALLBACK_CLIENTS
 import com.revenge.music.utils.YTPlayerUtils.validateStatus

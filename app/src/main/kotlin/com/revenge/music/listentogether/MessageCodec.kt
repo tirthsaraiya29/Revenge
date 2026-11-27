@@ -17,9 +17,9 @@ import kotlinx.serialization.json.put
  * Wire framing for the Listen Together socket.
  *
  * Binary frames carry a typed per-message protobuf payload inside [Listentogether.Envelope].
- * Message types without a proto definition (chat) fall back to JSON framing even after the
- * protobuf upgrade, per the protocol invariant; that fallback is gzipped as a whole frame.
- * Text frames are plain JSON.
+ * Message types without a proto definition (chat) fall back to JSON framing even after the protobuf
+ * upgrade, per the protocol invariant; that fallback is gzipped as a whole frame. Text frames are
+ * plain JSON.
  */
 class MessageCodec {
 
@@ -51,18 +51,17 @@ class MessageCodec {
       }
     }
     // JSON framing, including the chat fallback after a protobuf upgrade.
-    val jsonBytes =
-      buildJsonObject {
-          put("type", type)
-          if (payloadJson != null) {
-            val payload = runCatching { json.parseToJsonElement(payloadJson) }.getOrNull()
-            put("payload", payload ?: JsonNull)
-          } else {
-            put("payload", JsonNull)
-          }
-        }
-        .toString()
-        .toByteArray(Charsets.UTF_8)
+    val jsonBytes = buildJsonObject {
+      put("type", type)
+      if (payloadJson != null) {
+        val payload = runCatching { json.parseToJsonElement(payloadJson) }.getOrNull()
+        put("payload", payload ?: JsonNull)
+      } else {
+        put("payload", JsonNull)
+      }
+    }
+      .toString()
+      .toByteArray(Charsets.UTF_8)
     if (compressionEnabled && jsonBytes.size > 100) {
       val gzipped = gzip(jsonBytes)
       if (gzipped != null && gzipped.size < jsonBytes.size) return gzipped
@@ -97,8 +96,7 @@ class MessageCodec {
     if (frame[0] == '{'.code.toByte()) {
       val root =
         runCatching { json.parseToJsonElement(String(frame, Charsets.UTF_8)).jsonObject }
-          .getOrNull()
-          ?: return null
+          .getOrNull() ?: return null
       return Decoded(
         type = root.stringOrNull("type").orEmpty(),
         payloadJson =
@@ -129,19 +127,21 @@ class MessageCodec {
   private fun isGzip(frame: ByteArray): Boolean =
     frame.size >= 2 && frame[0] == 0x1f.toByte() && frame[1] == 0x8b.toByte()
 
-  private fun gzip(bytes: ByteArray): ByteArray? =
-    runCatching {
-      ByteArrayOutputStream().use { output ->
-        GZIPOutputStream(output).use { it.write(bytes) }
-        output.toByteArray()
-      }
-    }.getOrNull()
+  private fun gzip(bytes: ByteArray): ByteArray? = runCatching {
+    ByteArrayOutputStream().use { output ->
+      GZIPOutputStream(output).use { it.write(bytes) }
+      output.toByteArray()
+    }
+  }
+    .getOrNull()
 
-  private fun gunzip(bytes: ByteArray): ByteArray? =
-    runCatching {
-      GZIPInputStream(ByteArrayInputStream(bytes)).use { it.readBytes() }
-    }.getOrNull()
+  private fun gunzip(bytes: ByteArray): ByteArray? = runCatching {
+    GZIPInputStream(ByteArrayInputStream(bytes)).use { it.readBytes() }
+  }
+    .getOrNull()
 
-  private fun JsonObject.stringOrNull(key: String): String? =
-    runCatching { (this[key] as? kotlinx.serialization.json.JsonPrimitive)?.content }.getOrNull()
+  private fun JsonObject.stringOrNull(key: String): String? = runCatching {
+    (this[key] as? kotlinx.serialization.json.JsonPrimitive)?.content
+  }
+    .getOrNull()
 }

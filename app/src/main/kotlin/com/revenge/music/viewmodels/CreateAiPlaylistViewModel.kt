@@ -133,48 +133,51 @@ constructor(
   fun fetchWeather(context: Context, hasPermission: Boolean = true) {
     fetchWeatherJob?.cancel()
     _weatherUiState.value = WeatherUiState.Loading
-    fetchWeatherJob = viewModelScope.launch(Dispatchers.IO) {
-      var lat: Double? = null
-      var lon: Double? = null
+    fetchWeatherJob =
+      viewModelScope.launch(Dispatchers.IO) {
+        var lat: Double? = null
+        var lon: Double? = null
 
-      if (hasPermission) {
-        val location = locationProvider.getFusedLocation() ?: locationProvider.getLastKnownLocation()
-        if (location != null) {
-          lat = location.latitude
-          lon = location.longitude
+        if (hasPermission) {
+          val location =
+            locationProvider.getFusedLocation() ?: locationProvider.getLastKnownLocation()
+          if (location != null) {
+            lat = location.latitude
+            lon = location.longitude
+          }
+        }
+
+        // Fallback to IP Location if GPS location unavailable or permission denied
+        if (lat == null || lon == null) {
+          val ipResult = ipLocationRepository.getLocation()
+          ipResult.onSuccess { ipLoc ->
+            lat = ipLoc.latitude
+            lon = ipLoc.longitude
+          }
+        }
+
+        val currentLat = lat
+        val currentLon = lon
+        if (currentLat != null && currentLon != null) {
+          val result = weatherRepository.getWeather(currentLat, currentLon)
+          result.fold(
+            onSuccess = { weatherInfo ->
+              _weatherUiState.value = WeatherUiState.Success(weatherInfo)
+            },
+            onFailure = { error ->
+              _weatherUiState.value =
+                WeatherUiState.Error(
+                  message =
+                    error.localizedMessage
+                      ?: "Failed to fetch weather data. Check your connection.",
+                )
+            },
+          )
+        } else {
+          _weatherUiState.value =
+            WeatherUiState.Error(message = "Could not determine location from GPS or IP location.")
         }
       }
-
-      // Fallback to IP Location if GPS location unavailable or permission denied
-      if (lat == null || lon == null) {
-        val ipResult = ipLocationRepository.getLocation()
-        ipResult.onSuccess { ipLoc ->
-          lat = ipLoc.latitude
-          lon = ipLoc.longitude
-        }
-      }
-
-      val currentLat = lat
-      val currentLon = lon
-      if (currentLat != null && currentLon != null) {
-        val result = weatherRepository.getWeather(currentLat, currentLon)
-        result.fold(
-          onSuccess = { weatherInfo ->
-            _weatherUiState.value = WeatherUiState.Success(weatherInfo)
-          },
-          onFailure = { error ->
-            _weatherUiState.value =
-              WeatherUiState.Error(
-                message =
-                  error.localizedMessage ?: "Failed to fetch weather data. Check your connection.",
-              )
-          },
-        )
-      } else {
-        _weatherUiState.value =
-          WeatherUiState.Error(message = "Could not determine location from GPS or IP location.")
-      }
-    }
   }
 
   fun generatePlaylist(context: Context, onPlaylistCreated: (String) -> Unit) {

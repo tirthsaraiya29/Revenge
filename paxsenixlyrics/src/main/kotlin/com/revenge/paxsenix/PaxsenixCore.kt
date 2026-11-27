@@ -48,13 +48,16 @@ internal object PaxsenixCore {
     queries.add(combined)
     queries.add(cleanTitle)
     if (!album.isNullOrBlank()) {
-      queries.add(listOf(cleanTitle, cleanArtist, album).filter { it.isNotBlank() }.joinToString(" "))
+      queries.add(
+        listOf(cleanTitle, cleanArtist, album).filter { it.isNotBlank() }.joinToString(" "),
+      )
     }
     return queries.filter { it.isNotBlank() }.distinct()
   }
 
   fun rank(results: List<SearchResult>, target: TrackTarget): List<ScoredResult> {
-    return results.asSequence()
+    return results
+      .asSequence()
       .filter { it.id.isNotBlank() }
       .map { ScoredResult(it, score(it, target)) }
       .filter { it.score > 0.0 }
@@ -69,19 +72,21 @@ internal object PaxsenixCore {
     val duration = result.duration
     if (duration != null) {
       val diff = abs(duration - target.durationSeconds * 1000)
-      total += when {
-        diff <= 2_000 -> 100.0
-        diff <= 5_000 -> 50.0
-        diff <= 10_000 -> 10.0
-        else -> -50.0
-      }
+      total +=
+        when {
+          diff <= 2_000 -> 100.0
+          diff <= 5_000 -> 50.0
+          diff <= 10_000 -> 10.0
+          else -> -50.0
+        }
     }
 
     val wantedTitle = normalizeTitle(target.cleanTitle)
     val resultTitle = normalizeTitle(result.displayName)
     when {
       wantedTitle == resultTitle -> total += 80.0
-      wantedTitle.isNotEmpty() && resultTitle.isNotEmpty() &&
+      wantedTitle.isNotEmpty() &&
+        resultTitle.isNotEmpty() &&
         (wantedTitle.contains(resultTitle) || resultTitle.contains(wantedTitle)) -> total += 40.0
     }
 
@@ -95,7 +100,9 @@ internal object PaxsenixCore {
       val resultArtist = result.displayArtist.lowercase()
       if (resultArtist.contains(wantedArtist)) {
         total += 50.0
-      } else if (wantedArtist.split(Regex("\\s+")).any { it.length > 2 && resultArtist.contains(it) }) {
+      } else if (
+        wantedArtist.split(Regex("\\s+")).any { it.length > 2 && resultArtist.contains(it) }
+      ) {
         total += 25.0
       }
     }
@@ -117,15 +124,21 @@ internal object PaxsenixCore {
       }
     }
 
-    response.elrcMultiPerson?.takeIf { it.isNotBlank() }?.let {
-      return Result.success(LyricsCandidate(it, hasWordTimings(it)))
-    }
-    response.elrc?.takeIf { it.isNotBlank() }?.let {
-      return Result.success(LyricsCandidate(it, hasWordTimings(it)))
-    }
-    response.plain?.takeIf { it.isNotBlank() }?.let {
-      return Result.success(LyricsCandidate(it, false))
-    }
+    response.elrcMultiPerson
+      ?.takeIf { it.isNotBlank() }
+      ?.let {
+        return Result.success(LyricsCandidate(it, hasWordTimings(it)))
+      }
+    response.elrc
+      ?.takeIf { it.isNotBlank() }
+      ?.let {
+        return Result.success(LyricsCandidate(it, hasWordTimings(it)))
+      }
+    response.plain
+      ?.takeIf { it.isNotBlank() }
+      ?.let {
+        return Result.success(LyricsCandidate(it, false))
+      }
 
     if (response.content.isEmpty()) {
       return Result.failure(IllegalStateException("Paxsenix returned no lyrics"))
@@ -149,13 +162,15 @@ internal object PaxsenixCore {
   }
 
   fun plainTextFromContent(content: List<LyricsContent>): String {
-    return content.mapNotNull { line ->
-      line.text
-        .map { it.text }
-        .filter { it.isNotBlank() }
-        .joinToString(" ")
-        .takeIf { it.isNotBlank() }
-    }.joinToString("\n")
+    return content
+      .mapNotNull { line ->
+        line.text
+          .map { it.text }
+          .filter { it.isNotBlank() }
+          .joinToString(" ")
+          .takeIf { it.isNotBlank() }
+      }
+      .joinToString("\n")
   }
 
   fun lrcFromContent(content: List<LyricsContent>): String {
@@ -179,9 +194,12 @@ internal object PaxsenixCore {
         builder.append('<')
         words.forEachIndexed { index, word ->
           if (index > 0) builder.append('|')
-          builder.append(word.text)
-            .append(':').append(word.timestamp / 1000.0)
-            .append(':').append(word.endtime / 1000.0)
+          builder
+            .append(word.text)
+            .append(':')
+            .append(word.timestamp / 1000.0)
+            .append(':')
+            .append(word.endtime / 1000.0)
         }
         builder.append(">\n")
       }

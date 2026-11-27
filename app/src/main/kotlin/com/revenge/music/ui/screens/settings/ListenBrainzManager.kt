@@ -68,8 +68,7 @@ object ListenBrainzManager {
     startMs: Long,
     endMs: Long,
   ): Boolean {
-    val listenedAt =
-      (startMs / 1000L).let { if (it < MIN_LISTENED_AT) nowSeconds() else it }
+    val listenedAt = (startMs / 1000L).let { if (it < MIN_LISTENED_AT) nowSeconds() else it }
     return submit(
       token = token,
       title = title,

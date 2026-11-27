@@ -45,9 +45,9 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
 import coil3.compose.SubcomposeAsyncImage
-import com.revenge.music.R
 import com.revenge.core.constants.SuggestionRegionKey
 import com.revenge.core.constants.SuggestionRegionSlugToName
+import com.revenge.music.R
 import com.revenge.music.utils.rememberPreference
 import com.valentinilk.shimmer.shimmer
 import kotlin.math.abs

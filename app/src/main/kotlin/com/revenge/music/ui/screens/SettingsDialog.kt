@@ -22,7 +22,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
@@ -32,11 +31,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import com.revenge.core.constants.AccountEmailKey
+import com.revenge.core.constants.InnerTubeCookieKey
 import com.revenge.innertube.utils.parseCookieString
 import com.revenge.music.BuildConfig
 import com.revenge.music.R
-import com.revenge.core.constants.AccountEmailKey
-import com.revenge.core.constants.InnerTubeCookieKey
 import com.revenge.music.ui.component.Material3SettingsGroup
 import com.revenge.music.ui.component.Material3SettingsItem
 import com.revenge.music.utils.rememberPreference
@@ -96,11 +95,13 @@ fun SettingsDialog(
           buildList {
             add(
               Material3SettingsItem(
-                title = { Text(if (isLoggedIn) accountName else stringResource(R.string.anonymous)) },
+                title = {
+                  Text(if (isLoggedIn) accountName else stringResource(R.string.anonymous))
+                },
                 description = {
                   Text(
                     if (isLoggedIn) accountEmail.ifEmpty { stringResource(R.string.logged_in) }
-                    else stringResource(R.string.not_logged_in)
+                    else stringResource(R.string.not_logged_in),
                   )
                 },
                 icon = painterResource(R.drawable.account),

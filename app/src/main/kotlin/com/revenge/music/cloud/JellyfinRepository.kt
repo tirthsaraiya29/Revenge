@@ -53,21 +53,22 @@ constructor(
 
   suspend fun login(serverUrl: String, username: String, password: String): Result<Unit> =
     withContext(Dispatchers.IO) {
-      exchange(serverUrl, username, password).fold(
-        onSuccess = { credentials ->
-          prefs.edit {
-            putString(KEY_SERVER_URL, credentials.serverUrl)
-            putString(KEY_USERNAME, credentials.username)
-            putString(KEY_ACCESS_TOKEN, credentials.accessToken)
-            putString(KEY_USER_ID, credentials.userId)
-            putString(KEY_SERVER_ID, credentials.serverId)
-            putBoolean(KEY_CONNECTED, true)
-          }
-          publish(credentials.serverUrl, credentials.username, connected = true)
-          Result.success(Unit)
-        },
-        onFailure = { Result.failure(it) },
-      )
+      exchange(serverUrl, username, password)
+        .fold(
+          onSuccess = { credentials ->
+            prefs.edit {
+              putString(KEY_SERVER_URL, credentials.serverUrl)
+              putString(KEY_USERNAME, credentials.username)
+              putString(KEY_ACCESS_TOKEN, credentials.accessToken)
+              putString(KEY_USER_ID, credentials.userId)
+              putString(KEY_SERVER_ID, credentials.serverId)
+              putBoolean(KEY_CONNECTED, true)
+            }
+            publish(credentials.serverUrl, credentials.username, connected = true)
+            Result.success(Unit)
+          },
+          onFailure = { Result.failure(it) },
+        )
     }
 
   fun logout() {
@@ -77,12 +78,14 @@ constructor(
 
   suspend fun ping(): Result<String> =
     withContext(Dispatchers.IO) {
-      val credentials = getCredentials()
-        ?: return@withContext Result.failure(Exception("Not logged in"))
-      api.ping(credentials).fold(
-        onSuccess = { Result.success(it) },
-        onFailure = { Result.failure(it) },
-      )
+      val credentials =
+        getCredentials() ?: return@withContext Result.failure(Exception("Not logged in"))
+      api
+        .ping(credentials)
+        .fold(
+          onSuccess = { Result.success(it) },
+          onFailure = { Result.failure(it) },
+        )
     }
 
   suspend fun getPlaylists(): Result<List<JellyfinPlaylist>> = guarded { api.getPlaylists(it) }
@@ -95,8 +98,7 @@ constructor(
     api.getSongs(it, limit)
   }
 
-  suspend fun getRandomSongs(size: Int = 100): Result<List<JellyfinSong>> =
-    getSongs(size)
+  suspend fun getRandomSongs(size: Int = 100): Result<List<JellyfinSong>> = getSongs(size)
 
   fun getStreamUrl(songId: String): String? = getCredentials()?.let { api.getStreamUrl(it, songId) }
 
@@ -106,8 +108,8 @@ constructor(
   suspend fun syncPlaylistsAndSongs(): Result<Int> =
     withContext(Dispatchers.IO) {
       try {
-        val credentials = getCredentials()
-          ?: return@withContext Result.failure(Exception("Not logged in"))
+        val credentials =
+          getCredentials() ?: return@withContext Result.failure(Exception("Not logged in"))
         val playlists = api.getPlaylists(credentials).getOrDefault(emptyList())
         var mirrored = 0
         if (playlists.isEmpty()) {
@@ -132,15 +134,14 @@ constructor(
     serverUrl: String,
     username: String,
     password: String,
-  ): Result<JellyfinCredentials> =
-    api.authenticate(serverUrl, username, password)
+  ): Result<JellyfinCredentials> = api.authenticate(serverUrl, username, password)
 
   private suspend fun <T> guarded(
     call: suspend (JellyfinCredentials) -> Result<T>,
   ): Result<T> =
     withContext(Dispatchers.IO) {
-      val credentials = getCredentials()
-        ?: return@withContext Result.failure(Exception("Not logged in"))
+      val credentials =
+        getCredentials() ?: return@withContext Result.failure(Exception("Not logged in"))
       call(credentials)
     }
 
@@ -170,7 +171,9 @@ constructor(
     val artistId = "jellyfin_artist_${song.artist.hashCode()}"
     database.insert(ArtistEntity(id = artistId, name = song.artist, lastUpdateTime = timestamp))
     database.insert(SongArtistMap(songId = entity.id, artistId = artistId, position = 0))
-    database.insert(PlaylistSongMap(playlistId = playlistId, songId = entity.id, position = position))
+    database.insert(
+      PlaylistSongMap(playlistId = playlistId, songId = entity.id, position = position),
+    )
   }
 
   private fun remotePlaylist(playlist: JellyfinPlaylist) =

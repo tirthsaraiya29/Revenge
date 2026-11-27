@@ -17,7 +17,8 @@ private val json = Json {
 class LyricsModelsTest {
   @Test
   fun `decodes wire names and ignores unknown keys`() {
-    val fixture = """
+    val fixture =
+      """
       {
         "type": "success",
         "data": [
@@ -36,7 +37,8 @@ class LyricsModelsTest {
           }
         ]
       }
-    """.trimIndent()
+      """
+        .trimIndent()
 
     val response = json.decodeFromString<SimpMusicApiResponse>(fixture)
 

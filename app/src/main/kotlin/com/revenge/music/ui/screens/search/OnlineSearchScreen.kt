@@ -50,6 +50,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
+import com.revenge.core.constants.SuggestionItemHeight
+import com.revenge.core.models.toMediaMetadata
 import com.revenge.innertube.models.AlbumItem
 import com.revenge.innertube.models.ArtistItem
 import com.revenge.innertube.models.PlaylistItem
@@ -59,9 +61,6 @@ import com.revenge.music.LocalDatabase
 import com.revenge.music.LocalPlayerAwareWindowInsets
 import com.revenge.music.LocalPlayerConnection
 import com.revenge.music.R
-import com.revenge.core.constants.SuggestionItemHeight
-import com.revenge.core.models.toMediaMetadata
-import com.revenge.playback.queues.YouTubeQueue
 import com.revenge.music.ui.component.LocalMenuState
 import com.revenge.music.ui.component.YouTubeListItem
 import com.revenge.music.ui.menu.YouTubeAlbumMenu
@@ -71,6 +70,7 @@ import com.revenge.music.ui.menu.YouTubeSongMenu
 import com.revenge.music.utils.getGroupedShape
 import com.revenge.music.utils.listItemShape
 import com.revenge.music.viewmodels.OnlineSearchSuggestionViewModel
+import com.revenge.playback.queues.YouTubeQueue
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.drop
 

@@ -9,8 +9,8 @@ import kotlinx.serialization.json.Json
  * messages in [Proto] and back. Types without a proto definition (chat) return null, letting
  * [MessageCodec] fall back to JSON framing for that message.
  *
- * Optional values follow the wire contract: nullable strings use empty string, and optional
- * numbers use `<= 0` for absent.
+ * Optional values follow the wire contract: nullable strings use empty string, and optional numbers
+ * use `<= 0` for absent.
  */
 internal object PayloadMapper {
 
@@ -20,8 +20,10 @@ internal object PayloadMapper {
     encodeDefaults = true
   }
 
-  fun encode(type: String, payloadJson: String): ByteArray? =
-    runCatching { encodeTyped(type, payloadJson) }.getOrNull()
+  fun encode(type: String, payloadJson: String): ByteArray? = runCatching {
+    encodeTyped(type, payloadJson)
+  }
+    .getOrNull()
 
   fun decode(type: String, bytes: ByteArray): String? =
     if (bytes.isEmpty()) null else runCatching { decodeTyped(type, bytes) }.getOrNull()
@@ -111,7 +113,7 @@ internal object PayloadMapper {
       MessageType.UPDATE_ROOM_SETTINGS ->
         Proto.UpdateRoomSettingsPayload.newBuilder()
           .setAllowParticipantControl(
-            parse(payloadJson, UpdateRoomSettingsPayload.serializer()).allowParticipantControl
+            parse(payloadJson, UpdateRoomSettingsPayload.serializer()).allowParticipantControl,
           )
           .build()
           .toByteArray()
@@ -178,11 +180,7 @@ internal object PayloadMapper {
           .toByteArray()
       MessageType.ERROR -> {
         val m = parse(payloadJson, ErrorPayload.serializer())
-        Proto.ErrorPayload.newBuilder()
-          .setCode(m.code)
-          .setMessage(m.message)
-          .build()
-          .toByteArray()
+        Proto.ErrorPayload.newBuilder().setCode(m.code).setMessage(m.message).build().toByteArray()
       }
       MessageType.HOST_CHANGED -> {
         val m = parse(payloadJson, HostChangedPayload.serializer())
@@ -318,7 +316,9 @@ internal object PayloadMapper {
         )
       MessageType.KICK_USER ->
         encodeModel(
-          Proto.KickUserPayload.parseFrom(bytes).let { KickUserPayload(it.userId, it.reason.nullIfEmpty()) },
+          Proto.KickUserPayload.parseFrom(bytes).let {
+            KickUserPayload(it.userId, it.reason.nullIfEmpty())
+          },
           KickUserPayload.serializer(),
         )
       MessageType.TRANSFER_HOST ->
@@ -335,7 +335,9 @@ internal object PayloadMapper {
         )
       MessageType.APPROVE_SUGGESTION ->
         encodeModel(
-          Proto.ApproveSuggestionPayload.parseFrom(bytes).let { ApproveSuggestionPayload(it.suggestionId) },
+          Proto.ApproveSuggestionPayload.parseFrom(bytes).let {
+            ApproveSuggestionPayload(it.suggestionId)
+          },
           ApproveSuggestionPayload.serializer(),
         )
       MessageType.REJECT_SUGGESTION ->
@@ -361,7 +363,9 @@ internal object PayloadMapper {
         )
       MessageType.JOIN_REQUEST ->
         encodeModel(
-          Proto.JoinRequestPayload.parseFrom(bytes).let { JoinRequestPayload(it.userId, it.username) },
+          Proto.JoinRequestPayload.parseFrom(bytes).let {
+            JoinRequestPayload(it.userId, it.username)
+          },
           JoinRequestPayload.serializer(),
         )
       MessageType.JOIN_APPROVED ->
@@ -378,12 +382,16 @@ internal object PayloadMapper {
         )
       MessageType.JOIN_REJECTED ->
         encodeModel(
-          Proto.JoinRejectedPayload.parseFrom(bytes).let { JoinRejectedPayload(it.reason.nullIfEmpty()) },
+          Proto.JoinRejectedPayload.parseFrom(bytes).let {
+            JoinRejectedPayload(it.reason.nullIfEmpty())
+          },
           JoinRejectedPayload.serializer(),
         )
       MessageType.USER_JOINED ->
         encodeModel(
-          Proto.UserJoinedPayload.parseFrom(bytes).let { UserJoinedPayload(it.userId, it.username) },
+          Proto.UserJoinedPayload.parseFrom(bytes).let {
+            UserJoinedPayload(it.userId, it.username)
+          },
           UserJoinedPayload.serializer(),
         )
       MessageType.USER_LEFT ->
@@ -428,7 +436,8 @@ internal object PayloadMapper {
               isPlaying = it.isPlaying,
               position = it.position.nullIfNonPositive(),
               lastUpdate = it.lastUpdate,
-              queue = it.queueList.map { track -> track.toModel() }.takeIf { list -> list.isNotEmpty() },
+              queue =
+                it.queueList.map { track -> track.toModel() }.takeIf { list -> list.isNotEmpty() },
               volume = it.volume.nullIfNonPositive(),
             )
           },

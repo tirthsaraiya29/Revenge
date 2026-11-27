@@ -78,12 +78,13 @@ object BetterLyrics {
     album: String?,
   ): String? {
     return try {
-      val response = client().get("$BASE_URL/getLyrics") {
-        parameter("s", title)
-        parameter("a", artist)
-        if (duration > 0) parameter("d", duration)
-        if (!album.isNullOrBlank()) parameter("al", album)
-      }
+      val response =
+        client().get("$BASE_URL/getLyrics") {
+          parameter("s", title)
+          parameter("a", artist)
+          if (duration > 0) parameter("d", duration)
+          if (!album.isNullOrBlank()) parameter("al", album)
+        }
       if (response.status != HttpStatusCode.OK) {
         null
       } else {

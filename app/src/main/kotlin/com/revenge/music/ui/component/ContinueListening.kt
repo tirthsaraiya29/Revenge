@@ -13,17 +13,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import com.revenge.core.extensions.toMediaItem
+import com.revenge.core.models.toMediaMetadata
 import com.revenge.innertube.models.Artist
 import com.revenge.innertube.models.SongItem
 import com.revenge.innertube.models.WatchEndpoint.WatchEndpointMusicSupportedConfigs.WatchEndpointMusicConfig.Companion.MUSIC_VIDEO_TYPE_PODCAST_EPISODE
 import com.revenge.music.LocalPlayerConnection
 import com.revenge.music.R
-import com.revenge.core.extensions.toMediaItem
-import com.revenge.core.models.toMediaMetadata
-import com.revenge.playback.queues.ListQueue
 import com.revenge.music.utils.EpisodeProgress
 import com.revenge.music.utils.PodcastProgress
 import com.revenge.music.utils.listItemShape
+import com.revenge.playback.queues.ListQueue
 
 /** Episodes started and not finished, most recently listened first. */
 @Composable

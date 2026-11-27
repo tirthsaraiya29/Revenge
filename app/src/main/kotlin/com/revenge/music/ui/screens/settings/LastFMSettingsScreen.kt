@@ -81,8 +81,11 @@ fun LastFMSettingsScreen(navController: NavController) {
     },
   ) { padding ->
     Column(
-      modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState())
-        .padding(16.dp),
+      modifier =
+        Modifier.fillMaxSize()
+          .padding(padding)
+          .verticalScroll(rememberScrollState())
+          .padding(16.dp),
       verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
       Text(
@@ -91,7 +94,11 @@ fun LastFMSettingsScreen(navController: NavController) {
         style = MaterialTheme.typography.titleMedium,
       )
       if (sessionKey.isBlank()) {
-        Button(onClick = { showLogin = true }, enabled = !loading, modifier = Modifier.fillMaxWidth()) {
+        Button(
+          onClick = { showLogin = true },
+          enabled = !loading,
+          modifier = Modifier.fillMaxWidth(),
+        ) {
           Text("Log in")
         }
       } else {
@@ -108,7 +115,9 @@ fun LastFMSettingsScreen(navController: NavController) {
             }
           },
           modifier = Modifier.fillMaxWidth(),
-        ) { Text("Log out") }
+        ) {
+          Text("Log out")
+        }
       }
 
       HorizontalDivider()
@@ -177,7 +186,9 @@ fun LastFMSettingsScreen(navController: NavController) {
               loading = false
             }
           },
-        ) { Text(if (loading) "Logging in..." else "Login") }
+        ) {
+          Text(if (loading) "Logging in..." else "Login")
+        }
       },
       dismissButton = { TextButton(onClick = { showLogin = false }) { Text("Cancel") } },
     )
@@ -201,7 +212,14 @@ private fun NumberRow(label: String, value: Int, default: Int, onChange: (Int) -
     horizontalArrangement = Arrangement.SpaceBetween,
   ) {
     Text(label)
-    TextButton(onClick = { draft = value.toString(); editing = true }) { Text(value.toString()) }
+    TextButton(
+      onClick = {
+        draft = value.toString()
+        editing = true
+      },
+    ) {
+      Text(value.toString())
+    }
   }
   if (editing) {
     AlertDialog(
@@ -215,12 +233,24 @@ private fun NumberRow(label: String, value: Int, default: Int, onChange: (Int) -
         )
       },
       confirmButton = {
-        TextButton(onClick = { draft.toIntOrNull()?.let(onChange); editing = false }) {
+        TextButton(
+          onClick = {
+            draft.toIntOrNull()?.let(onChange)
+            editing = false
+          },
+        ) {
           Text("Save")
         }
       },
       dismissButton = {
-        TextButton(onClick = { onChange(default); editing = false }) { Text("Reset") }
+        TextButton(
+          onClick = {
+            onChange(default)
+            editing = false
+          },
+        ) {
+          Text("Reset")
+        }
       },
     )
   }
@@ -235,7 +265,14 @@ private fun PercentRow(label: String, value: Float, default: Float, onChange: (F
     horizontalArrangement = Arrangement.SpaceBetween,
   ) {
     Text(label)
-    TextButton(onClick = { draft = value.toString(); editing = true }) { Text(value.toString()) }
+    TextButton(
+      onClick = {
+        draft = value.toString()
+        editing = true
+      },
+    ) {
+      Text(value.toString())
+    }
   }
   if (editing) {
     AlertDialog(
@@ -249,12 +286,24 @@ private fun PercentRow(label: String, value: Float, default: Float, onChange: (F
         )
       },
       confirmButton = {
-        TextButton(onClick = { draft.toFloatOrNull()?.let(onChange); editing = false }) {
+        TextButton(
+          onClick = {
+            draft.toFloatOrNull()?.let(onChange)
+            editing = false
+          },
+        ) {
           Text("Save")
         }
       },
       dismissButton = {
-        TextButton(onClick = { onChange(default); editing = false }) { Text("Reset") }
+        TextButton(
+          onClick = {
+            onChange(default)
+            editing = false
+          },
+        ) {
+          Text("Reset")
+        }
       },
     )
   }

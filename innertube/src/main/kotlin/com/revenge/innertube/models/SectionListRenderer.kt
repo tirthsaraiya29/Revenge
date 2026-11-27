@@ -5,55 +5,56 @@ import kotlinx.serialization.json.JsonNames
 
 @Serializable
 data class SectionListRenderer(
-    val header: Header?,
-    val contents: List<Content>?,
-    val continuations: List<Continuation>?,
+  val header: Header?,
+  val contents: List<Content>?,
+  val continuations: List<Continuation>?,
 ) {
+  @Serializable
+  data class Header(
+    val chipCloudRenderer: ChipCloudRenderer?,
+  ) {
     @Serializable
-    data class Header(
-        val chipCloudRenderer: ChipCloudRenderer?,
+    data class ChipCloudRenderer(
+      val chips: List<Chip>,
     ) {
-        @Serializable
-        data class ChipCloudRenderer(
-            val chips: List<Chip>,
-        ) {
-            @Serializable
-            data class Chip(
-                val chipCloudChipRenderer: ChipCloudChipRenderer,
-            )
+      @Serializable
+      data class Chip(
+        val chipCloudChipRenderer: ChipCloudChipRenderer,
+      )
 
-            @Serializable
-            data class ChipCloudChipRenderer(
-                val isSelected: Boolean = false,
-                val navigationEndpoint: NavigationEndpoint = NavigationEndpoint(),
-                val onDeselectedCommand: NavigationEndpoint? = null,
-                val text: Runs?,
-                val uniqueId: String?,
-            )
-        }
+      @Serializable
+      data class ChipCloudChipRenderer(
+        val isSelected: Boolean = false,
+        val navigationEndpoint: NavigationEndpoint = NavigationEndpoint(),
+        val onDeselectedCommand: NavigationEndpoint? = null,
+        val text: Runs?,
+        val uniqueId: String?,
+      )
     }
+  }
 
-    @Serializable
-    data class Content(
-        @JsonNames("musicImmersiveCarouselShelfRenderer")
-        val musicCarouselShelfRenderer: MusicCarouselShelfRenderer? = null,
-        val musicShelfRenderer: MusicShelfRenderer? = null,
-        val musicCardShelfRenderer: MusicCardShelfRenderer? = null,
-        val musicPlaylistShelfRenderer: MusicPlaylistShelfRenderer? = null,
-        val musicDescriptionShelfRenderer: MusicDescriptionShelfRenderer? = null,
-        val musicResponsiveHeaderRenderer: MusicResponsiveHeaderRenderer? = null,
-        val musicEditablePlaylistDetailHeaderRenderer: MusicEditablePlaylistDetailHeaderRenderer? = null,
-        val gridRenderer: GridRenderer? = null,
-        val itemSectionRenderer: ItemSectionRenderer? = null,
-    )
+  @Serializable
+  data class Content(
+    @JsonNames("musicImmersiveCarouselShelfRenderer")
+    val musicCarouselShelfRenderer: MusicCarouselShelfRenderer? = null,
+    val musicShelfRenderer: MusicShelfRenderer? = null,
+    val musicCardShelfRenderer: MusicCardShelfRenderer? = null,
+    val musicPlaylistShelfRenderer: MusicPlaylistShelfRenderer? = null,
+    val musicDescriptionShelfRenderer: MusicDescriptionShelfRenderer? = null,
+    val musicResponsiveHeaderRenderer: MusicResponsiveHeaderRenderer? = null,
+    val musicEditablePlaylistDetailHeaderRenderer: MusicEditablePlaylistDetailHeaderRenderer? =
+      null,
+    val gridRenderer: GridRenderer? = null,
+    val itemSectionRenderer: ItemSectionRenderer? = null,
+  )
 }
 
 @Serializable
 data class ItemSectionRenderer(
-    val contents: List<Content>?,
+  val contents: List<Content>?,
 ) {
-    @Serializable
-    data class Content(
-        val musicResponsiveListItemRenderer: MusicResponsiveListItemRenderer?,
-    )
+  @Serializable
+  data class Content(
+    val musicResponsiveListItemRenderer: MusicResponsiveListItemRenderer?,
+  )
 }

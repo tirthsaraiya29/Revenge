@@ -1,25 +1,28 @@
 package com.revenge.core.models
 
-import com.revenge.innertube.models.SongItem
 import com.revenge.core.db.entities.Song
 import com.revenge.core.db.entities.SongEntity
 import com.revenge.core.ui.utils.resize
+import com.revenge.innertube.models.SongItem
 
 private const val VIDEO_SONG_TYPE = "MUSIC_VIDEO_TYPE_OMV"
 
-fun Song.toMediaMetadata(): MediaMetadata = MediaMetadata(
+fun Song.toMediaMetadata(): MediaMetadata =
+  MediaMetadata(
     id = id,
     title = title,
     artists = artists.map { MediaMetadata.Artist(id = it.id, name = it.name) },
     duration = song.duration,
     thumbnailUrl = thumbnailUrl,
-    album = album?.let { MediaMetadata.Album(id = it.id, title = it.title) }
+    album =
+      album?.let { MediaMetadata.Album(id = it.id, title = it.title) }
         ?: song.albumId?.let { MediaMetadata.Album(id = it, title = song.albumName.orEmpty()) },
     musicVideoType = if (song.isVideo) VIDEO_SONG_TYPE else null,
     explicit = song.explicit,
-)
+  )
 
-fun SongEntity.toMediaMetadata(): MediaMetadata = MediaMetadata(
+fun SongEntity.toMediaMetadata(): MediaMetadata =
+  MediaMetadata(
     id = id,
     title = title,
     artists = emptyList(),
@@ -28,9 +31,10 @@ fun SongEntity.toMediaMetadata(): MediaMetadata = MediaMetadata(
     album = albumId?.let { MediaMetadata.Album(id = it, title = albumName.orEmpty()) },
     musicVideoType = if (isVideo) VIDEO_SONG_TYPE else null,
     explicit = explicit,
-)
+  )
 
-fun SongItem.toMediaMetadata(): MediaMetadata = MediaMetadata(
+fun SongItem.toMediaMetadata(): MediaMetadata =
+  MediaMetadata(
     id = id,
     title = title,
     artists = artists.map { MediaMetadata.Artist(id = it.id, name = it.name) },
@@ -42,9 +46,10 @@ fun SongItem.toMediaMetadata(): MediaMetadata = MediaMetadata(
     explicit = explicit,
     libraryAddToken = libraryAddToken,
     libraryRemoveToken = libraryRemoveToken,
-)
+  )
 
-fun MediaMetadata.toSongEntity(): SongEntity = SongEntity(
+fun MediaMetadata.toSongEntity(): SongEntity =
+  SongEntity(
     id = id,
     title = title,
     duration = duration,
@@ -58,4 +63,4 @@ fun MediaMetadata.toSongEntity(): SongEntity = SongEntity(
     isVideo = isVideoSong,
     libraryAddToken = libraryAddToken,
     libraryRemoveToken = libraryRemoveToken,
-)
+  )

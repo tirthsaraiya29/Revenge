@@ -8,13 +8,12 @@ import com.revenge.core.constants.SpotifyAccountAvatarUrlKey
 import com.revenge.core.constants.SpotifyAccountNameKey
 import com.revenge.core.constants.SpotifySpDcKey
 import com.revenge.core.constants.SpotifySpKeyKey
+import com.revenge.core.utils.dataStore
 import com.revenge.music.spotify.models.SpotifySession
 import com.revenge.music.utils.clearWebAuthSession
-import com.revenge.core.utils.dataStore
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.map
 
 @Singleton
 class SpotifySessionManager @Inject constructor() {

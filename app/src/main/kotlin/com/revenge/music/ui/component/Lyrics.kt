@@ -103,10 +103,6 @@ import coil3.imageLoader
 import coil3.request.ImageRequest
 import coil3.request.allowHardware
 import coil3.toBitmap
-import com.revenge.music.LocalDatabase
-import com.revenge.music.LocalListenTogetherManager
-import com.revenge.music.LocalPlayerConnection
-import com.revenge.music.R
 import com.revenge.core.constants.AiProviderKey
 import com.revenge.core.constants.AutoTranslateKey
 import com.revenge.core.constants.DarkModeKey
@@ -145,7 +141,6 @@ import com.revenge.core.constants.TranslateModeKey
 import com.revenge.core.db.entities.LyricsEntity.Companion.LYRICS_NOT_FOUND
 import com.revenge.lyrics.lyrics.LyricsEntry
 import com.revenge.lyrics.lyrics.LyricsTranslationHelper
-import com.revenge.lyrics.lyrics.TranslationStatus
 import com.revenge.lyrics.lyrics.LyricsUtils.findCurrentLineIndex
 import com.revenge.lyrics.lyrics.LyricsUtils.isBelarusian
 import com.revenge.lyrics.lyrics.LyricsUtils.isBulgarian
@@ -166,6 +161,11 @@ import com.revenge.lyrics.lyrics.LyricsUtils.romanizeHindi
 import com.revenge.lyrics.lyrics.LyricsUtils.romanizeJapanese
 import com.revenge.lyrics.lyrics.LyricsUtils.romanizeKorean
 import com.revenge.lyrics.lyrics.LyricsUtils.romanizePunjabi
+import com.revenge.lyrics.lyrics.TranslationStatus
+import com.revenge.music.LocalDatabase
+import com.revenge.music.LocalListenTogetherManager
+import com.revenge.music.LocalPlayerConnection
+import com.revenge.music.R
 import com.revenge.music.ui.component.shimmer.ShimmerHost
 import com.revenge.music.ui.component.shimmer.TextPlaceholder
 import com.revenge.music.ui.screens.settings.DarkMode
@@ -471,8 +471,7 @@ fun Lyrics(
         autoTranslate &&
           effectiveApiKey.isNotBlank() &&
           !LyricsTranslationHelper.hasTranslations(lyricsEntity) &&
-          LyricsTranslationHelper.status.value !is
-            TranslationStatus.Translating &&
+          LyricsTranslationHelper.status.value !is TranslationStatus.Translating &&
           !LyricsTranslationHelper.hasActiveTranslations.value
       ) {
         LyricsTranslationHelper.triggerManualTranslation()
@@ -717,10 +716,7 @@ fun Lyrics(
     modifier = modifier.fillMaxSize().padding(bottom = 12.dp),
   ) {
     AnimatedVisibility(
-      visible =
-        !compact &&
-          showTranslationBanner &&
-          translationStatus !is TranslationStatus.Idle,
+      visible = !compact && showTranslationBanner && translationStatus !is TranslationStatus.Idle,
       enter = fadeIn() + slideInVertically { -it },
       exit = fadeOut() + slideOutVertically { -it },
       modifier = Modifier.fillMaxWidth().zIndex(1f).padding(top = 56.dp),

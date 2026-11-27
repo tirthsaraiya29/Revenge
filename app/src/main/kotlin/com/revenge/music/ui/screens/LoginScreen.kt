@@ -28,13 +28,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.datastore.preferences.core.edit
 import androidx.navigation.NavController
-import com.revenge.innertube.YouTube
-import com.revenge.core.constants.SavedAccountsKey
-import com.revenge.core.constants.VisitorDataKey
 import com.revenge.core.constants.DataSyncIdKey
 import com.revenge.core.constants.InnerTubeCookieKey
+import com.revenge.core.constants.SavedAccountsKey
+import com.revenge.core.constants.VisitorDataKey
 import com.revenge.core.models.AccountData
 import com.revenge.core.utils.dataStore
+import com.revenge.innertube.YouTube
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -43,7 +43,10 @@ import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
-private val JSON = Json { ignoreUnknownKeys = true; isLenient = true }
+private val JSON = Json {
+  ignoreUnknownKeys = true
+  isLenient = true
+}
 
 @SuppressLint("SetJavaScriptEnabled")
 @OptIn(ExperimentalMaterial3Api::class)
@@ -83,12 +86,12 @@ fun LoginScreen(navController: NavController) {
               visitorData = visitorData.orEmpty(),
               dataSyncId = dataSyncId.orEmpty(),
             )
-          val existing =
-            runCatching {
-              JSON.decodeFromString<List<AccountData>>(
-                context.dataStore.data.first()[SavedAccountsKey] ?: "[]",
-              )
-            }.getOrDefault(emptyList())
+          val existing = runCatching {
+            JSON.decodeFromString<List<AccountData>>(
+              context.dataStore.data.first()[SavedAccountsKey] ?: "[]",
+            )
+          }
+            .getOrDefault(emptyList())
           val accounts = listOf(account) + existing.filterNot { it.cookie == cookie }
           context.dataStore.edit { preferences ->
             preferences[SavedAccountsKey] = JSON.encodeToString(accounts)
@@ -106,14 +109,16 @@ fun LoginScreen(navController: NavController) {
   }
 
   fun inspect(url: String?) {
-    val cookie = CookieManager.getInstance().getCookie("https://music.youtube.com")
-      ?: CookieManager.getInstance().getCookie("https://www.youtube.com")
-      ?: return
+    val cookie =
+      CookieManager.getInstance().getCookie("https://music.youtube.com")
+        ?: CookieManager.getInstance().getCookie("https://www.youtube.com")
+        ?: return
     val authenticated =
       cookie.contains("SAPISID") ||
         cookie.contains("__Secure-3PSID") ||
         cookie.contains("LOGIN_INFO")
-    val onYouTube = url?.contains("music.youtube.com") == true || url?.contains("youtube.com") == true
+    val onYouTube =
+      url?.contains("music.youtube.com") == true || url?.contains("youtube.com") == true
     if (authenticated && onYouTube) {
       complete(
         cookie = cookie,
@@ -156,7 +161,8 @@ fun LoginScreen(navController: NavController) {
       factory = {
         val webView =
           WebView(it).apply {
-            // nosemgrep: revenge-webview-javascript -- YouTube login page requires JS; no JS interface is added.
+            // nosemgrep: revenge-webview-javascript -- YouTube login page requires JS; no JS
+            // interface is added.
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
             settings.setSupportMultipleWindows(true)

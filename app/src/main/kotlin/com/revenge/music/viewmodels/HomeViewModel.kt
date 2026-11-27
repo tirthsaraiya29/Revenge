@@ -3,22 +3,6 @@ package com.revenge.music.viewmodels
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.revenge.innertube.YouTube
-import com.revenge.innertube.models.AlbumItem
-import com.revenge.innertube.models.Artist
-import com.revenge.innertube.models.BrowseEndpoint
-import com.revenge.innertube.models.PlaylistItem
-import com.revenge.innertube.models.SongItem
-import com.revenge.innertube.models.WatchEndpoint
-import com.revenge.innertube.models.YTItem
-import com.revenge.innertube.models.filterExplicit
-import com.revenge.innertube.models.filterPodcasts
-import com.revenge.innertube.models.filterVideoSongs
-import com.revenge.innertube.models.filterYoutubeShorts
-import com.revenge.innertube.pages.ExplorePage
-import com.revenge.innertube.pages.HomePage
-import com.revenge.innertube.utils.completed
-import com.revenge.music.R
 import com.revenge.core.constants.BlockedArtistsKey
 import com.revenge.core.constants.DislikedSongsKey
 import com.revenge.core.constants.HideExplicitKey
@@ -40,13 +24,29 @@ import com.revenge.core.db.entities.SpeedDialItem
 import com.revenge.core.extensions.filterVideoSongs
 import com.revenge.core.extensions.toEnum
 import com.revenge.core.models.SimilarRecommendation
-import com.revenge.music.spotify.LoadSpotifyRecommendationsUseCase
-import com.revenge.music.utils.PodcastProgress
-import com.revenge.music.utils.SyncUtils
 import com.revenge.core.utils.dataStore
-import com.revenge.music.utils.QuickPickSongs
 import com.revenge.core.utils.get
 import com.revenge.core.utils.reportException
+import com.revenge.innertube.YouTube
+import com.revenge.innertube.models.AlbumItem
+import com.revenge.innertube.models.Artist
+import com.revenge.innertube.models.BrowseEndpoint
+import com.revenge.innertube.models.PlaylistItem
+import com.revenge.innertube.models.SongItem
+import com.revenge.innertube.models.WatchEndpoint
+import com.revenge.innertube.models.YTItem
+import com.revenge.innertube.models.filterExplicit
+import com.revenge.innertube.models.filterPodcasts
+import com.revenge.innertube.models.filterVideoSongs
+import com.revenge.innertube.models.filterYoutubeShorts
+import com.revenge.innertube.pages.ExplorePage
+import com.revenge.innertube.pages.HomePage
+import com.revenge.innertube.utils.completed
+import com.revenge.music.R
+import com.revenge.music.spotify.LoadSpotifyRecommendationsUseCase
+import com.revenge.music.utils.PodcastProgress
+import com.revenge.music.utils.QuickPickSongs
+import com.revenge.music.utils.SyncUtils
 import com.revenge.music.utils.selectHeroCarouselSongs
 import com.revenge.music.utils.toCarouselSong
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -818,10 +818,11 @@ constructor(
         val newSections =
           (if (isMainHome) nextSections.sections
             else
-              PodcastProgress.getInstance(context).withoutContinueShelf(
-                nextSections.sections,
-                context.getString(R.string.continue_listening),
-              ))
+              PodcastProgress.getInstance(context)
+                .withoutContinueShelf(
+                  nextSections.sections,
+                  context.getString(R.string.continue_listening),
+                ))
             .filterNot { it.isStationListenTogether || isListenAgain(it) }
             .mapNotNull { section ->
               val filteredItems =
@@ -888,7 +889,8 @@ constructor(
       nextSections.copy(
         chips = homePage.value?.chips,
         sections =
-          PodcastProgress.getInstance(context).withoutContinueShelf(
+          PodcastProgress.getInstance(context)
+            .withoutContinueShelf(
               nextSections.sections,
               context.getString(R.string.continue_listening),
             )
@@ -1162,12 +1164,12 @@ private fun List<Song>.filterQuickPicks(
 ): List<Song> {
   val keptIds =
     QuickPickSongs.filterQuickPickSongs(
-      map { it.toCarouselSong() },
-      excludedSongIds,
-      blockedArtists,
-      hideExplicit,
-      hideVideoSongs,
-    )
+        map { it.toCarouselSong() },
+        excludedSongIds,
+        blockedArtists,
+        hideExplicit,
+        hideVideoSongs,
+      )
       .mapTo(HashSet()) { it.id }
   return filter { it.id in keptIds }.distinctBy { it.id }
 }

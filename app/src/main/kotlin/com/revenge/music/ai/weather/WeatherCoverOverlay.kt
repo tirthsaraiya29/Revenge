@@ -25,60 +25,56 @@ import coil3.compose.AsyncImage
 /** Square artwork tile with title and an optional weather badge. Pure composition, no effects. */
 @Composable
 fun WeatherCoverOverlay(
-    imageUrl: String?,
-    playlistName: String,
-    weatherInfo: WeatherInfo?,
-    modifier: Modifier = Modifier,
-    shape: Shape = RoundedCornerShape(16.dp),
-    placeholderPainter: Painter? = null,
+  imageUrl: String?,
+  playlistName: String,
+  weatherInfo: WeatherInfo?,
+  modifier: Modifier = Modifier,
+  shape: Shape = RoundedCornerShape(16.dp),
+  placeholderPainter: Painter? = null,
 ) {
-    Box(modifier = modifier.aspectRatio(1f).clip(shape)) {
-        if (imageUrl != null) {
-            AsyncImage(
-                model = imageUrl,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                placeholder = placeholderPainter,
-                modifier = Modifier.matchParentSize(),
-            )
-        } else {
-            Box(
-                Modifier
-                    .matchParentSize()
-                    .background(placeholderPainter?.let { Color.Gray } ?: Color.DarkGray),
-            )
-        }
-        Box(
-            Modifier
-                .matchParentSize()
-                .background(
-                    Brush.verticalGradient(
-                        listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f)),
-                    ),
-                ),
-        )
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(12.dp),
-        ) {
-            Text(
-                text = playlistName,
-                color = Color.White,
-                fontWeight = FontWeight.Bold,
-                fontSize = 16.sp,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            weatherInfo?.let { weather ->
-                Text(
-                    text = weather.summaryBadgeText,
-                    color = Color.White.copy(alpha = 0.85f),
-                    fontSize = 12.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
+  Box(modifier = modifier.aspectRatio(1f).clip(shape)) {
+    if (imageUrl != null) {
+      AsyncImage(
+        model = imageUrl,
+        contentDescription = null,
+        contentScale = ContentScale.Crop,
+        placeholder = placeholderPainter,
+        modifier = Modifier.matchParentSize(),
+      )
+    } else {
+      Box(
+        Modifier.matchParentSize()
+          .background(placeholderPainter?.let { Color.Gray } ?: Color.DarkGray),
+      )
     }
+    Box(
+      Modifier.matchParentSize()
+        .background(
+          Brush.verticalGradient(
+            listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f)),
+          ),
+        ),
+    )
+    Column(
+      modifier = Modifier.align(Alignment.BottomStart).padding(12.dp),
+    ) {
+      Text(
+        text = playlistName,
+        color = Color.White,
+        fontWeight = FontWeight.Bold,
+        fontSize = 16.sp,
+        maxLines = 2,
+        overflow = TextOverflow.Ellipsis,
+      )
+      weatherInfo?.let { weather ->
+        Text(
+          text = weather.summaryBadgeText,
+          color = Color.White.copy(alpha = 0.85f),
+          fontSize = 12.sp,
+          maxLines = 1,
+          overflow = TextOverflow.Ellipsis,
+        )
+      }
+    }
+  }
 }

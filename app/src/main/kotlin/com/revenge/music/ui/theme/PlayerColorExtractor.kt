@@ -46,68 +46,75 @@ object PlayerColorExtractor {
   suspend fun extractGradientColors(
     palette: Palette,
     fallbackColor: Int,
-  ): List<Color> = withContext(Dispatchers.Default) {
-    val candidates = listOfNotNull(
-      palette.dominantSwatch,
-      palette.vibrantSwatch,
-      palette.darkVibrantSwatch,
-      palette.lightVibrantSwatch,
-      palette.mutedSwatch,
-      palette.darkMutedSwatch,
-      palette.lightMutedSwatch,
-    )
+  ): List<Color> =
+    withContext(Dispatchers.Default) {
+      val candidates =
+        listOfNotNull(
+          palette.dominantSwatch,
+          palette.vibrantSwatch,
+          palette.darkVibrantSwatch,
+          palette.lightVibrantSwatch,
+          palette.mutedSwatch,
+          palette.darkMutedSwatch,
+          palette.lightMutedSwatch,
+        )
 
-    val best = candidates.maxByOrNull { weight(it) }
-    val fallbackDominant = palette.dominantSwatch?.rgb ?: palette.getDominantColor(fallbackColor)
+      val best = candidates.maxByOrNull { weight(it) }
+      val fallbackDominant = palette.dominantSwatch?.rgb ?: palette.getDominantColor(fallbackColor)
 
-    val vibrantBest = best?.takeIf {
-      val hsl = it.hsl
-      hsl[1] > Config.VIBRANT_SATURATION_THRESHOLD &&
-        hsl[2] > Config.VIBRANT_BRIGHTNESS_MIN &&
-        hsl[2] < Config.VIBRANT_BRIGHTNESS_MAX
+      val vibrantBest = best?.takeIf {
+        val hsl = it.hsl
+        hsl[1] > Config.VIBRANT_SATURATION_THRESHOLD &&
+          hsl[2] > Config.VIBRANT_BRIGHTNESS_MIN &&
+          hsl[2] < Config.VIBRANT_BRIGHTNESS_MAX
+      }
+
+      val baseColor = vibrantBest?.rgb ?: fallbackDominant
+      val saturationFactor =
+        if (vibrantBest != null) {
+          Config.VIBRANT_SATURATION_FACTOR
+        } else {
+          Config.FALLBACK_SATURATION_FACTOR
+        }
+
+      val primary = enhance(baseColor, saturationFactor)
+      val darker =
+        Color(
+          red = primary.red * Config.DARKER_VARIANT_FACTOR,
+          green = primary.green * Config.DARKER_VARIANT_FACTOR,
+          blue = primary.blue * Config.DARKER_VARIANT_FACTOR,
+          alpha = 1f,
+        )
+
+      listOf(primary, darker, Color.Black)
     }
-
-    val baseColor = vibrantBest?.rgb ?: fallbackDominant
-    val saturationFactor = if (vibrantBest != null) {
-      Config.VIBRANT_SATURATION_FACTOR
-    } else {
-      Config.FALLBACK_SATURATION_FACTOR
-    }
-
-    val primary = enhance(baseColor, saturationFactor)
-    val darker = Color(
-      red = primary.red * Config.DARKER_VARIANT_FACTOR,
-      green = primary.green * Config.DARKER_VARIANT_FACTOR,
-      blue = primary.blue * Config.DARKER_VARIANT_FACTOR,
-      alpha = 1f,
-    )
-
-    listOf(primary, darker, Color.Black)
-  }
 
   private fun weight(swatch: Palette.Swatch): Float {
     val hsl = swatch.hsl
     val saturation = hsl[1]
     val brightness = hsl[2]
-    val vibrancyBonus = if (
-      saturation > Config.VIBRANCY_THRESHOLD_SATURATION &&
-      brightness > Config.VIBRANCY_THRESHOLD_BRIGHTNESS
-    ) {
-      Config.VIBRANCY_BONUS
-    } else {
-      1f
-    }
+    val vibrancyBonus =
+      if (
+        saturation > Config.VIBRANCY_THRESHOLD_SATURATION &&
+          brightness > Config.VIBRANCY_THRESHOLD_BRIGHTNESS
+      ) {
+        Config.VIBRANCY_BONUS
+      } else {
+        1f
+      }
 
-    return swatch.population * Config.POPULATION_WEIGHT_MULTIPLIER *
-      vibrancyBonus * (saturation + brightness) / 2f
+    return swatch.population *
+      Config.POPULATION_WEIGHT_MULTIPLIER *
+      vibrancyBonus *
+      (saturation + brightness) / 2f
   }
 
   private fun enhance(baseColor: Int, saturationFactor: Float): Color {
     val hsl = FloatArray(3)
     ColorUtils.colorToHSL(baseColor, hsl)
     hsl[1] = min(1f, hsl[1] * saturationFactor)
-    hsl[2] = (hsl[2] * Config.BRIGHTNESS_MULTIPLIER)
-      .coerceIn(Config.BRIGHTNESS_MIN, Config.BRIGHTNESS_MAX)
+    hsl[2] =
+      (hsl[2] * Config.BRIGHTNESS_MULTIPLIER).coerceIn(Config.BRIGHTNESS_MIN, Config.BRIGHTNESS_MAX)
     return Color(ColorUtils.HSLToColor(hsl))
   }
 }

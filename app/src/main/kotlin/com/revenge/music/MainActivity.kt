@@ -64,7 +64,6 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -92,8 +91,8 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
-import androidx.core.view.WindowCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.core.view.WindowCompat
 import androidx.datastore.preferences.core.edit
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.lifecycleScope
@@ -114,8 +113,8 @@ import coil3.request.allowHardware
 import coil3.toBitmap
 import com.revenge.core.constants.AiRecommendationsKey
 import com.revenge.core.constants.AlbumArtThemeRecoloringKey
-import com.revenge.core.constants.AppLanguageKey
 import com.revenge.core.constants.AppBarHeight
+import com.revenge.core.constants.AppLanguageKey
 import com.revenge.core.constants.DarkModeKey
 import com.revenge.core.constants.DefaultOpenTabKey
 import com.revenge.core.constants.DisableScreenshotKey
@@ -154,16 +153,16 @@ import com.revenge.music.listentogether.ListenTogetherManager
 import com.revenge.music.playback.DownloadUtil
 import com.revenge.music.playback.MusicService
 import com.revenge.music.playback.PlayerConnection
-import com.revenge.music.ui.component.FloatingNavigationToolbar
-import com.revenge.music.ui.component.isRouteSelected
 import com.revenge.music.ui.component.AppNavigationRail
+import com.revenge.music.ui.component.FloatingNavigationToolbar
 import com.revenge.music.ui.component.GlassEffectConfig
 import com.revenge.music.ui.component.LocalAppBackdrop
 import com.revenge.music.ui.component.LocalGlassEffectConfig
 import com.revenge.music.ui.component.RingtoneProgressDialog
 import com.revenge.music.ui.component.RingtoneTrimmerDialog
-import com.revenge.music.ui.component.rememberBottomSheetState
 import com.revenge.music.ui.component.backdrop.backdrops.emptyBackdrop
+import com.revenge.music.ui.component.isRouteSelected
+import com.revenge.music.ui.component.rememberBottomSheetState
 import com.revenge.music.ui.component.shimmer.getShimmerTheme
 import com.revenge.music.ui.player.BottomSheetPlayer
 import com.revenge.music.ui.screens.Screens
@@ -323,8 +322,9 @@ class MainActivity : ComponentActivity() {
     return try {
       super.startForegroundService(service)
     } catch (exception: Exception) {
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-        exception is ForegroundServiceStartNotAllowedException
+      if (
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+          exception is ForegroundServiceStartNotAllowedException
       ) {
         Timber.w(exception, "Foreground service start was not allowed")
         null
@@ -350,7 +350,8 @@ class MainActivity : ComponentActivity() {
 
     val current = intent
     when (current.action) {
-      Intent.ACTION_VIEW, Intent.ACTION_SEND -> handleDeepLinkIntent(current)
+      Intent.ACTION_VIEW,
+      Intent.ACTION_SEND -> handleDeepLinkIntent(current)
       ACTION_RECOGNITION -> handleRecognitionIntent(current)
       MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH -> handleAssistantSearchIntent(current)
     }
@@ -358,7 +359,9 @@ class MainActivity : ComponentActivity() {
 
   internal suspend fun awaitPlayerConnection(): PlayerConnection? {
     repeat(PLAYER_CONNECTION_RETRIES) {
-      playerConnection?.let { return it }
+      playerConnection?.let {
+        return it
+      }
       delay(PLAYER_CONNECTION_RETRY_DELAY_MS)
     }
     return playerConnection
@@ -391,12 +394,12 @@ class MainActivity : ComponentActivity() {
     if (isServiceBound) return
     isServiceBound =
       runCatching {
-        bindService(
-          Intent(this, MusicService::class.java),
-          serviceConnection,
-          Context.BIND_AUTO_CREATE,
-        )
-      }
+          bindService(
+            Intent(this, MusicService::class.java),
+            serviceConnection,
+            Context.BIND_AUTO_CREATE,
+          )
+        }
         .getOrDefault(false)
   }
 
@@ -439,7 +442,8 @@ class MainActivity : ComponentActivity() {
           preferences.remove(ExportProgressKey)
         }
         marker.delete()
-      }.onFailure { Timber.w(it, "Could not clear export state") }
+      }
+        .onFailure { Timber.w(it, "Could not clear export state") }
     }
   }
 
@@ -467,7 +471,8 @@ class MainActivity : ComponentActivity() {
         runCatching {
           dataStore.edit { it[LastAiRecommendationUpdateDayKey] = today }
           aiRecommendationHelper.generateRecommendations(this@MainActivity)
-        }.onFailure { Timber.w(it, "Daily AI recommendation generation failed") }
+        }
+          .onFailure { Timber.w(it, "Daily AI recommendation generation failed") }
       }
     }
 
@@ -497,7 +502,8 @@ class MainActivity : ComponentActivity() {
       } else {
         workManager.cancelUniqueWork(AI_RECOMMENDATION_WORK_NAME)
       }
-    }.onFailure { Timber.w(it, "Could not update AiRecommendationWorker schedule") }
+    }
+      .onFailure { Timber.w(it, "Could not update AiRecommendationWorker schedule") }
   }
 
   private fun resolveInitialRoute(intent: Intent?): String {
@@ -551,7 +557,8 @@ class MainActivity : ComponentActivity() {
         val browseId = uri.lastPathSegment
         if (!browseId.isNullOrBlank()) navigate("album/${encode(browseId)}")
       }
-      "channel", "c" -> {
+      "channel",
+      "c" -> {
         val artistId = uri.lastPathSegment
         if (!artistId.isNullOrBlank()) navigate("artist/${encode(artistId)}")
       }
@@ -599,13 +606,14 @@ class MainActivity : ComponentActivity() {
       !videoId.isNullOrBlank() -> {
         lifecycleScope.launch {
           val firstItem =
-            YouTube.queue(videoIds = listOf(videoId), playlistId = playlistId).fold(
-              onSuccess = { it.firstOrNull() },
-              onFailure = {
-                reportException(it)
-                null
-              },
-            )
+            YouTube.queue(videoIds = listOf(videoId), playlistId = playlistId)
+              .fold(
+                onSuccess = { it.firstOrNull() },
+                onFailure = {
+                  reportException(it)
+                  null
+                },
+              )
           if (firstItem == null) return@launch
           val connection = awaitPlayerConnection() ?: return@launch
           connection.playQueue(
@@ -619,13 +627,14 @@ class MainActivity : ComponentActivity() {
       !playlistId.isNullOrBlank() -> {
         lifecycleScope.launch {
           val firstItem =
-            YouTube.queue(videoIds = null, playlistId = playlistId).fold(
-              onSuccess = { it.firstOrNull() },
-              onFailure = {
-                reportException(it)
-                null
-              },
-            )
+            YouTube.queue(videoIds = null, playlistId = playlistId)
+              .fold(
+                onSuccess = { it.firstOrNull() },
+                onFailure = {
+                  reportException(it)
+                  null
+                },
+              )
           if (firstItem == null) return@launch
           val connection = awaitPlayerConnection() ?: return@launch
           connection.playQueue(
@@ -662,7 +671,9 @@ class MainActivity : ComponentActivity() {
 
       val result =
         withContext(Dispatchers.IO) {
-          runCatching { connection.service.mediaLibrarySessionCallback.voiceSearchQueue(query, extras) }
+          runCatching {
+            connection.service.mediaLibrarySessionCallback.voiceSearchQueue(query, extras)
+          }
             .onFailure { reportException(it) }
             .getOrNull()
         }
@@ -670,8 +681,7 @@ class MainActivity : ComponentActivity() {
       if (requestCount != voiceRequestSequence.get()) return@launch
 
       if (result != null) {
-        val artworkUri =
-          result.mediaItems.getOrNull(result.startIndex)?.mediaMetadata?.artworkUri
+        val artworkUri = result.mediaItems.getOrNull(result.startIndex)?.mediaMetadata?.artworkUri
         connection.service.warmArtwork(artworkUri)
         if (requestCount != voiceRequestSequence.get()) return@launch
         connection.playQueue(
@@ -687,7 +697,10 @@ class MainActivity : ComponentActivity() {
     }
   }
 
-  private fun navigate(route: String, options: androidx.navigation.NavOptionsBuilder.() -> Unit = {}) {
+  private fun navigate(
+    route: String,
+    options: androidx.navigation.NavOptionsBuilder.() -> Unit = {},
+  ) {
     navController?.navigate(route, options)
   }
 
@@ -729,15 +742,18 @@ class MainActivity : ComponentActivity() {
 val LocalDatabase = staticCompositionLocalOf<MusicDatabase> { error("No database provided") }
 val LocalRingtoneViewModel =
   compositionLocalOf<RingtoneViewModel> { error("No RingtoneViewModel provided") }
-val LocalPlayerConnection = staticCompositionLocalOf<PlayerConnection?> {
-  error("No PlayerConnection provided")
-}
-val LocalPlayerAwareWindowInsets = compositionLocalOf<WindowInsets> {
-  error("No WindowInsets provided")
-}
-val LocalDownloadUtil = staticCompositionLocalOf<DownloadUtil> {
-  error("No DownloadUtil provided")
-}
+val LocalPlayerConnection =
+  staticCompositionLocalOf<PlayerConnection?> {
+    error("No PlayerConnection provided")
+  }
+val LocalPlayerAwareWindowInsets =
+  compositionLocalOf<WindowInsets> {
+    error("No WindowInsets provided")
+  }
+val LocalDownloadUtil =
+  staticCompositionLocalOf<DownloadUtil> {
+    error("No DownloadUtil provided")
+  }
 val LocalSyncUtils = staticCompositionLocalOf<SyncUtils> { error("No SyncUtils provided") }
 val LocalListenTogetherManager = staticCompositionLocalOf<ListenTogetherManager?> { null }
 val LocalIsPlayerExpanded = compositionLocalOf { false }
@@ -755,7 +771,11 @@ private data class UpdatePrompt(
   val description: String?,
 )
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@OptIn(
+  ExperimentalMaterial3Api::class,
+  ExperimentalMaterial3ExpressiveApi::class,
+  androidx.compose.foundation.layout.ExperimentalLayoutApi::class,
+)
 @Composable
 internal fun revengeApp(activity: MainActivity, initialRoute: String) {
   val context = LocalContext.current
@@ -779,19 +799,22 @@ internal fun revengeApp(activity: MainActivity, initialRoute: String) {
   val pureBlack = pureBlackPreference && darkTheme
   val (monochrome) = rememberPreference(IsMonochromeThemeKey, false)
   val (selectedThemeColor) = rememberPreference(SelectedThemeColorKey, BrandThemeColor.toArgb())
-  var themeColor by rememberSaveable(stateSaver = ColorSaver) {
-    mutableStateOf(Color(selectedThemeColor))
-  }
+  var themeColor by
+    rememberSaveable(stateSaver = ColorSaver) {
+      mutableStateOf(Color(selectedThemeColor))
+    }
   LaunchedEffect(selectedThemeColor) { themeColor = Color(selectedThemeColor) }
 
   val (recolorArtwork) = rememberPreference(AlbumArtThemeRecoloringKey, false)
   val playerConnection = activity.playerConnection
-  val metadata by produceState<MediaMetadata?>(initialValue = null, playerConnection) {
-    playerConnection?.mediaMetadata?.collect { value = it }
-  }
-  val effectivelyPlaying by produceState(initialValue = false, playerConnection) {
-    playerConnection?.isEffectivelyPlaying?.collect { value = it }
-  }
+  val metadata by
+    produceState<MediaMetadata?>(initialValue = null, playerConnection) {
+      playerConnection?.mediaMetadata?.collect { value = it }
+    }
+  val effectivelyPlaying by
+    produceState(initialValue = false, playerConnection) {
+      playerConnection?.isEffectivelyPlaying?.collect { value = it }
+    }
   var artworkColor by remember { mutableStateOf<Color?>(null) }
   LaunchedEffect(recolorArtwork, effectivelyPlaying, metadata?.thumbnailUrl) {
     val thumbnail = metadata?.thumbnailUrl
@@ -834,10 +857,11 @@ internal fun revengeApp(activity: MainActivity, initialRoute: String) {
       remember(listenTogetherInTopBar) {
         // filterNotNull: release/R8 has produced a null-containing MainScreens list.
         (if (listenTogetherInTopBar) {
-          Screens.MainScreens.filter { it != Screens.ListenTogether }
-        } else {
-          Screens.MainScreens
-        }).filterNotNull()
+            Screens.MainScreens.filter { it != Screens.ListenTogether }
+          } else {
+            Screens.MainScreens
+          })
+          .filterNotNull()
       }
 
     val backStackEntry by navController.currentBackStackEntryAsState()
@@ -864,9 +888,10 @@ internal fun revengeApp(activity: MainActivity, initialRoute: String) {
     var whatsNew by remember { mutableStateOf<WhatsNewInfo?>(null) }
     var celebrationVisible by rememberSaveable { mutableStateOf(isOctoberFourteenth()) }
 
-    var searchQuery by rememberSaveable(stateSaver = TextFieldValue.Saver) {
-      mutableStateOf(TextFieldValue(""))
-    }
+    var searchQuery by
+      rememberSaveable(stateSaver = TextFieldValue.Saver) {
+        mutableStateOf(TextFieldValue(""))
+      }
     val (pauseSearchHistory) = rememberPreference(PauseSearchHistoryKey, false)
     val (pauseListenHistory) = rememberPreference(PauseListenHistoryKey, false)
     val eventCount by remember { activity.database.eventCount() }.collectAsState(initial = 0)
@@ -939,9 +964,10 @@ internal fun revengeApp(activity: MainActivity, initialRoute: String) {
     }
 
     DisposableEffect(activity) {
-      val listener = androidx.core.util.Consumer<Intent> { newIntent ->
-        handleWidgetAction(newIntent.action)
-      }
+      val listener =
+        androidx.core.util.Consumer<Intent> { newIntent ->
+          handleWidgetAction(newIntent.action)
+        }
       activity.addOnNewIntentListener(listener)
       handleWidgetAction(activity.widgetIntentAction())
       onDispose { activity.removeOnNewIntentListener(listener) }
@@ -994,7 +1020,8 @@ internal fun revengeApp(activity: MainActivity, initialRoute: String) {
     }
 
     val baseInsets =
-      WindowInsets.systemBars.union(WindowInsets.displayCutout)
+      WindowInsets.systemBars
+        .union(WindowInsets.displayCutout)
         .add(
           WindowInsets(
             top = if (topBarVisible || searchVisible) AppBarHeight else 0.dp,
@@ -1029,13 +1056,12 @@ internal fun revengeApp(activity: MainActivity, initialRoute: String) {
     ) {
       Box(
         modifier =
-          Modifier.fillMaxSize()
-            .pointerInput(hapticHelper) {
-              awaitEachGesture {
-                awaitFirstDown(requireUnconsumed = false)
-                hapticHelper.performHaptic(HapticType.CLICK)
-              }
-            },
+          Modifier.fillMaxSize().pointerInput(hapticHelper) {
+            awaitEachGesture {
+              awaitFirstDown(requireUnconsumed = false)
+              hapticHelper.performHaptic(HapticType.CLICK)
+            }
+          },
       ) {
         Row(Modifier.fillMaxSize()) {
           if (useRail && navBarVisible) {
@@ -1065,7 +1091,9 @@ internal fun revengeApp(activity: MainActivity, initialRoute: String) {
                     onAccountClick = { navController.navigate("account") },
                     onSettingsClick = { navController.navigate("settings") },
                     accountImageUrl = accountImageUrl,
-                    onOpenMenu = { menuAction -> handleMenuAction(menuAction, navController, listenTogetherInTopBar) },
+                    onOpenMenu = { menuAction ->
+                      handleMenuAction(menuAction, navController, listenTogetherInTopBar)
+                    },
                     showHistory = showHistory,
                   )
                 }
@@ -1081,7 +1109,9 @@ internal fun revengeApp(activity: MainActivity, initialRoute: String) {
                     onAccountClick = { navController.navigate("account") },
                     onSettingsClick = { navController.navigate("settings") },
                     accountImageUrl = accountImageUrl,
-                    onOpenMenu = { menuAction -> handleMenuAction(menuAction, navController, listenTogetherInTopBar) },
+                    onOpenMenu = { menuAction ->
+                      handleMenuAction(menuAction, navController, listenTogetherInTopBar)
+                    },
                     showHistory = showHistory,
                   )
                 }
@@ -1262,7 +1292,9 @@ private fun handleMenuAction(
 
 private fun isTopBarRoute(route: String?, listenTogetherInTopBar: Boolean): Boolean {
   return when (route) {
-    Screens.Home.route, Screens.Podcast.route, Screens.Library.route -> true
+    Screens.Home.route,
+    Screens.Podcast.route,
+    Screens.Library.route -> true
     Screens.ListenTogether.route -> !listenTogetherInTopBar
     else -> false
   }
@@ -1581,17 +1613,16 @@ private fun OctoberCelebration(onFinished: () -> Unit) {
     onFinished()
   }
 
-  val celebrationColors =
-    remember {
-      listOf(
-        Color(0xFFF44336),
-        Color(0xFFFF9800),
-        Color(0xFFFFEB3B),
-        Color(0xFF4CAF50),
-        Color(0xFF2196F3),
-        Color(0xFF9C27B0),
-      )
-    }
+  val celebrationColors = remember {
+    listOf(
+      Color(0xFFF44336),
+      Color(0xFFFF9800),
+      Color(0xFFFFEB3B),
+      Color(0xFF4CAF50),
+      Color(0xFF2196F3),
+      Color(0xFF9C27B0),
+    )
+  }
 
   Canvas(Modifier.fillMaxSize().background(Color.Transparent)) {
     val count = 80
@@ -1619,14 +1650,10 @@ private fun isOctoberFourteenth(): Boolean {
 private suspend fun loadArtworkThemeColor(context: Context, url: String): Color? {
   return withContext(Dispatchers.IO) {
     runCatching {
-        val request =
-          ImageRequest.Builder(context)
-            .data(url)
-            .allowHardware(false)
-            .build()
-        val result = coil3.SingletonImageLoader.get(context).execute(request)
-        result.image?.toBitmap()?.extractThemeColor()
-      }
+      val request = ImageRequest.Builder(context).data(url).allowHardware(false).build()
+      val result = coil3.SingletonImageLoader.get(context).execute(request)
+      result.image?.toBitmap()?.extractThemeColor()
+    }
       .getOrNull()
   }
 }

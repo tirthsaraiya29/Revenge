@@ -2,7 +2,6 @@ package com.revenge.music.utils
 
 import android.content.ContentProvider
 import android.content.ContentValues
-import android.content.Context
 import android.database.Cursor
 import android.net.Uri
 import android.os.ParcelFileDescriptor
@@ -23,10 +22,12 @@ class AutomotiveArtworkProvider : ContentProvider() {
   override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor {
     if (mode != "r") throw SecurityException("Artwork is read-only")
     val context = context ?: throw FileNotFoundException("No provider context")
-    val url = AutomotiveArtwork.originalUrl(context, uri)
-      ?: throw FileNotFoundException("Unknown artwork URI")
-    val file = AutomotiveArtwork.artworkFile(context, url)
-      ?: throw FileNotFoundException("Artwork unavailable")
+    val url =
+      AutomotiveArtwork.originalUrl(context, uri)
+        ?: throw FileNotFoundException("Unknown artwork URI")
+    val file =
+      AutomotiveArtwork.artworkFile(context, url)
+        ?: throw FileNotFoundException("Artwork unavailable")
     return ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
   }
 

@@ -39,8 +39,7 @@ fun AutoPlaylistButton(
   ) {
     Row(
       verticalAlignment = Alignment.CenterVertically,
-      modifier =
-        Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 10.dp),
+      modifier = Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 10.dp),
     ) {
       Icon(
         painter = painterResource(id = icon),

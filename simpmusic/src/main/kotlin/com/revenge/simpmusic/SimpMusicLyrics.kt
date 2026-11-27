@@ -44,9 +44,7 @@ object SimpMusicLyrics {
   private fun client(): HttpClient = testClient ?: defaultClient
 
   suspend fun getLyricsByVideoId(videoId: String): List<LyricsData> {
-    return fetch(videoId, PRIMARY_BASE_URL)
-      ?: fetch(videoId, FALLBACK_BASE_URL)
-      ?: emptyList()
+    return fetch(videoId, PRIMARY_BASE_URL) ?: fetch(videoId, FALLBACK_BASE_URL) ?: emptyList()
   }
 
   suspend fun getLyrics(videoId: String, duration: Int = 0): Result<String> {
@@ -74,10 +72,11 @@ object SimpMusicLyrics {
 
   private suspend fun fetch(videoId: String, baseUrl: String): List<LyricsData>? {
     return try {
-      val response = client().get("$baseUrl$videoId") {
-        accept(ContentType.Application.Json)
-        header(HttpHeaders.UserAgent, USER_AGENT)
-      }
+      val response =
+        client().get("$baseUrl$videoId") {
+          accept(ContentType.Application.Json)
+          header(HttpHeaders.UserAgent, USER_AGENT)
+        }
       if (response.status.value != 200) {
         null
       } else {

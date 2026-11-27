@@ -69,10 +69,11 @@ class UnisonTest {
 
   @Test
   fun `parseSingle reads every field and applies defaults`() {
-    val entry = Unison.parseSingle(
-      """{"success":true,"data":{"id":1,"videoId":"v1","song":"Song","artist":"Artist",""" +
-        """"lyrics":"line","format":"lrc","syncType":"synced","confidence":null}}""",
-    )
+    val entry =
+      Unison.parseSingle(
+        """{"success":true,"data":{"id":1,"videoId":"v1","song":"Song","artist":"Artist",""" +
+          """"lyrics":"line","format":"lrc","syncType":"synced","confidence":null}}""",
+      )
 
     assertEquals(1L, entry?.id)
     assertEquals("v1", entry?.videoId)
@@ -98,9 +99,10 @@ class UnisonTest {
 
   @Test
   fun `parseSingle tolerates an unknown pagination envelope key`() {
-    val entry = Unison.parseSingle(
-      """{"success":true,"pagination":{"page":1},"data":${entryJson(3, "line")}}""",
-    )
+    val entry =
+      Unison.parseSingle(
+        """{"success":true,"pagination":{"page":1},"data":${entryJson(3, "line")}}""",
+      )
     assertEquals(3L, entry?.id)
   }
 
@@ -117,7 +119,7 @@ class UnisonTest {
   @Test
   fun `getLyrics rejects blank metadata without a request`() = runBlocking {
     val engine = FakeEngine { data -> reply(data, HttpStatusCode.OK, "") }
-    Unison.testClient = HttpClient(engine) { }
+    Unison.testClient = HttpClient(engine) {}
 
     assertTrue(Unison.getLyrics(title = " ", artist = "Artist").isFailure)
     assertTrue(Unison.getLyrics(title = "Song", artist = "").isFailure)
@@ -134,7 +136,7 @@ class UnisonTest {
         reply(data, HttpStatusCode.InternalServerError, "")
       }
     }
-    Unison.testClient = HttpClient(engine) { }
+    Unison.testClient = HttpClient(engine) {}
 
     val result = Unison.getLyrics(videoId = "v1", title = "Song", artist = "Artist")
 
@@ -151,7 +153,7 @@ class UnisonTest {
         reply(data, HttpStatusCode.OK, singleBody(entryJson(2, "metadata lyrics")))
       }
     }
-    Unison.testClient = HttpClient(engine) { }
+    Unison.testClient = HttpClient(engine) {}
 
     val result = Unison.getLyrics(videoId = "v1", title = "Song", artist = "Artist")
 
@@ -162,7 +164,7 @@ class UnisonTest {
   @Test
   fun `getLyrics reports unavailable when every endpoint fails without retrying`() = runBlocking {
     val engine = FakeEngine { data -> reply(data, HttpStatusCode.InternalServerError, "") }
-    Unison.testClient = HttpClient(engine) { }
+    Unison.testClient = HttpClient(engine) {}
 
     val result = Unison.getLyrics(videoId = "v1", title = "Song", artist = "Artist")
 
@@ -173,8 +175,10 @@ class UnisonTest {
 
   @Test
   fun `getAllLyrics calls back zero times for unusable metadata`() = runBlocking {
-    val engine = FakeEngine { data -> reply(data, HttpStatusCode.OK, """{"success":true,"data":[]}""") }
-    Unison.testClient = HttpClient(engine) { }
+    val engine = FakeEngine { data ->
+      reply(data, HttpStatusCode.OK, """{"success":true,"data":[]}""")
+    }
+    Unison.testClient = HttpClient(engine) {}
 
     val delivered = ArrayList<String>()
     Unison.getAllLyrics(title = "", artist = "") { delivered.add(it) }
@@ -184,11 +188,12 @@ class UnisonTest {
 
   @Test
   fun `getAllLyrics delivers the first five search results in order`() = runBlocking {
-    val entries = (1..7).joinToString(",", "[", "]") { index -> entryJson(index.toLong(), "L$index") }
+    val entries =
+      (1..7).joinToString(",", "[", "]") { index -> entryJson(index.toLong(), "L$index") }
     val engine = FakeEngine { data ->
       reply(data, HttpStatusCode.OK, """{"success":true,"data":$entries}""")
     }
-    Unison.testClient = HttpClient(engine) { }
+    Unison.testClient = HttpClient(engine) {}
 
     val delivered = ArrayList<String>()
     Unison.getAllLyrics(title = "Song", artist = "Artist") { delivered.add(it) }
@@ -206,7 +211,7 @@ class UnisonTest {
         reply(data, HttpStatusCode.OK, singleBody(entryJson(9, "single lyrics")))
       }
     }
-    Unison.testClient = HttpClient(engine) { }
+    Unison.testClient = HttpClient(engine) {}
 
     val delivered = ArrayList<String>()
     Unison.getAllLyrics(title = "Song", artist = "Artist") { delivered.add(it) }
@@ -217,11 +222,12 @@ class UnisonTest {
 
   @Test
   fun `getAllLyrics observes cancellation between callbacks`() = runBlocking {
-    val entries = (1..3).joinToString(",", "[", "]") { index -> entryJson(index.toLong(), "L$index") }
+    val entries =
+      (1..3).joinToString(",", "[", "]") { index -> entryJson(index.toLong(), "L$index") }
     val engine = FakeEngine { data ->
       reply(data, HttpStatusCode.OK, """{"success":true,"data":$entries}""")
     }
-    Unison.testClient = HttpClient(engine) { }
+    Unison.testClient = HttpClient(engine) {}
 
     val delivered = ArrayList<String>()
     val holder = arrayOfNulls<Job>(1)

@@ -175,13 +175,6 @@ import coil3.toBitmap
 import com.revenge.applecanvas.AppleMusicCanvasProvider
 import com.revenge.canvas.CanvasArtwork
 import com.revenge.canvas.TidalCanvasProvider
-import com.revenge.innertube.models.PODCAST_BROWSE_PREFIX
-import com.revenge.innertube.models.WatchEndpoint.WatchEndpointMusicSupportedConfigs.WatchEndpointMusicConfig.Companion.MUSIC_VIDEO_TYPE_PODCAST_EPISODE
-import com.revenge.music.LocalDatabase
-import com.revenge.music.LocalDownloadUtil
-import com.revenge.music.LocalListenTogetherManager
-import com.revenge.music.LocalPlayerConnection
-import com.revenge.music.R
 import com.revenge.core.constants.CanvasThumbnailAnimationKey
 import com.revenge.core.constants.CropAlbumArtKey
 import com.revenge.core.constants.DarkModeKey
@@ -206,9 +199,17 @@ import com.revenge.core.constants.ThumbnailCornerRadius
 import com.revenge.core.constants.UseNewPlayerDesignKey
 import com.revenge.core.constants.WavyPlayPauseKey
 import com.revenge.core.db.entities.LyricsEntity
-import com.revenge.music.extensions.SwipeGesture
 import com.revenge.core.extensions.togglePlayPause
 import com.revenge.core.models.MediaMetadata
+import com.revenge.core.utils.dataStore
+import com.revenge.innertube.models.PODCAST_BROWSE_PREFIX
+import com.revenge.innertube.models.WatchEndpoint.WatchEndpointMusicSupportedConfigs.WatchEndpointMusicConfig.Companion.MUSIC_VIDEO_TYPE_PODCAST_EPISODE
+import com.revenge.music.LocalDatabase
+import com.revenge.music.LocalDownloadUtil
+import com.revenge.music.LocalListenTogetherManager
+import com.revenge.music.LocalPlayerConnection
+import com.revenge.music.R
+import com.revenge.music.extensions.SwipeGesture
 import com.revenge.music.playback.ExoDownloadService
 import com.revenge.music.playback.audio.bluetooth.BluetoothAudioTracker
 import com.revenge.music.spotify.Spotify
@@ -236,7 +237,6 @@ import com.revenge.music.updates.getConnectedBluetoothDeviceName
 import com.revenge.music.updates.isBuds
 import com.revenge.music.updates.isSpeaker
 import com.revenge.music.utils.PodcastProgress
-import com.revenge.core.utils.dataStore
 import com.revenge.music.utils.isLocalMediaId
 import com.revenge.music.utils.makeTimeString
 import com.revenge.music.utils.rememberEnumPreference
@@ -1476,7 +1476,10 @@ fun BottomSheetPlayer(
                       Modifier.fillMaxSize()
                         .background(
                           Brush.verticalGradient(
-                            listOf(Color.Black.copy(alpha = 0.12f), Color.Black.copy(alpha = 0.62f)),
+                            listOf(
+                              Color.Black.copy(alpha = 0.12f),
+                              Color.Black.copy(alpha = 0.62f),
+                            ),
                           ),
                         ),
                   )
@@ -1707,97 +1710,98 @@ fun BottomSheetPlayer(
           verticalAlignment = Alignment.CenterVertically,
           modifier = Modifier.fillMaxWidth(),
         ) {
-        AnimatedContent(targetState = showInlineLyrics, label = "ThumbnailAnimation") { showLyrics
-          ->
-          if (showLyrics) {
-            Row {
-              if (hidePlayerThumbnail) {
-                Box(
-                  modifier =
-                    Modifier.size(56.dp)
-                      .clip(RoundedCornerShape(ThumbnailCornerRadius))
-                      .background(MaterialTheme.colorScheme.surfaceVariant),
-                  contentAlignment = Alignment.Center,
-                ) {
-                  Icon(
-                    painter = painterResource(R.drawable.ic_launcher_nobg),
-                    contentDescription = null,
-                    modifier = Modifier.size(32.dp),
-                    tint = textButtonColor.copy(alpha = 0.7f),
-                  )
-                }
-              } else {
-                Box(
-                  contentAlignment = Alignment.Center,
-                  modifier =
-                    Modifier.size(56.dp).clip(RoundedCornerShape(ThumbnailCornerRadius)).clickable(
-                      enabled = isFullScreen && enableLyricsThumbnailPlayPause,
-                    ) {
-                      playerConnection.togglePlayPause()
-                    },
-                ) {
-                  AsyncImage(
-                    model = mediaMetadata.thumbnailUrl,
-                    contentDescription = null,
-                    contentScale = if (cropAlbumArt) ContentScale.Crop else ContentScale.Fit,
-                    modifier = Modifier.fillMaxSize(),
-                  )
-
-                  if (isFullScreen && enableLyricsThumbnailPlayPause) {
-                    Box(
-                      modifier =
-                        Modifier.fillMaxSize()
-                          .background(Color.Black.copy(alpha = if (isPlaying) 0f else 0.4f)),
+          AnimatedContent(targetState = showInlineLyrics, label = "ThumbnailAnimation") { showLyrics
+            ->
+            if (showLyrics) {
+              Row {
+                if (hidePlayerThumbnail) {
+                  Box(
+                    modifier =
+                      Modifier.size(56.dp)
+                        .clip(RoundedCornerShape(ThumbnailCornerRadius))
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                    contentAlignment = Alignment.Center,
+                  ) {
+                    Icon(
+                      painter = painterResource(R.drawable.ic_launcher_nobg),
+                      contentDescription = null,
+                      modifier = Modifier.size(32.dp),
+                      tint = textButtonColor.copy(alpha = 0.7f),
+                    )
+                  }
+                } else {
+                  Box(
+                    contentAlignment = Alignment.Center,
+                    modifier =
+                      Modifier.size(56.dp)
+                        .clip(RoundedCornerShape(ThumbnailCornerRadius))
+                        .clickable(
+                          enabled = isFullScreen && enableLyricsThumbnailPlayPause,
+                        ) {
+                          playerConnection.togglePlayPause()
+                        },
+                  ) {
+                    AsyncImage(
+                      model = mediaMetadata.thumbnailUrl,
+                      contentDescription = null,
+                      contentScale = if (cropAlbumArt) ContentScale.Crop else ContentScale.Fit,
+                      modifier = Modifier.fillMaxSize(),
                     )
 
-                    androidx.compose.animation.AnimatedVisibility(
-                      visible = !isPlaying,
-                      enter = fadeIn(),
-                      exit = fadeOut(),
-                    ) {
-                      Icon(
-                        painter =
-                          painterResource(
-                            if (playbackState == Player.STATE_ENDED) R.drawable.replay
-                            else R.drawable.play,
-                          ),
-                        contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.size(24.dp),
+                    if (isFullScreen && enableLyricsThumbnailPlayPause) {
+                      Box(
+                        modifier =
+                          Modifier.fillMaxSize()
+                            .background(Color.Black.copy(alpha = if (isPlaying) 0f else 0.4f)),
                       )
+
+                      androidx.compose.animation.AnimatedVisibility(
+                        visible = !isPlaying,
+                        enter = fadeIn(),
+                        exit = fadeOut(),
+                      ) {
+                        Icon(
+                          painter =
+                            painterResource(
+                              if (playbackState == Player.STATE_ENDED) R.drawable.replay
+                              else R.drawable.play,
+                            ),
+                          contentDescription = null,
+                          tint = Color.White,
+                          modifier = Modifier.size(24.dp),
+                        )
+                      }
                     }
                   }
                 }
+                Spacer(modifier = Modifier.width(12.dp))
               }
-              Spacer(modifier = Modifier.width(12.dp))
+            } else {
+              Spacer(modifier = Modifier.width(0.dp))
             }
-          } else {
-            Spacer(modifier = Modifier.width(0.dp))
           }
-        }
-        Column(
-          modifier =
-            Modifier.weight(1f)
-              .SwipeGesture(
-                enabled = isFullScreen && swipeLyrics,
-                onSwipeRight = { playerConnection.seekToPrevious() },
-                onSwipeLeft = { playerConnection.seekToNext() },
-              ),
-        ) {
-          AnimatedContent(
-            targetState = mediaMetadata.title,
-            transitionSpec = { fadeIn() togetherWith fadeOut() },
-            label = "",
-          ) { title ->
-            Text(
-              text = title,
-              style = MaterialTheme.typography.titleLarge,
-              maxLines = 2,
-              overflow = TextOverflow.Ellipsis,
-              color = TextBackgroundColor,
-              modifier =
-                Modifier
-                  .combinedClickable(
+          Column(
+            modifier =
+              Modifier.weight(1f)
+                .SwipeGesture(
+                  enabled = isFullScreen && swipeLyrics,
+                  onSwipeRight = { playerConnection.seekToPrevious() },
+                  onSwipeLeft = { playerConnection.seekToNext() },
+                ),
+          ) {
+            AnimatedContent(
+              targetState = mediaMetadata.title,
+              transitionSpec = { fadeIn() togetherWith fadeOut() },
+              label = "",
+            ) { title ->
+              Text(
+                text = title,
+                style = MaterialTheme.typography.titleLarge,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                color = TextBackgroundColor,
+                modifier =
+                  Modifier.combinedClickable(
                     enabled = true,
                     indication = null,
                     interactionSource = remember { MutableInteractionSource() },
@@ -1819,119 +1823,118 @@ fun BottomSheetPlayer(
                         .show()
                     },
                   ),
-            )
-          }
-
-          Spacer(Modifier.height(4.dp))
-
-          if (isCasting && castDeviceName != null) {
-            Row(
-              verticalAlignment = Alignment.CenterVertically,
-              modifier = Modifier.padding(vertical = 2.dp),
-            ) {
-              Icon(
-                painter = painterResource(R.drawable.cast_connected),
-                contentDescription = null,
-                tint = TextBackgroundColor.copy(alpha = 0.7f),
-                modifier = Modifier.size(14.dp),
-              )
-              Spacer(Modifier.width(4.dp))
-              Text(
-                text = "Casting to $castDeviceName",
-                style = MaterialTheme.typography.labelMedium,
-                color = TextBackgroundColor.copy(alpha = 0.7f),
               )
             }
-            Spacer(Modifier.height(2.dp))
-          }
 
-          Row(
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-          ) {
-            if (mediaMetadata.explicit) MIcon.Explicit(tint = TextBackgroundColor)
+            Spacer(Modifier.height(4.dp))
 
-            if (mediaMetadata.artists.any { it.name.isNotBlank() }) {
-              val annotatedString = buildAnnotatedString {
-                mediaMetadata.artists.forEachIndexed { index, artist ->
-                  val tag = "artist_${artist.id.orEmpty()}"
-                  pushStringAnnotation(tag = tag, annotation = artist.id.orEmpty())
-                  withStyle(SpanStyle(color = TextBackgroundColor, fontSize = 16.sp)) {
-                    append(artist.name)
-                  }
-                  pop()
-                  if (index != mediaMetadata.artists.lastIndex) append(", ")
-                }
-              }
-
-              Box(
-                modifier =
-                  Modifier.fillMaxWidth()
-                    .basicMarquee(iterations = 1, initialDelayMillis = 3000, velocity = 30.dp)
-                    .padding(end = 12.dp),
+            if (isCasting && castDeviceName != null) {
+              Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(vertical = 2.dp),
               ) {
-                var layoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
-                var clickOffset by remember { mutableStateOf<Offset?>(null) }
+                Icon(
+                  painter = painterResource(R.drawable.cast_connected),
+                  contentDescription = null,
+                  tint = TextBackgroundColor.copy(alpha = 0.7f),
+                  modifier = Modifier.size(14.dp),
+                )
+                Spacer(Modifier.width(4.dp))
                 Text(
-                  text = annotatedString,
-                  style = MaterialTheme.typography.titleMedium.copy(color = TextBackgroundColor),
-                  maxLines = 1,
-                  overflow = TextOverflow.Ellipsis,
-                  onTextLayout = { layoutResult = it },
+                  text = "Casting to $castDeviceName",
+                  style = MaterialTheme.typography.labelMedium,
+                  color = TextBackgroundColor.copy(alpha = 0.7f),
+                )
+              }
+              Spacer(Modifier.height(2.dp))
+            }
+
+            Row(
+              horizontalArrangement = Arrangement.SpaceBetween,
+              verticalAlignment = Alignment.CenterVertically,
+            ) {
+              if (mediaMetadata.explicit) MIcon.Explicit(tint = TextBackgroundColor)
+
+              if (mediaMetadata.artists.any { it.name.isNotBlank() }) {
+                val annotatedString = buildAnnotatedString {
+                  mediaMetadata.artists.forEachIndexed { index, artist ->
+                    val tag = "artist_${artist.id.orEmpty()}"
+                    pushStringAnnotation(tag = tag, annotation = artist.id.orEmpty())
+                    withStyle(SpanStyle(color = TextBackgroundColor, fontSize = 16.sp)) {
+                      append(artist.name)
+                    }
+                    pop()
+                    if (index != mediaMetadata.artists.lastIndex) append(", ")
+                  }
+                }
+
+                Box(
                   modifier =
-                    Modifier.pointerInput(Unit) {
-                        awaitPointerEventScope {
-                          while (true) {
-                            val event = awaitPointerEvent()
-                            val tapPosition = event.changes.firstOrNull()?.position
-                            if (tapPosition != null) {
-                              clickOffset = tapPosition
+                    Modifier.fillMaxWidth()
+                      .basicMarquee(iterations = 1, initialDelayMillis = 3000, velocity = 30.dp)
+                      .padding(end = 12.dp),
+                ) {
+                  var layoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
+                  var clickOffset by remember { mutableStateOf<Offset?>(null) }
+                  Text(
+                    text = annotatedString,
+                    style = MaterialTheme.typography.titleMedium.copy(color = TextBackgroundColor),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    onTextLayout = { layoutResult = it },
+                    modifier =
+                      Modifier.pointerInput(Unit) {
+                          awaitPointerEventScope {
+                            while (true) {
+                              val event = awaitPointerEvent()
+                              val tapPosition = event.changes.firstOrNull()?.position
+                              if (tapPosition != null) {
+                                clickOffset = tapPosition
+                              }
                             }
                           }
                         }
-                      }
-                      .combinedClickable(
-                        enabled = true,
-                        indication = null,
-                        interactionSource = remember { MutableInteractionSource() },
-                        onClick = {
-                          val tapPosition = clickOffset
-                          val layout = layoutResult
-                          if (tapPosition != null && layout != null) {
-                            val offset = layout.getOffsetForPosition(tapPosition)
-                            annotatedString
-                              .getStringAnnotations(offset, offset)
-                              .firstOrNull()
-                              ?.let { ann ->
-                                val artistId = ann.item
-                                if (artistId.isNotBlank()) {
-                                  navController.navigate("artist/$artistId")
-                                  state.collapseSoft()
+                        .combinedClickable(
+                          enabled = true,
+                          indication = null,
+                          interactionSource = remember { MutableInteractionSource() },
+                          onClick = {
+                            val tapPosition = clickOffset
+                            val layout = layoutResult
+                            if (tapPosition != null && layout != null) {
+                              val offset = layout.getOffsetForPosition(tapPosition)
+                              annotatedString
+                                .getStringAnnotations(offset, offset)
+                                .firstOrNull()
+                                ?.let { ann ->
+                                  val artistId = ann.item
+                                  if (artistId.isNotBlank()) {
+                                    navController.navigate("artist/$artistId")
+                                    state.collapseSoft()
+                                  }
                                 }
-                              }
-                          }
-                        },
-                        onLongClick = {
-                          val clip =
-                            ClipData.newPlainText(
-                              context.getString(R.string.copied_artist),
-                              annotatedString,
-                            )
-                          clipboardManager.setPrimaryClip(clip)
-                          Toast.makeText(
-                              context,
-                              context.getString(R.string.copied_artist),
-                              Toast.LENGTH_SHORT,
-                            )
-                            .show()
-                        },
-                      ),
-                )
+                            }
+                          },
+                          onLongClick = {
+                            val clip =
+                              ClipData.newPlainText(
+                                context.getString(R.string.copied_artist),
+                                annotatedString,
+                              )
+                            clipboardManager.setPrimaryClip(clip)
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.copied_artist),
+                                Toast.LENGTH_SHORT,
+                              )
+                              .show()
+                          },
+                        ),
+                  )
+                }
               }
             }
           }
-        }
-
         }
 
         // Metadata gets the full width; playback actions sit on their own row below it.
@@ -1941,184 +1944,35 @@ fun BottomSheetPlayer(
           verticalAlignment = Alignment.CenterVertically,
           modifier = Modifier.fillMaxWidth(),
         ) {
-        if (useNewPlayerDesign) {
-          val shareShape =
-            RoundedCornerShape(
-              topStart = 50.dp,
-              bottomStart = 50.dp,
-              topEnd = 3.dp,
-              bottomEnd = 3.dp,
-            )
+          if (useNewPlayerDesign) {
+            val shareShape =
+              RoundedCornerShape(
+                topStart = 50.dp,
+                bottomStart = 50.dp,
+                topEnd = 3.dp,
+                bottomEnd = 3.dp,
+              )
 
-          val favShape =
-            RoundedCornerShape(
-              topStart = 3.dp,
-              bottomStart = 3.dp,
-              topEnd = 50.dp,
-              bottomEnd = 50.dp,
-            )
+            val favShape =
+              RoundedCornerShape(
+                topStart = 3.dp,
+                bottomStart = 3.dp,
+                topEnd = 50.dp,
+                bottomEnd = 50.dp,
+              )
 
-          val middleShape = RoundedCornerShape(3.dp)
+            val middleShape = RoundedCornerShape(3.dp)
 
-          Row(
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-          ) {
-            AnimatedContent(targetState = showInlineLyrics, label = "DownloadButton") { showLyrics
-              ->
-              if (showLyrics) {
-                FilledIconButton(
-                  onClick = { isFullScreen = !isFullScreen },
-                  shape = shareShape,
-                  colors =
-                    IconButtonDefaults.filledIconButtonColors(
-                      containerColor = textButtonColor,
-                      contentColor = iconButtonColor,
-                    ),
-                  modifier = Modifier.size(42.dp),
-                ) {
-                  Icon(
-                    painter =
-                      painterResource(
-                        if (isFullScreen) R.drawable.fullscreen_exit else R.drawable.fullscreen,
-                      ),
-                    contentDescription =
-                      stringResource(
-                        if (isFullScreen) R.string.exit_fullscreen else R.string.enter_fullscreen,
-                      ),
-                    modifier = Modifier.size(24.dp),
-                  )
-                }
-              } else {
-                FilledIconButton(
-                  onClick = {
-                    mediaMetadata?.let { meta ->
-                      when (download?.state) {
-                        Download.STATE_COMPLETED,
-                        Download.STATE_QUEUED,
-                        Download.STATE_DOWNLOADING -> {
-                          DownloadService.sendRemoveDownload(
-                            context,
-                            ExoDownloadService::class.java,
-                            meta.id,
-                            false,
-                          )
-                        }
-                        else -> {
-                          coroutineScope.launch(Dispatchers.IO) { database.insert(meta) }
-                          val downloadRequest =
-                            DownloadRequest.Builder(meta.id, meta.id.toUri())
-                              .setCustomCacheKey(meta.id)
-                              .setData(meta.title.toByteArray())
-                              .build()
-                          DownloadService.sendAddDownload(
-                            context,
-                            ExoDownloadService::class.java,
-                            downloadRequest,
-                            false,
-                          )
-                        }
-                      }
-                    }
-                  },
-                  shape = shareShape,
-                  colors =
-                    IconButtonDefaults.filledIconButtonColors(
-                      containerColor = textButtonColor,
-                      contentColor = iconButtonColor,
-                    ),
-                  modifier = Modifier.size(42.dp),
-                ) {
-                  when (download?.state) {
-                    Download.STATE_COMPLETED -> {
-                      Icon(
-                        painter = painterResource(R.drawable.offline),
-                        contentDescription = null,
-                        modifier = Modifier.size(24.dp),
-                      )
-                    }
-                    Download.STATE_QUEUED,
-                    Download.STATE_DOWNLOADING -> {
-                      CircularWavyProgressIndicator(modifier = Modifier.size(24.dp))
-                    }
-                    else -> {
-                      Icon(
-                        painter = painterResource(R.drawable.download),
-                        contentDescription = null,
-                        modifier = Modifier.size(24.dp),
-                      )
-                    }
-                  }
-                }
-              }
-            }
-
-            AnimatedContent(targetState = showInlineLyrics, label = "LikeButton") { showLyrics ->
-              if (showLyrics) {
-                val currentLyrics by playerConnection.currentLyrics.collectAsState(initial = null)
-                FilledIconButton(
-                  onClick = {
-                    menuState.show {
-                      com.revenge.music.ui.menu.LyricsMenu(
-                        lyricsProvider = { currentLyrics },
-                        songProvider = { currentSong?.song },
-                        mediaMetadataProvider = { mediaMetadata },
-                        onDismiss = menuState::dismiss,
-                        onShowOffsetDialog = {
-                          bottomSheetPageState.show {
-                            ShowOffsetDialog(songProvider = { currentSong?.song })
-                          }
-                        },
-                      )
-                    }
-                  },
-                  shape = favShape,
-                  colors =
-                    IconButtonDefaults.filledIconButtonColors(
-                      containerColor = textButtonColor,
-                      contentColor = iconButtonColor,
-                    ),
-                  modifier = Modifier.size(42.dp),
-                ) {
-                  Icon(
-                    painter = painterResource(R.drawable.more_horiz),
-                    contentDescription = null,
-                    modifier = Modifier.size(24.dp),
-                  )
-                }
-              } else {
-                Row(
-                  horizontalArrangement = Arrangement.spacedBy(6.dp),
-                  verticalAlignment = Alignment.CenterVertically,
-                ) {
+            Row(
+              horizontalArrangement = Arrangement.spacedBy(6.dp),
+              verticalAlignment = Alignment.CenterVertically,
+            ) {
+              AnimatedContent(targetState = showInlineLyrics, label = "DownloadButton") { showLyrics
+                ->
+                if (showLyrics) {
                   FilledIconButton(
-                    onClick = onToggleDislike,
-                    shape = middleShape,
-                    colors =
-                      IconButtonDefaults.filledIconButtonColors(
-                        containerColor =
-                          if (isDisliked)
-                            MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.85f)
-                          else textButtonColor,
-                        contentColor =
-                          if (isDisliked) MaterialTheme.colorScheme.error else iconButtonColor,
-                      ),
-                    modifier = Modifier.size(42.dp),
-                  ) {
-                    Icon(
-                      painter =
-                        painterResource(
-                          if (isDisliked) R.drawable.thumb_down_filled else R.drawable.thumb_down,
-                        ),
-                      contentDescription = stringResource(R.string.dislike),
-                      tint = if (isDisliked) MaterialTheme.colorScheme.error else iconButtonColor,
-                      modifier = Modifier.size(22.dp),
-                    )
-                  }
-
-                  FilledIconButton(
-                    onClick = playerConnection::toggleLike,
-                    shape = favShape,
+                    onClick = { isFullScreen = !isFullScreen },
+                    shape = shareShape,
                     colors =
                       IconButtonDefaults.filledIconButtonColors(
                         containerColor = textButtonColor,
@@ -2126,106 +1980,87 @@ fun BottomSheetPlayer(
                       ),
                     modifier = Modifier.size(42.dp),
                   ) {
-                    HeartBurstIcon(
-                      isLiked = currentSong?.song?.liked == true,
-                      iconSize = 24.dp,
-                      unlikedColor = iconButtonColor,
-                      contentDescription = stringResource(R.string.like),
+                    Icon(
+                      painter =
+                        painterResource(
+                          if (isFullScreen) R.drawable.fullscreen_exit else R.drawable.fullscreen,
+                        ),
+                      contentDescription =
+                        stringResource(
+                          if (isFullScreen) R.string.exit_fullscreen else R.string.enter_fullscreen,
+                        ),
+                      modifier = Modifier.size(24.dp),
                     )
+                  }
+                } else {
+                  FilledIconButton(
+                    onClick = {
+                      mediaMetadata?.let { meta ->
+                        when (download?.state) {
+                          Download.STATE_COMPLETED,
+                          Download.STATE_QUEUED,
+                          Download.STATE_DOWNLOADING -> {
+                            DownloadService.sendRemoveDownload(
+                              context,
+                              ExoDownloadService::class.java,
+                              meta.id,
+                              false,
+                            )
+                          }
+                          else -> {
+                            coroutineScope.launch(Dispatchers.IO) { database.insert(meta) }
+                            val downloadRequest =
+                              DownloadRequest.Builder(meta.id, meta.id.toUri())
+                                .setCustomCacheKey(meta.id)
+                                .setData(meta.title.toByteArray())
+                                .build()
+                            DownloadService.sendAddDownload(
+                              context,
+                              ExoDownloadService::class.java,
+                              downloadRequest,
+                              false,
+                            )
+                          }
+                        }
+                      }
+                    },
+                    shape = shareShape,
+                    colors =
+                      IconButtonDefaults.filledIconButtonColors(
+                        containerColor = textButtonColor,
+                        contentColor = iconButtonColor,
+                      ),
+                    modifier = Modifier.size(42.dp),
+                  ) {
+                    when (download?.state) {
+                      Download.STATE_COMPLETED -> {
+                        Icon(
+                          painter = painterResource(R.drawable.offline),
+                          contentDescription = null,
+                          modifier = Modifier.size(24.dp),
+                        )
+                      }
+                      Download.STATE_QUEUED,
+                      Download.STATE_DOWNLOADING -> {
+                        CircularWavyProgressIndicator(modifier = Modifier.size(24.dp))
+                      }
+                      else -> {
+                        Icon(
+                          painter = painterResource(R.drawable.download),
+                          contentDescription = null,
+                          modifier = Modifier.size(24.dp),
+                        )
+                      }
+                    }
                   }
                 }
               }
-            }
-          }
-        } else {
-          AnimatedContent(targetState = showInlineLyrics, label = "DownloadButton") { showLyrics ->
-            if (showLyrics) {
-              Box(
-                modifier =
-                  Modifier.size(40.dp)
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(textButtonColor.copy(alpha = 0.2f))
-                    .clickable { isFullScreen = !isFullScreen },
-              ) {
-                Icon(
-                  painter =
-                    painterResource(
-                      if (isFullScreen) R.drawable.fullscreen_exit else R.drawable.fullscreen,
-                    ),
-                  contentDescription =
-                    stringResource(
-                      if (isFullScreen) R.string.exit_fullscreen else R.string.enter_fullscreen,
-                    ),
-                  tint = textButtonColor,
-                  modifier = Modifier.align(Alignment.Center).size(24.dp),
-                )
-              }
-            } else {
-              Box(
-                modifier =
-                  Modifier.size(40.dp)
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(textButtonColor.copy(alpha = 0.2f))
-                    .clickable {
-                      menuState.show {
-                        OldPlayerMenu(
-                          mediaMetadata = mediaMetadata,
-                          navController = navController,
-                          playerBottomSheetState = state,
-                          onShowDetailsDialog = {
-                            mediaMetadata.id.let { bottomSheetPageState.show { ShowMediaInfo(it) } }
-                          },
-                          onDismiss = menuState::dismiss,
-                        )
-                      }
-                    },
-              ) {
-                Icon(
-                  painter = painterResource(R.drawable.more_vert),
-                  contentDescription = stringResource(R.string.more_options),
-                  tint = textButtonColor,
-                  modifier = Modifier.align(Alignment.Center).size(24.dp),
-                )
-              }
-            }
-          }
 
-          if (!showInlineLyrics) {
-            Spacer(modifier = Modifier.size(10.dp))
-
-            Box(
-              modifier =
-                Modifier.size(40.dp)
-                  .clip(RoundedCornerShape(24.dp))
-                  .background(
-                    if (isDisliked) MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.6f)
-                    else textButtonColor.copy(alpha = 0.2f),
-                  )
-                  .clickable(onClick = onToggleDislike),
-            ) {
-              Icon(
-                painter =
-                  painterResource(
-                    if (isDisliked) R.drawable.thumb_down_filled else R.drawable.thumb_down,
-                  ),
-                contentDescription = stringResource(R.string.dislike),
-                tint = if (isDisliked) MaterialTheme.colorScheme.error else textButtonColor,
-                modifier = Modifier.align(Alignment.Center).size(22.dp),
-              )
-            }
-          }
-
-          Spacer(modifier = Modifier.size(10.dp))
-
-          AnimatedContent(targetState = showInlineLyrics, label = "LikeButton") { showLyrics ->
-            if (showLyrics) {
-              val currentLyrics by playerConnection.currentLyrics.collectAsState(initial = null)
-              Box(
-                modifier =
-                  Modifier.size(40.dp)
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(textButtonColor.copy(alpha = 0.2f))
-                    .clickable {
+              AnimatedContent(targetState = showInlineLyrics, label = "LikeButton") { showLyrics ->
+                if (showLyrics) {
+                  val currentLyrics by playerConnection.currentLyrics.collectAsState(initial = null)
+                  FilledIconButton(
+                    onClick = {
                       menuState.show {
                         com.revenge.music.ui.menu.LyricsMenu(
                           lyricsProvider = { currentLyrics },
@@ -2240,37 +2075,208 @@ fun BottomSheetPlayer(
                         )
                       }
                     },
-              ) {
-                Icon(
-                  painter = painterResource(R.drawable.more_horiz),
-                  contentDescription = null,
-                  tint = textButtonColor,
-                  modifier = Modifier.align(Alignment.Center).size(24.dp),
-                )
+                    shape = favShape,
+                    colors =
+                      IconButtonDefaults.filledIconButtonColors(
+                        containerColor = textButtonColor,
+                        contentColor = iconButtonColor,
+                      ),
+                    modifier = Modifier.size(42.dp),
+                  ) {
+                    Icon(
+                      painter = painterResource(R.drawable.more_horiz),
+                      contentDescription = null,
+                      modifier = Modifier.size(24.dp),
+                    )
+                  }
+                } else {
+                  Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                  ) {
+                    FilledIconButton(
+                      onClick = onToggleDislike,
+                      shape = middleShape,
+                      colors =
+                        IconButtonDefaults.filledIconButtonColors(
+                          containerColor =
+                            if (isDisliked)
+                              MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.85f)
+                            else textButtonColor,
+                          contentColor =
+                            if (isDisliked) MaterialTheme.colorScheme.error else iconButtonColor,
+                        ),
+                      modifier = Modifier.size(42.dp),
+                    ) {
+                      Icon(
+                        painter =
+                          painterResource(
+                            if (isDisliked) R.drawable.thumb_down_filled else R.drawable.thumb_down,
+                          ),
+                        contentDescription = stringResource(R.string.dislike),
+                        tint = if (isDisliked) MaterialTheme.colorScheme.error else iconButtonColor,
+                        modifier = Modifier.size(22.dp),
+                      )
+                    }
+
+                    FilledIconButton(
+                      onClick = playerConnection::toggleLike,
+                      shape = favShape,
+                      colors =
+                        IconButtonDefaults.filledIconButtonColors(
+                          containerColor = textButtonColor,
+                          contentColor = iconButtonColor,
+                        ),
+                      modifier = Modifier.size(42.dp),
+                    ) {
+                      HeartBurstIcon(
+                        isLiked = currentSong?.song?.liked == true,
+                        iconSize = 24.dp,
+                        unlikedColor = iconButtonColor,
+                        contentDescription = stringResource(R.string.like),
+                      )
+                    }
+                  }
+                }
               }
-            } else {
+            }
+          } else {
+            AnimatedContent(targetState = showInlineLyrics, label = "DownloadButton") { showLyrics
+              ->
+              if (showLyrics) {
+                Box(
+                  modifier =
+                    Modifier.size(40.dp)
+                      .clip(RoundedCornerShape(24.dp))
+                      .background(textButtonColor.copy(alpha = 0.2f))
+                      .clickable { isFullScreen = !isFullScreen },
+                ) {
+                  Icon(
+                    painter =
+                      painterResource(
+                        if (isFullScreen) R.drawable.fullscreen_exit else R.drawable.fullscreen,
+                      ),
+                    contentDescription =
+                      stringResource(
+                        if (isFullScreen) R.string.exit_fullscreen else R.string.enter_fullscreen,
+                      ),
+                    tint = textButtonColor,
+                    modifier = Modifier.align(Alignment.Center).size(24.dp),
+                  )
+                }
+              } else {
+                Box(
+                  modifier =
+                    Modifier.size(40.dp)
+                      .clip(RoundedCornerShape(24.dp))
+                      .background(textButtonColor.copy(alpha = 0.2f))
+                      .clickable {
+                        menuState.show {
+                          OldPlayerMenu(
+                            mediaMetadata = mediaMetadata,
+                            navController = navController,
+                            playerBottomSheetState = state,
+                            onShowDetailsDialog = {
+                              mediaMetadata.id.let {
+                                bottomSheetPageState.show { ShowMediaInfo(it) }
+                              }
+                            },
+                            onDismiss = menuState::dismiss,
+                          )
+                        }
+                      },
+                ) {
+                  Icon(
+                    painter = painterResource(R.drawable.more_vert),
+                    contentDescription = stringResource(R.string.more_options),
+                    tint = textButtonColor,
+                    modifier = Modifier.align(Alignment.Center).size(24.dp),
+                  )
+                }
+              }
+            }
+
+            if (!showInlineLyrics) {
+              Spacer(modifier = Modifier.size(10.dp))
+
               Box(
                 modifier =
                   Modifier.size(40.dp)
                     .clip(RoundedCornerShape(24.dp))
-                    .background(textButtonColor.copy(alpha = 0.2f))
-                    .clickable(onClick = playerConnection::toggleLike),
+                    .background(
+                      if (isDisliked) MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.6f)
+                      else textButtonColor.copy(alpha = 0.2f),
+                    )
+                    .clickable(onClick = onToggleDislike),
               ) {
                 Icon(
                   painter =
                     painterResource(
-                      if (currentSong?.song?.liked == true) R.drawable.favorite
-                      else R.drawable.favorite_border,
+                      if (isDisliked) R.drawable.thumb_down_filled else R.drawable.thumb_down,
                     ),
-                  contentDescription = stringResource(R.string.like),
-                  tint = textButtonColor,
-                  modifier = Modifier.align(Alignment.Center).size(24.dp),
+                  contentDescription = stringResource(R.string.dislike),
+                  tint = if (isDisliked) MaterialTheme.colorScheme.error else textButtonColor,
+                  modifier = Modifier.align(Alignment.Center).size(22.dp),
                 )
+              }
+            }
+
+            Spacer(modifier = Modifier.size(10.dp))
+
+            AnimatedContent(targetState = showInlineLyrics, label = "LikeButton") { showLyrics ->
+              if (showLyrics) {
+                val currentLyrics by playerConnection.currentLyrics.collectAsState(initial = null)
+                Box(
+                  modifier =
+                    Modifier.size(40.dp)
+                      .clip(RoundedCornerShape(24.dp))
+                      .background(textButtonColor.copy(alpha = 0.2f))
+                      .clickable {
+                        menuState.show {
+                          com.revenge.music.ui.menu.LyricsMenu(
+                            lyricsProvider = { currentLyrics },
+                            songProvider = { currentSong?.song },
+                            mediaMetadataProvider = { mediaMetadata },
+                            onDismiss = menuState::dismiss,
+                            onShowOffsetDialog = {
+                              bottomSheetPageState.show {
+                                ShowOffsetDialog(songProvider = { currentSong?.song })
+                              }
+                            },
+                          )
+                        }
+                      },
+                ) {
+                  Icon(
+                    painter = painterResource(R.drawable.more_horiz),
+                    contentDescription = null,
+                    tint = textButtonColor,
+                    modifier = Modifier.align(Alignment.Center).size(24.dp),
+                  )
+                }
+              } else {
+                Box(
+                  modifier =
+                    Modifier.size(40.dp)
+                      .clip(RoundedCornerShape(24.dp))
+                      .background(textButtonColor.copy(alpha = 0.2f))
+                      .clickable(onClick = playerConnection::toggleLike),
+                ) {
+                  Icon(
+                    painter =
+                      painterResource(
+                        if (currentSong?.song?.liked == true) R.drawable.favorite
+                        else R.drawable.favorite_border,
+                      ),
+                    contentDescription = stringResource(R.string.like),
+                    tint = textButtonColor,
+                    modifier = Modifier.align(Alignment.Center).size(24.dp),
+                  )
+                }
               }
             }
           }
         }
-      }
       }
 
       Spacer(Modifier.height(if (useNewPlayerDesign) 24.dp else 20.dp))

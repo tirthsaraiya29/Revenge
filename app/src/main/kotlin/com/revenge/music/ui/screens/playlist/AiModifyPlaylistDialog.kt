@@ -14,10 +14,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.revenge.core.db.entities.PlaylistSong
 import com.revenge.music.LocalDatabase
 import com.revenge.music.R
 import com.revenge.music.ai.AiPlaylistModifier
-import com.revenge.core.db.entities.PlaylistSong
 import kotlinx.coroutines.launch
 
 @Composable
@@ -94,13 +94,14 @@ fun AiModifyPlaylistDialog(
                   isProcessing = true
                   logs = "Starting modification...\n"
                   coroutineScope.launch {
-                    AiPlaylistModifier(database).modifyPlaylist(
-                      context = context,
-                      playlistId = playlistId,
-                      currentSongs = currentSongs,
-                      userPrompt = prompt,
-                      onLog = { newLog -> logs = newLog + "\n" + logs },
-                    )
+                    AiPlaylistModifier(database)
+                      .modifyPlaylist(
+                        context = context,
+                        playlistId = playlistId,
+                        currentSongs = currentSongs,
+                        userPrompt = prompt,
+                        onLog = { newLog -> logs = newLog + "\n" + logs },
+                      )
                     isProcessing = false
                     onDismiss()
                   }

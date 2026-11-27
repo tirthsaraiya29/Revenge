@@ -66,7 +66,10 @@ class GenerateViewModelTest {
   fun setup() {
     Dispatchers.setMain(testDispatcher)
     internalDatabase =
-      Room.inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(), InternalDatabase::class.java)
+      Room.inMemoryDatabaseBuilder(
+          RuntimeEnvironment.getApplication(),
+          InternalDatabase::class.java,
+        )
         .allowMainThreadQueries()
         .build()
     database = MusicDatabase(internalDatabase)

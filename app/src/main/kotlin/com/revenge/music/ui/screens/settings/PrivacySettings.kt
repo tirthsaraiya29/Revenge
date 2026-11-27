@@ -29,12 +29,12 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
-import com.revenge.music.LocalDatabase
-import com.revenge.music.LocalPlayerAwareWindowInsets
-import com.revenge.music.R
 import com.revenge.core.constants.DisableScreenshotKey
 import com.revenge.core.constants.PauseListenHistoryKey
 import com.revenge.core.constants.PauseSearchHistoryKey
+import com.revenge.music.LocalDatabase
+import com.revenge.music.LocalPlayerAwareWindowInsets
+import com.revenge.music.R
 import com.revenge.music.ui.component.DefaultDialog
 import com.revenge.music.ui.component.IconButton
 import com.revenge.music.ui.component.Material3SettingsGroup

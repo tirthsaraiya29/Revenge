@@ -4,13 +4,10 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
-import android.content.Intent
 import android.net.ConnectivityManager
-import android.net.Network
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import androidx.datastore.preferences.core.edit
-import com.revenge.music.R
 import com.revenge.core.constants.ListenTogetherAutoApprovalKey
 import com.revenge.core.constants.ListenTogetherBlockedUsersKey
 import com.revenge.core.constants.ListenTogetherIsHostKey
@@ -21,6 +18,7 @@ import com.revenge.core.constants.ListenTogetherSessionTokenKey
 import com.revenge.core.constants.ListenTogetherUserIdKey
 import com.revenge.core.utils.dataStore
 import com.revenge.core.utils.get
+import com.revenge.music.R
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -144,6 +142,7 @@ class ListenTogetherClient(private val context: Context) {
 
   private sealed interface PendingAction {
     data class Create(val username: String) : PendingAction
+
     data class Join(val roomCode: String, val username: String) : PendingAction
   }
 
@@ -172,7 +171,8 @@ class ListenTogetherClient(private val context: Context) {
     codec.compressionEnabled = false
     _connectionState.value = ConnectionState.CONNECTING
     addLog(LogLevel.INFO, "Connecting")
-    val url = context.dataStore[ListenTogetherServerUrlKey] ?: ListenTogetherServers.defaultServerUrl
+    val url =
+      context.dataStore[ListenTogetherServerUrlKey] ?: ListenTogetherServers.defaultServerUrl
     val request = Request.Builder().url(url).build()
     socket = httpClient.newWebSocket(request, listener)
   }
@@ -223,7 +223,10 @@ class ListenTogetherClient(private val context: Context) {
   }
 
   fun approveJoin(userId: String) {
-    send(MessageType.APPROVE_JOIN, json.encodeToString(ApproveJoinPayload.serializer(), ApproveJoinPayload(userId)))
+    send(
+      MessageType.APPROVE_JOIN,
+      json.encodeToString(ApproveJoinPayload.serializer(), ApproveJoinPayload(userId)),
+    )
     _pendingJoinRequests.update { list -> list.filterNot { it.userId == userId } }
     cancelJoinNotification()
   }
@@ -489,8 +492,7 @@ class ListenTogetherClient(private val context: Context) {
               },
           )
         }
-        _role.value =
-          if (_userId.value == data.newHostId) RoomRole.HOST else RoomRole.GUEST
+        _role.value = if (_userId.value == data.newHostId) RoomRole.HOST else RoomRole.GUEST
         emit(ListenTogetherEvent.HostChanged(data.newHostId, data.newHostName))
       }
       MessageType.KICKED -> {
@@ -630,24 +632,22 @@ class ListenTogetherClient(private val context: Context) {
     emit(ListenTogetherEvent.Reconnecting(reconnectAttempt, MAX_RECONNECT_ATTEMPTS))
     addLog(LogLevel.WARNING, "Reconnecting", "attempt $reconnectAttempt in ${base + jitter} ms")
     reconnectJob?.cancel()
-    reconnectJob =
-      scope.launch {
-        delay(base + jitter)
-        if (!explicitDisconnect && socket == null) connect()
-      }
+    reconnectJob = scope.launch {
+      delay(base + jitter)
+      if (!explicitDisconnect && socket == null) connect()
+    }
   }
 
   private fun startPing() {
     stopPing()
-    pingJob =
-      scope.launch {
-        while (isActive) {
-          delay(PING_INTERVAL_MS)
-          if (socket == null) break
-          pingSentAt = System.currentTimeMillis()
-          send(MessageType.PING)
-        }
+    pingJob = scope.launch {
+      while (isActive) {
+        delay(PING_INTERVAL_MS)
+        if (socket == null) break
+        pingSentAt = System.currentTimeMillis()
+        send(MessageType.PING)
       }
+    }
   }
 
   private fun stopPing() {
@@ -684,7 +684,9 @@ class ListenTogetherClient(private val context: Context) {
   }
 
   private fun <T> decode(payload: String?, serializer: kotlinx.serialization.KSerializer<T>): T? =
-    payload?.let { runCatching { json.decodeFromString(serializer, it) }.getOrNull() }
+    payload?.let {
+      runCatching { json.decodeFromString(serializer, it) }.getOrNull()
+    }
 
   private fun emit(event: ListenTogetherEvent) {
     _events.tryEmit(event)
@@ -699,15 +701,16 @@ class ListenTogetherClient(private val context: Context) {
         details = details,
       )
     _logs.update { (it + entry).takeLast(300) }
-    Timber.tag("ListenTogether").log(
-      when (level) {
-        LogLevel.ERROR -> android.util.Log.ERROR
-        LogLevel.WARNING -> android.util.Log.WARN
-        LogLevel.DEBUG -> android.util.Log.DEBUG
-        LogLevel.INFO -> android.util.Log.INFO
-      },
-      "$message${details?.let { " -- $it" }.orEmpty()}",
-    )
+    Timber.tag("ListenTogether")
+      .log(
+        when (level) {
+          LogLevel.ERROR -> android.util.Log.ERROR
+          LogLevel.WARNING -> android.util.Log.WARN
+          LogLevel.DEBUG -> android.util.Log.DEBUG
+          LogLevel.INFO -> android.util.Log.INFO
+        },
+        "$message${details?.let { " -- $it" }.orEmpty()}",
+      )
   }
 
   // ------------------------------------------------------------------ persistence
@@ -775,8 +778,7 @@ class ListenTogetherClient(private val context: Context) {
 
   private suspend fun restoreBlockedUsers() {
     val raw = context.dataStore.data.first()[ListenTogetherBlockedUsersKey] ?: return
-    val values =
-      runCatching { json.decodeFromString<List<String>>(raw) }.getOrDefault(emptyList())
+    val values = runCatching { json.decodeFromString<List<String>>(raw) }.getOrDefault(emptyList())
     _blockedUsernames.value = values.toSet()
   }
 
@@ -805,8 +807,8 @@ class ListenTogetherClient(private val context: Context) {
   }
 
   private fun postJoinNotification(request: JoinRequestPayload) {
-    val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
-      ?: return
+    val manager =
+      context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
     manager.createNotificationChannel(
       NotificationChannel(
         NOTIFICATION_CHANNEL,
@@ -818,14 +820,22 @@ class ListenTogetherClient(private val context: Context) {
       PendingIntent.getBroadcast(
         context,
         request.userId.hashCode(),
-        ListenTogetherActionReceiver.intent(context, ListenTogetherActionReceiver.ACTION_APPROVE, request.userId),
+        ListenTogetherActionReceiver.intent(
+          context,
+          ListenTogetherActionReceiver.ACTION_APPROVE,
+          request.userId,
+        ),
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
       )
     val reject =
       PendingIntent.getBroadcast(
         context,
         request.userId.hashCode() + 1,
-        ListenTogetherActionReceiver.intent(context, ListenTogetherActionReceiver.ACTION_REJECT, request.userId),
+        ListenTogetherActionReceiver.intent(
+          context,
+          ListenTogetherActionReceiver.ACTION_REJECT,
+          request.userId,
+        ),
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
       )
     val notification =

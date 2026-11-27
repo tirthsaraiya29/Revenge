@@ -13,15 +13,15 @@ import org.robolectric.annotation.Config
 @Config(sdk = [28])
 class NetworkConnectivityObserverTest {
 
-    @Test
-    fun emitsInitialValueAndSupportsRepeatedUnregister() = runBlocking {
-        val observer = NetworkConnectivityObserver(RuntimeEnvironment.getApplication())
+  @Test
+  fun emitsInitialValueAndSupportsRepeatedUnregister() = runBlocking {
+    val observer = NetworkConnectivityObserver(RuntimeEnvironment.getApplication())
 
-        val initial = observer.networkStatus.first()
-        assertNotNull(initial)
+    val initial = observer.networkStatus.first()
+    assertNotNull(initial)
 
-        observer.isCurrentlyConnected()
-        observer.unregister()
-        observer.unregister()
-    }
+    observer.isCurrentlyConnected()
+    observer.unregister()
+    observer.unregister()
+  }
 }

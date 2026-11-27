@@ -31,9 +31,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.revenge.music.R
 import com.revenge.core.utils.PlaybackLogEntry
 import com.revenge.core.utils.PlaybackLogLevel
+import com.revenge.music.R
 
 @Composable
 fun PlaybackLogsDialog(logs: List<PlaybackLogEntry>, onClear: () -> Unit, onDismiss: () -> Unit) {

@@ -11,10 +11,15 @@ import java.time.LocalDateTime
 import java.time.ZoneOffset
 
 private fun bool(name: String): Preferences.Key<Boolean> = booleanPreferencesKey(name)
+
 private fun text(name: String): Preferences.Key<String> = stringPreferencesKey(name)
+
 private fun number(name: String): Preferences.Key<Int> = intPreferencesKey(name)
+
 private fun bigNumber(name: String): Preferences.Key<Long> = longPreferencesKey(name)
+
 private fun decimal(name: String): Preferences.Key<Float> = floatPreferencesKey(name)
+
 private fun texts(name: String): Preferences.Key<Set<String>> = stringSetPreferencesKey(name)
 
 // Account / Spotify / app icon
@@ -333,173 +338,249 @@ val UsbDacVolumeModeKey = text("usb_dac_volume_mode")
 val RecommendationSourceKey = text("recommendation_source")
 
 enum class HapticIntensity(val label: String, val scaleFactor: Float) {
-    LIGHT("Light", 0.4f),
-    MEDIUM("Medium", 0.75f),
-    STRONG("Strong", 1.0f);
+  LIGHT("Light", 0.4f),
+  MEDIUM("Medium", 0.75f),
+  STRONG("Strong", 1.0f);
 
-    companion object {
-        fun fromName(name: String?): HapticIntensity =
-            entries.firstOrNull { it.name.equals(name, ignoreCase = true) } ?: MEDIUM
-    }
+  companion object {
+    fun fromName(name: String?): HapticIntensity =
+      entries.firstOrNull { it.name.equals(name, ignoreCase = true) } ?: MEDIUM
+  }
 }
 
 enum class DensityScale(val value: Float, val label: String) {
-    NATIVE(1.0f, "Native (100%)"),
-    SLIGHTLY_COMPACT(0.85f, "Slightly Compact (85%)"),
-    COMPACT(0.75f, "Compact (75%)"),
-    VERY_COMPACT(0.65f, "Very Compact (65%)"),
-    ULTRA_COMPACT(0.55f, "Ultra Compact (55%)");
+  NATIVE(1.0f, "Native (100%)"),
+  SLIGHTLY_COMPACT(0.85f, "Slightly Compact (85%)"),
+  COMPACT(0.75f, "Compact (75%)"),
+  VERY_COMPACT(0.65f, "Very Compact (65%)"),
+  ULTRA_COMPACT(0.55f, "Ultra Compact (55%)");
 
-    companion object {
-        fun fromValue(value: Float): DensityScale =
-            entries.firstOrNull { it.value == value } ?: NATIVE
-    }
+  companion object {
+    fun fromValue(value: Float): DensityScale = entries.firstOrNull { it.value == value } ?: NATIVE
+  }
 }
 
-enum class SliderStyle { DEFAULT, WAVY, SLIM }
+enum class SliderStyle {
+  DEFAULT,
+  WAVY,
+  SLIM,
+}
 
 enum class AudioQuality(
-    val maxKbps: Int,
-    val label: String,
-    val detail: String,
-    val hourly: String,
+  val maxKbps: Int,
+  val label: String,
+  val detail: String,
+  val hourly: String,
 ) {
-    AUTO(Int.MAX_VALUE, "Auto", "Adaptive based on connection", "Variable"),
-    LOW(64, "Low", "~64 kbps · data saver", "29 MB/hr"),
-    MEDIUM(160, "Medium", "Standard · ~160 kbps Opus", "77 MB/hr"),
-    HIGH(320, "High", "Addon high bitrate, YouTube fallback", "144 MB/hr"),
-    LOSSLESS(Int.MAX_VALUE, "Lossless", "Addons bit-exact FLAC/ALAC, YouTube fallback", "300+ MB/hr"),
-    OPUS(160, "Opus", "Standard ~160 kbps Opus", "77 MB/hr");
+  AUTO(Int.MAX_VALUE, "Auto", "Adaptive based on connection", "Variable"),
+  LOW(64, "Low", "~64 kbps · data saver", "29 MB/hr"),
+  MEDIUM(160, "Medium", "Standard · ~160 kbps Opus", "77 MB/hr"),
+  HIGH(320, "High", "Addon high bitrate, YouTube fallback", "144 MB/hr"),
+  LOSSLESS(Int.MAX_VALUE, "Lossless", "Addons bit-exact FLAC/ALAC, YouTube fallback", "300+ MB/hr"),
+  OPUS(160, "Opus", "Standard ~160 kbps Opus", "77 MB/hr");
 
-    fun permitsLossless(): Boolean = this == LOSSLESS || this == AUTO
+  fun permitsLossless(): Boolean = this == LOSSLESS || this == AUTO
 
-    fun permitsHigh(): Boolean = this == LOSSLESS || this == AUTO || this == HIGH
+  fun permitsHigh(): Boolean = this == LOSSLESS || this == AUTO || this == HIGH
 
-    fun permitsAddons(): Boolean = permitsHigh()
+  fun permitsAddons(): Boolean = permitsHigh()
 }
 
 enum class AudioLoudnessPreset(val gainOffsetMb: Int) {
-    QUIET(-600),
-    NORMAL(0),
-    LOUD(300),
-    AGGRESSIVE(700),
+  QUIET(-600),
+  NORMAL(0),
+  LOUD(300),
+  AGGRESSIVE(700),
 }
 
-enum class PlaybackEngine { POTOKEN, BRAVEPIPE, AUTO }
+enum class PlaybackEngine {
+  POTOKEN,
+  BRAVEPIPE,
+  AUTO,
+}
 
 enum class LibraryViewType {
-    LIST,
-    GRID;
+  LIST,
+  GRID;
 
-    fun toggle(): LibraryViewType = if (this == LIST) GRID else LIST
+  fun toggle(): LibraryViewType = if (this == LIST) GRID else LIST
 }
 
-enum class SongFilter { LIBRARY, LIKED, DOWNLOADED, UPLOADED, EXPORTED }
+enum class SongFilter {
+  LIBRARY,
+  LIKED,
+  DOWNLOADED,
+  UPLOADED,
+  EXPORTED,
+}
 
-enum class ArtistFilter { LIBRARY, LIKED }
+enum class ArtistFilter {
+  LIBRARY,
+  LIKED,
+}
 
-enum class AlbumFilter { LIBRARY, LIKED, UPLOADED }
+enum class AlbumFilter {
+  LIBRARY,
+  LIKED,
+  UPLOADED,
+}
 
-enum class SongSortType { CREATE_DATE, NAME, ARTIST, PLAY_TIME }
+enum class SongSortType {
+  CREATE_DATE,
+  NAME,
+  ARTIST,
+  PLAY_TIME,
+}
 
-enum class PlaylistSongSortType { CUSTOM, CREATE_DATE, NAME, ARTIST, PLAY_TIME }
+enum class PlaylistSongSortType {
+  CUSTOM,
+  CREATE_DATE,
+  NAME,
+  ARTIST,
+  PLAY_TIME,
+}
 
-enum class AutoPlaylistSongSortType { CREATE_DATE, NAME, ARTIST, PLAY_TIME }
+enum class AutoPlaylistSongSortType {
+  CREATE_DATE,
+  NAME,
+  ARTIST,
+  PLAY_TIME,
+}
 
-enum class ArtistSortType { CREATE_DATE, NAME, SONG_COUNT, PLAY_TIME }
+enum class ArtistSortType {
+  CREATE_DATE,
+  NAME,
+  SONG_COUNT,
+  PLAY_TIME,
+}
 
-enum class ArtistSongSortType { CREATE_DATE, NAME, PLAY_TIME }
+enum class ArtistSongSortType {
+  CREATE_DATE,
+  NAME,
+  PLAY_TIME,
+}
 
-enum class AlbumSortType { CREATE_DATE, NAME, ARTIST, YEAR, SONG_COUNT, LENGTH, PLAY_TIME }
+enum class AlbumSortType {
+  CREATE_DATE,
+  NAME,
+  ARTIST,
+  YEAR,
+  SONG_COUNT,
+  LENGTH,
+  PLAY_TIME,
+}
 
-enum class PlaylistSortType { CREATE_DATE, NAME, SONG_COUNT, LAST_UPDATED }
+enum class PlaylistSortType {
+  CREATE_DATE,
+  NAME,
+  SONG_COUNT,
+  LAST_UPDATED,
+}
 
-enum class MixSortType { CREATE_DATE, NAME, LAST_UPDATED }
+enum class MixSortType {
+  CREATE_DATE,
+  NAME,
+  LAST_UPDATED,
+}
 
-enum class GridItemSize { BIG, SMALL }
+enum class GridItemSize {
+  BIG,
+  SMALL,
+}
 
 enum class MyTopFilter {
-    ALL_TIME,
-    DAY,
-    WEEK,
-    MONTH,
-    YEAR;
+  ALL_TIME,
+  DAY,
+  WEEK,
+  MONTH,
+  YEAR;
 
-    fun toTimeMillis(): Long {
-        if (this == ALL_TIME) return 0L
-        val now = LocalDateTime.now()
-        val boundary = when (this) {
-            DAY -> now.minusDays(1)
-            WEEK -> now.minusWeeks(1)
-            MONTH -> now.minusMonths(1)
-            YEAR -> now.minusYears(1)
-            ALL_TIME -> return 0L
-        }
-        return boundary.toInstant(ZoneOffset.UTC).toEpochMilli()
-    }
+  fun toTimeMillis(): Long {
+    if (this == ALL_TIME) return 0L
+    val now = LocalDateTime.now()
+    val boundary =
+      when (this) {
+        DAY -> now.minusDays(1)
+        WEEK -> now.minusWeeks(1)
+        MONTH -> now.minusMonths(1)
+        YEAR -> now.minusYears(1)
+        ALL_TIME -> return 0L
+      }
+    return boundary.toInstant(ZoneOffset.UTC).toEpochMilli()
+  }
 }
 
-enum class QuickPicks { QUICK_PICKS, LAST_LISTEN }
+enum class QuickPicks {
+  QUICK_PICKS,
+  LAST_LISTEN,
+}
 
 enum class PreferredLyricsProvider {
-    LRCLIB,
-    KUGOU,
-    BETTER_LYRICS,
-    SIMPMUSIC,
-    YOULYPLUS,
-    PAXSENIX,
-    UNISON,
+  LRCLIB,
+  KUGOU,
+  BETTER_LYRICS,
+  SIMPMUSIC,
+  YOULYPLUS,
+  PAXSENIX,
+  UNISON,
 }
 
-enum class PlayerButtonsStyle { DEFAULT, PRIMARY, TERTIARY }
+enum class PlayerButtonsStyle {
+  DEFAULT,
+  PRIMARY,
+  TERTIARY,
+}
 
 enum class PlayerBackgroundStyle {
-    DEFAULT,
-    GRADIENT,
-    BLUR,
-    GLOW_ANIMATED,
-    APPLE_MUSIC,
-    LIVE_MESH,
-    LIQUID_GLASS,
+  DEFAULT,
+  GRADIENT,
+  BLUR,
+  GLOW_ANIMATED,
+  APPLE_MUSIC,
+  LIVE_MESH,
+  LIQUID_GLASS,
 }
 
 enum class LyricsAnimationStyle {
-    NONE,
-    FADE,
-    GLOW,
-    SLIDE,
-    KARAOKE,
-    APPLE,
-    APPLE_V2,
-    revenge_1,
-    LYRICS_V2,
-    METRO_LYRICS,
+  NONE,
+  FADE,
+  GLOW,
+  SLIDE,
+  KARAOKE,
+  APPLE,
+  APPLE_V2,
+  revenge_1,
+  LYRICS_V2,
+  METRO_LYRICS,
 }
 
 enum class SearchSource {
-    LOCAL,
-    ONLINE;
+  LOCAL,
+  ONLINE;
 
-    fun toggle(): SearchSource = if (this == LOCAL) ONLINE else LOCAL
+  fun toggle(): SearchSource = if (this == LOCAL) ONLINE else LOCAL
 }
 
 enum class AppFont(val value: String) {
-    SYSTEM("system"),
-    GOOGLE_SANS("google_sans"),
-    SANS_FLEX("sans_flex"),
-    OUTFIT("outfit"),
-    PLUS_JAKARTA_SANS("plus_jakarta_sans"),
-    CUSTOM("custom");
+  SYSTEM("system"),
+  GOOGLE_SANS("google_sans"),
+  SANS_FLEX("sans_flex"),
+  OUTFIT("outfit"),
+  PLUS_JAKARTA_SANS("plus_jakarta_sans"),
+  CUSTOM("custom");
 
-    companion object {
-        fun fromValue(value: String): AppFont =
-            entries.firstOrNull { it.value == value } ?: SYSTEM
-    }
+  companion object {
+    fun fromValue(value: String): AppFont = entries.firstOrNull { it.value == value } ?: SYSTEM
+  }
 }
 
-enum class RecommendationSource { YOUTUBE, SPOTIFY }
+enum class RecommendationSource {
+  YOUTUBE,
+  SPOTIFY,
+}
 
-val LanguageCodeToName: Map<String, String> = mapOf(
+val LanguageCodeToName: Map<String, String> =
+  mapOf(
     "en" to "English",
     "en-GB" to "English (United Kingdom)",
     "es" to "Español",
@@ -553,9 +634,10 @@ val LanguageCodeToName: Map<String, String> = mapOf(
     "et" to "Eesti",
     "fa" to "فارسی",
     "sw" to "Kiswahili",
-)
+  )
 
-val CountryCodeToName: Map<String, String> = mapOf(
+val CountryCodeToName: Map<String, String> =
+  mapOf(
     "US" to "United States",
     "GB" to "United Kingdom",
     "CA" to "Canada",
@@ -618,9 +700,10 @@ val CountryCodeToName: Map<String, String> = mapOf(
     "LK" to "Sri Lanka",
     "NP" to "Nepal",
     "NZ" to "New Zealand",
-)
+  )
 
-val SuggestionRegionSlugToName: Map<String, String> = mapOf(
+val SuggestionRegionSlugToName: Map<String, String> =
+  mapOf(
     "system" to "System Default",
     "us" to "United States",
     "gb" to "United Kingdom",
@@ -654,4 +737,4 @@ val SuggestionRegionSlugToName: Map<String, String> = mapOf(
     "vn" to "Vietnam",
     "ph" to "Philippines",
     "za" to "South Africa",
-)
+  )

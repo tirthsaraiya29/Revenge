@@ -40,7 +40,7 @@ private const val MIME_MP4 = "video/mp4"
 
 /** Substring-based classification: anything containing "mp4" is MP4, everything else HLS. */
 internal fun videoMimeType(url: String): String =
-    if (url.lowercase().contains("mp4")) MIME_MP4 else MIME_HLS
+  if (url.lowercase().contains("mp4")) MIME_MP4 else MIME_HLS
 
 /**
  * Muted looping artwork surface. Fades in on the first rendered frame; the player lives for the
@@ -48,97 +48,96 @@ internal fun videoMimeType(url: String): String =
  */
 @Composable
 fun ArtistVideo(
-    videoUrl: String,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit,
+  videoUrl: String,
+  modifier: Modifier = Modifier,
+  onClick: () -> Unit,
 ) {
-    val context = LocalContext.current
+  val context = LocalContext.current
 
-    val player = remember {
-        ExoPlayer.Builder(context)
-            .setMediaSourceFactory(
-                DefaultMediaSourceFactory(
-                    DefaultDataSource.Factory(context, OkHttpDataSource.Factory(OkHttpClient()))
-                )
-            )
-            .build()
-            .apply {
-                volume = 0f
-                repeatMode = Player.REPEAT_MODE_ONE
-                setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setUsage(C.USAGE_MEDIA)
-                        .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
-                        .build(),
-                    false,
-                )
-            }
-    }
+  val player = remember {
+    ExoPlayer.Builder(context)
+      .setMediaSourceFactory(
+        DefaultMediaSourceFactory(
+          DefaultDataSource.Factory(context, OkHttpDataSource.Factory(OkHttpClient())),
+        ),
+      )
+      .build()
+      .apply {
+        volume = 0f
+        repeatMode = Player.REPEAT_MODE_ONE
+        setAudioAttributes(
+          AudioAttributes.Builder()
+            .setUsage(C.USAGE_MEDIA)
+            .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
+            .build(),
+          false,
+        )
+      }
+  }
 
-    var firstFrameRendered by remember { mutableStateOf(false) }
-    val surfaceAlpha by animateFloatAsState(
-        targetValue = if (firstFrameRendered) 1f else 0f,
-        animationSpec = tween(durationMillis = 400),
-        label = "artistVideoAlpha",
+  var firstFrameRendered by remember { mutableStateOf(false) }
+  val surfaceAlpha by
+    animateFloatAsState(
+      targetValue = if (firstFrameRendered) 1f else 0f,
+      animationSpec = tween(durationMillis = 400),
+      label = "artistVideoAlpha",
     )
 
-    DisposableEffect(player) {
-        val listener = object : Player.Listener {
-            override fun onRenderedFirstFrame() {
-                firstFrameRendered = true
-            }
+  DisposableEffect(player) {
+    val listener =
+      object : Player.Listener {
+        override fun onRenderedFirstFrame() {
+          firstFrameRendered = true
         }
-        player.addListener(listener)
-        onDispose {
-            player.removeListener(listener)
-            player.release()
-        }
+      }
+    player.addListener(listener)
+    onDispose {
+      player.removeListener(listener)
+      player.release()
     }
+  }
 
-    LaunchedEffect(videoUrl) {
-        firstFrameRendered = false
-        val target = videoUrl.trim()
-        if (target.isEmpty()) {
-            player.stop()
-            player.clearMediaItems()
-        } else {
-            player.setMediaItem(
-                MediaItem.Builder()
-                    .setUri(target)
-                    .setMimeType(videoMimeType(target))
-                    .build()
-            )
-            player.prepare()
-            player.play()
-        }
+  LaunchedEffect(videoUrl) {
+    firstFrameRendered = false
+    val target = videoUrl.trim()
+    if (target.isEmpty()) {
+      player.stop()
+      player.clearMediaItems()
+    } else {
+      player.setMediaItem(
+        MediaItem.Builder().setUri(target).setMimeType(videoMimeType(target)).build(),
+      )
+      player.prepare()
+      player.play()
     }
+  }
 
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(4.dp))
-            .background(Color.Black.copy(alpha = 0.30f))
-            .clickable { onClick() }
-    ) {
-        AndroidView(
-            factory = { viewContext ->
-                AspectRatioFrameLayout(viewContext).apply {
-                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                    addView(
-                        TextureView(viewContext).apply {
-                            layoutParams = FrameLayout.LayoutParams(
-                                ViewGroup.LayoutParams.MATCH_PARENT,
-                                ViewGroup.LayoutParams.MATCH_PARENT,
-                            )
-                        }
-                    )
-                }
+  Box(
+    modifier =
+      modifier
+        .clip(RoundedCornerShape(4.dp))
+        .background(Color.Black.copy(alpha = 0.30f))
+        .clickable { onClick() },
+  ) {
+    AndroidView(
+      factory = { viewContext ->
+        AspectRatioFrameLayout(viewContext).apply {
+          resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+          addView(
+            TextureView(viewContext).apply {
+              layoutParams =
+                FrameLayout.LayoutParams(
+                  ViewGroup.LayoutParams.MATCH_PARENT,
+                  ViewGroup.LayoutParams.MATCH_PARENT,
+                )
             },
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer { alpha = surfaceAlpha },
-            update = { frame ->
-                (frame.getChildAt(0) as? TextureView)?.let { player.setVideoTextureView(it) }
-            },
-        )
-    }
+          )
+        }
+      },
+      modifier = Modifier.fillMaxSize().graphicsLayer { alpha = surfaceAlpha },
+      update = { frame ->
+        (frame.getChildAt(0) as? TextureView)?.let { player.setVideoTextureView(it) }
+      },
+    )
+  }
 }

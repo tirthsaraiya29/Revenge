@@ -49,7 +49,9 @@ class RealLastFmTasteApi @Inject constructor() : LastFmTasteApi {
   }
 
   /** Test seam. */
-  internal var transport: suspend (Map<String, String>) -> Result<String> = { params -> get(params) }
+  internal var transport: suspend (Map<String, String>) -> Result<String> = { params ->
+    get(params)
+  }
 
   override suspend fun getSimilarTracks(
     artist: String,
@@ -57,100 +59,107 @@ class RealLastFmTasteApi @Inject constructor() : LastFmTasteApi {
   ): Result<List<SimilarTrack>> {
     if (artist.isBlank() || track.isBlank()) return Result.success(emptyList())
     return query(
-      mapOf(
-        "method" to "track.getsimilar",
-        "artist" to artist,
-        "track" to track,
-        "limit" to "30",
-      ),
-    ).map { body ->
-      val root = root(body) ?: return@map emptyList()
-      entries(root["similartracks"]?.jsonObject?.get("track")).mapNotNull { item ->
-        val obj = item.asObject() ?: return@mapNotNull null
-        val name = obj.string("name") ?: return@mapNotNull null
-        SimilarTrack(
-          name = name,
-          artist = obj.string("artist") ?: obj["artist"]?.jsonObject?.string("name").orEmpty(),
-          match = obj.double("match"),
-        )
+        mapOf(
+          "method" to "track.getsimilar",
+          "artist" to artist,
+          "track" to track,
+          "limit" to "30",
+        ),
+      )
+      .map { body ->
+        val root = root(body) ?: return@map emptyList()
+        entries(root["similartracks"]?.jsonObject?.get("track")).mapNotNull { item ->
+          val obj = item.asObject() ?: return@mapNotNull null
+          val name = obj.string("name") ?: return@mapNotNull null
+          SimilarTrack(
+            name = name,
+            artist = obj.string("artist") ?: obj["artist"]?.jsonObject?.string("name").orEmpty(),
+            match = obj.double("match"),
+          )
+        }
       }
-    }
   }
 
   override suspend fun getSimilarArtists(artist: String): Result<List<SimilarArtist>> {
     if (artist.isBlank()) return Result.success(emptyList())
     return query(
-      mapOf("method" to "artist.getsimilar", "artist" to artist, "limit" to "20"),
-    ).map { body ->
-      val root = root(body) ?: return@map emptyList()
-      entries(root["similarartists"]?.jsonObject?.get("artist")).mapNotNull { item ->
-        val obj = item.asObject() ?: return@mapNotNull null
-        val name = obj.string("name") ?: return@mapNotNull null
-        SimilarArtist(name = name, match = obj.double("match"))
+        mapOf("method" to "artist.getsimilar", "artist" to artist, "limit" to "20"),
+      )
+      .map { body ->
+        val root = root(body) ?: return@map emptyList()
+        entries(root["similarartists"]?.jsonObject?.get("artist")).mapNotNull { item ->
+          val obj = item.asObject() ?: return@mapNotNull null
+          val name = obj.string("name") ?: return@mapNotNull null
+          SimilarArtist(name = name, match = obj.double("match"))
+        }
       }
-    }
   }
 
   override suspend fun getTopTags(artist: String): Result<List<Tag>> {
     if (artist.isBlank()) return Result.success(emptyList())
     return query(
-      mapOf("method" to "artist.gettoptags", "artist" to artist),
-    ).map { body ->
-      val root = root(body) ?: return@map emptyList()
-      parseTags(root["toptags"]?.jsonObject?.get("tag"))
-    }
+        mapOf("method" to "artist.gettoptags", "artist" to artist),
+      )
+      .map { body ->
+        val root = root(body) ?: return@map emptyList()
+        parseTags(root["toptags"]?.jsonObject?.get("tag"))
+      }
   }
 
   override suspend fun getUserTopArtists(user: String, limit: Int): Result<List<String>> {
     if (user.isBlank()) return Result.success(emptyList())
     return query(
-      mapOf(
-        "method" to "user.gettopartists",
-        "user" to user,
-        "limit" to limit.toString(),
-        "period" to "overall",
-      ),
-    ).map { body ->
-      val root = root(body) ?: return@map emptyList()
-      entries(root["topartists"]?.jsonObject?.get("artist"))
-        .mapNotNull { it.asObject()?.string("name") }
-    }
+        mapOf(
+          "method" to "user.gettopartists",
+          "user" to user,
+          "limit" to limit.toString(),
+          "period" to "overall",
+        ),
+      )
+      .map { body ->
+        val root = root(body) ?: return@map emptyList()
+        entries(root["topartists"]?.jsonObject?.get("artist")).mapNotNull {
+          it.asObject()?.string("name")
+        }
+      }
   }
 
   override suspend fun getUserTopTracks(user: String, limit: Int): Result<List<SimilarTrack>> {
     if (user.isBlank()) return Result.success(emptyList())
     return query(
-      mapOf(
-        "method" to "user.gettoptracks",
-        "user" to user,
-        "limit" to limit.toString(),
-        "period" to "overall",
-      ),
-    ).map { body ->
-      val root = root(body) ?: return@map emptyList()
-      entries(root["toptracks"]?.jsonObject?.get("track")).mapNotNull { item ->
-        val obj = item.asObject() ?: return@mapNotNull null
-        val name = obj.string("name") ?: return@mapNotNull null
-        SimilarTrack(
-          name = name,
-          artist = obj.string("artist") ?: obj["artist"]?.jsonObject?.string("name").orEmpty(),
-        )
+        mapOf(
+          "method" to "user.gettoptracks",
+          "user" to user,
+          "limit" to limit.toString(),
+          "period" to "overall",
+        ),
+      )
+      .map { body ->
+        val root = root(body) ?: return@map emptyList()
+        entries(root["toptracks"]?.jsonObject?.get("track")).mapNotNull { item ->
+          val obj = item.asObject() ?: return@mapNotNull null
+          val name = obj.string("name") ?: return@mapNotNull null
+          SimilarTrack(
+            name = name,
+            artist = obj.string("artist") ?: obj["artist"]?.jsonObject?.string("name").orEmpty(),
+          )
+        }
       }
-    }
   }
 
   override suspend fun getUserTopTags(user: String, limit: Int): Result<List<Tag>> {
     if (user.isBlank()) return Result.success(emptyList())
     return query(
-      mapOf(
-        "method" to "user.gettoptags",
-        "user" to user,
-        "limit" to limit.toString(),
-      ),
-    ).map { body ->
-      val root = root(body) ?: return@map emptyList()
-      parseTags(root["toptags"]?.jsonObject?.get("tag"))
-    }
+        mapOf(
+          "method" to "user.gettoptags",
+          "user" to user,
+          "limit" to limit.toString(),
+        ),
+      )
+      .map { body ->
+        val root = root(body) ?: return@map emptyList()
+        parseTags(root["toptags"]?.jsonObject?.get("tag"))
+      }
   }
 
   private fun parseTags(element: JsonElement?): List<Tag> =
@@ -174,14 +183,12 @@ class RealLastFmTasteApi @Inject constructor() : LastFmTasteApi {
       else -> emptyList()
     }
 
-  private fun apiKey(): String =
-    LastFM.getApiKey().ifBlank { BuildConfig.LASTFM_API_KEY }
+  private fun apiKey(): String = LastFM.getApiKey().ifBlank { BuildConfig.LASTFM_API_KEY }
 
   private suspend fun query(extras: Map<String, String>): Result<String> {
     val key = apiKey()
     if (key.isBlank()) return Result.success("{}")
-    val params =
-      extras + mapOf("api_key" to key, "format" to "json")
+    val params = extras + mapOf("api_key" to key, "format" to "json")
     return transport(params)
   }
 

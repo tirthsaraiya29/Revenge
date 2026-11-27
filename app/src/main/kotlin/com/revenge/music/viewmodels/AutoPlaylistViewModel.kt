@@ -16,8 +16,8 @@ import com.revenge.core.db.MusicDatabase
 import com.revenge.core.extensions.filterExplicit
 import com.revenge.core.extensions.filterVideoSongs
 import com.revenge.core.extensions.toEnum
-import com.revenge.music.utils.SyncUtils
 import com.revenge.core.utils.dataStore
+import com.revenge.music.utils.SyncUtils
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject

@@ -8,30 +8,32 @@ private const val AUDIO_ONLY_VIDEO_TYPE = "MUSIC_VIDEO_TYPE_ATV"
 
 @Immutable
 data class MediaMetadata(
-    val id: String,
-    val title: String,
-    val artists: List<Artist>,
-    val duration: Int,
-    val thumbnailUrl: String? = null,
-    val album: Album? = null,
-    val setVideoId: String? = null,
-    val musicVideoType: String? = null,
-    val explicit: Boolean = false,
-    val liked: Boolean = false,
-    val likedDate: LocalDateTime? = null,
-    val inLibrary: LocalDateTime? = null,
-    val libraryAddToken: String? = null,
-    val libraryRemoveToken: String? = null,
-    val suggestedBy: String? = null,
-    val source: QueueItemSource = QueueItemSource.USER,
+  val id: String,
+  val title: String,
+  val artists: List<Artist>,
+  val duration: Int,
+  val thumbnailUrl: String? = null,
+  val album: Album? = null,
+  val setVideoId: String? = null,
+  val musicVideoType: String? = null,
+  val explicit: Boolean = false,
+  val liked: Boolean = false,
+  val likedDate: LocalDateTime? = null,
+  val inLibrary: LocalDateTime? = null,
+  val libraryAddToken: String? = null,
+  val libraryRemoveToken: String? = null,
+  val suggestedBy: String? = null,
+  val source: QueueItemSource = QueueItemSource.USER,
 ) : Serializable {
 
-    val isVideoSong: Boolean
-        get() = musicVideoType != null && musicVideoType != AUDIO_ONLY_VIDEO_TYPE
+  val isVideoSong: Boolean
+    get() = musicVideoType != null && musicVideoType != AUDIO_ONLY_VIDEO_TYPE
 
-    data class Artist(val id: String?, val name: String) : Serializable
+  data class Artist(val id: String?, val name: String) : Serializable
 
-    data class Album(val id: String, val title: String) : Serializable
+  data class Album(val id: String, val title: String) : Serializable
 }
 
-enum class QueueItemSource { USER }
+enum class QueueItemSource {
+  USER,
+}

@@ -26,24 +26,28 @@ class ScrobbleManager(private val scope: CoroutineScope) {
 
   internal var nowSeconds: () -> Long = { System.currentTimeMillis() / 1000L }
 
-  internal var submitNowPlaying: suspend (
-    artist: String,
-    track: String,
-    album: String?,
-    duration: Int,
-  ) -> Unit = { artist, track, album, duration ->
-    LastFM.updateNowPlaying(artist, track, album, null, duration)
-  }
+  internal var submitNowPlaying:
+    suspend (
+      artist: String,
+      track: String,
+      album: String?,
+      duration: Int,
+    ) -> Unit =
+    { artist, track, album, duration ->
+      LastFM.updateNowPlaying(artist, track, album, null, duration)
+    }
 
-  internal var submitScrobble: suspend (
-    artist: String,
-    track: String,
-    timestamp: Long,
-    album: String?,
-    duration: Int,
-  ) -> Unit = { artist, track, timestamp, album, duration ->
-    LastFM.scrobble(artist, track, timestamp, album, null, duration)
-  }
+  internal var submitScrobble:
+    suspend (
+      artist: String,
+      track: String,
+      timestamp: Long,
+      album: String?,
+      duration: Int,
+    ) -> Unit =
+    { artist, track, timestamp, album, duration ->
+      LastFM.scrobble(artist, track, timestamp, album, null, duration)
+    }
 
   private var currentId: String? = null
   private var currentDuration: Int = 0
@@ -84,7 +88,9 @@ class ScrobbleManager(private val scope: CoroutineScope) {
       currentArtist = metadata.artists.joinToString(", ") { it.name }.ifBlank { "Unknown Artist" }
       currentAlbum = metadata.album?.title
       currentDuration =
-        duration?.takeIf { it > 0 }?.let { (it / 1000).toInt() } ?: metadata.duration.takeIf { it > 0 } ?: 0
+        duration?.takeIf { it > 0 }?.let { (it / 1000).toInt() }
+          ?: metadata.duration.takeIf { it > 0 }
+          ?: 0
     }
     if (newTrack) submitNowPlayingIfEnabled()
     startTicker()
@@ -133,25 +139,23 @@ class ScrobbleManager(private val scope: CoroutineScope) {
     val album = currentAlbum
     val duration = currentDuration
     nowPlayingJob?.cancel()
-    nowPlayingJob =
-      scope.launch {
-        runCatching { submitNowPlaying(artist, title, album, duration) }
-          .onFailure { Timber.tag(TAG).w(it, "now-playing failed") }
-      }
+    nowPlayingJob = scope.launch {
+      runCatching { submitNowPlaying(artist, title, album, duration) }
+        .onFailure { Timber.tag(TAG).w(it, "now-playing failed") }
+    }
   }
 
   private fun startTicker() {
     if (destroyed || ticker?.isActive == true) return
     if (!playing) return
-    ticker =
-      scope.launch {
-        while (isActive && !destroyed && playing && !scrobbled) {
-          delay(1_000)
-          if (destroyed || !playing || scrobbled) break
-          playTimeSeconds += 1
-          maybeScrobble()
-        }
+    ticker = scope.launch {
+      while (isActive && !destroyed && playing && !scrobbled) {
+        delay(1_000)
+        if (destroyed || !playing || scrobbled) break
+        playTimeSeconds += 1
+        maybeScrobble()
       }
+    }
   }
 
   private fun maybeScrobble() {
@@ -171,11 +175,10 @@ class ScrobbleManager(private val scope: CoroutineScope) {
     ticker?.cancel()
     ticker = null
     if (!enableScrobbling || !LastFM.isInitialized()) return
-    scrobbleJob =
-      scope.launch {
-        runCatching { submitScrobble(artist, title, timestamp, album, duration) }
-          .onFailure { Timber.tag(TAG).w(it, "scrobble failed") }
-      }
+    scrobbleJob = scope.launch {
+      runCatching { submitScrobble(artist, title, timestamp, album, duration) }
+        .onFailure { Timber.tag(TAG).w(it, "scrobble failed") }
+    }
   }
 
   private companion object {

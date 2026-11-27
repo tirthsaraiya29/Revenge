@@ -1,13 +1,13 @@
 package com.revenge.music.spotifyimport
 
 import android.content.Context
-import com.revenge.innertube.YouTube
-import com.revenge.innertube.YouTube.SearchFilter
-import com.revenge.innertube.models.SongItem
 import com.revenge.core.db.MusicDatabase
 import com.revenge.core.db.entities.PlaylistEntity
 import com.revenge.core.db.entities.PlaylistSongMap
 import com.revenge.core.models.toMediaMetadata
+import com.revenge.innertube.YouTube
+import com.revenge.innertube.YouTube.SearchFilter
+import com.revenge.innertube.models.SongItem
 import com.revenge.music.spotify.Spotify
 import com.revenge.music.spotify.SpotifyAuth
 import com.revenge.music.spotify.SpotifyMapper
@@ -22,17 +22,15 @@ import java.time.LocalDateTime
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.roundToInt
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
-import timber.log.Timber
 
 @Singleton
 class SpotifyImportRepository
@@ -54,8 +52,8 @@ constructor(
   private val mutationMutex = Mutex()
 
   suspend fun restoreSession(): SpotifyImportSession {
-    val session = sessionManager.getSession(context)
-      ?: return SpotifyImportSession(isAuthenticated = false)
+    val session =
+      sessionManager.getSession(context) ?: return SpotifyImportSession(isAuthenticated = false)
     val cachedValid =
       !session.accessToken.isNullOrBlank() &&
         session.expiresAt > System.currentTimeMillis() + GRACE_MS
@@ -63,8 +61,7 @@ constructor(
       Spotify.accessToken = session.accessToken
       return session.toImportSession()
     }
-    val refreshed =
-      SpotifyAuth.fetchAccessToken(session.spDc, session.spKey.orEmpty())
+    val refreshed = SpotifyAuth.fetchAccessToken(session.spDc, session.spKey.orEmpty())
     return refreshed.fold(
       onSuccess = { token ->
         Spotify.accessToken = token.accessToken
@@ -120,47 +117,52 @@ constructor(
     Spotify.accessToken = null
   }
 
-  suspend fun loadSources(): List<SpotifyImportSource> = withContext(Dispatchers.IO) {
-    requireToken()
-    refreshProfile()
-    val liked =
-      withAuthRetry { Spotify.likedSongs(limit = 1, offset = 0) }
+  suspend fun loadSources(): List<SpotifyImportSource> =
+    withContext(Dispatchers.IO) {
+      requireToken()
+      refreshProfile()
+      val liked = withAuthRetry {
+        Spotify.likedSongs(limit = 1, offset = 0)
+      }
         .map { it.total }
         .getOrDefault(0)
-    val playlists = mutableListOf<SpotifyPlaylist>()
-    var offset = 0
-    while (true) {
-      val result = withAuthRetry { Spotify.myPlaylists(limit = PAGE, offset = offset) }
-      if (result.isFailure) break
-      val page = result.getOrThrow()
-      playlists += page.items
-      offset += page.items.size
-      if (page.items.isEmpty() || page.items.size < PAGE || offset >= page.total) break
+      val playlists = mutableListOf<SpotifyPlaylist>()
+      var offset = 0
+      while (true) {
+        val result = withAuthRetry { Spotify.myPlaylists(limit = PAGE, offset = offset) }
+        if (result.isFailure) break
+        val page = result.getOrThrow()
+        playlists += page.items
+        offset += page.items.size
+        if (page.items.isEmpty() || page.items.size < PAGE || offset >= page.total) break
+      }
+      val enriched = enrichCounts(playlists)
+      buildList {
+        add(SpotifyImportSource.LikedSongs("Liked Songs", liked))
+        enriched.filter { it.id.isNotBlank() }.forEach { add(SpotifyImportSource.Playlist(it)) }
+      }
     }
-    val enriched = enrichCounts(playlists)
-    buildList {
-      add(SpotifyImportSource.LikedSongs("Liked Songs", liked))
-      enriched.filter { it.id.isNotBlank() }.forEach { add(SpotifyImportSource.Playlist(it)) }
-    }
-  }
 
   suspend fun addPlaylistByUrl(url: String): SpotifyImportSource.Playlist =
     withContext(Dispatchers.IO) {
       requireToken()
       val id = parsePlaylistId(url) ?: throw IllegalArgumentException(INVALID_LINK)
-      val playlist =
-        withAuthRetry { Spotify.playlist(id) }.getOrElse {
+      val playlist = withAuthRetry {
+        Spotify.playlist(id)
+      }
+        .getOrElse {
           throw IllegalArgumentException(INVALID_LINK)
         }
       val withCount =
         if (playlist.tracks?.total == null) {
-          val total =
-            withAuthRetry { Spotify.playlistTracks(id, limit = 1, offset = 0) }
-              .getOrNull()
-              ?.total
+          val total = withAuthRetry {
+            Spotify.playlistTracks(id, limit = 1, offset = 0)
+          }
+            .getOrNull()
+            ?.total
           playlist.copy(
-            tracks = playlist.tracks?.copy(total = total)
-              ?: SpotifyPlaylistTracksRef(total = total),
+            tracks =
+              playlist.tracks?.copy(total = total) ?: SpotifyPlaylistTracksRef(total = total),
           )
         } else {
           playlist
@@ -203,28 +205,27 @@ constructor(
       SpotifyImportSummaryUi(summaries)
     }
 
-  suspend fun syncPlaylistFast(localPlaylistId: String) = withContext(Dispatchers.IO) {
-    val source =
-      when {
-        localPlaylistId == "SPOTIFY_LIKED_SONGS" ->
-          SpotifyImportSource.LikedSongs("Liked Songs", 0)
-        localPlaylistId.startsWith("SPOTIFY_PLAYLIST_") -> {
-          val id = localPlaylistId.removePrefix("SPOTIFY_PLAYLIST_")
-          if (id.isBlank()) return@withContext
-          val playlist = withAuthRetry { Spotify.playlist(id) }.getOrNull()
-            ?: return@withContext
-          SpotifyImportSource.Playlist(playlist)
+  suspend fun syncPlaylistFast(localPlaylistId: String) =
+    withContext(Dispatchers.IO) {
+      val source =
+        when {
+          localPlaylistId == "SPOTIFY_LIKED_SONGS" ->
+            SpotifyImportSource.LikedSongs("Liked Songs", 0)
+          localPlaylistId.startsWith("SPOTIFY_PLAYLIST_") -> {
+            val id = localPlaylistId.removePrefix("SPOTIFY_PLAYLIST_")
+            if (id.isBlank()) return@withContext
+            val playlist = withAuthRetry { Spotify.playlist(id) }.getOrNull() ?: return@withContext
+            SpotifyImportSource.Playlist(playlist)
+          }
+          else -> return@withContext
         }
-        else -> return@withContext
-      }
-    // Abort the destructive mirror on any pagination failure: a partial track list
-    // must never replace the user's local playlist.
-    val tracks = fetchTracks(source) ?: return@withContext
-    val existing = loadLocalSongs(localPlaylistId)
-    val matched = mutableListOf<SongItem>()
-    for (track in tracks) {
-      val reusable =
-        existing.firstOrNull { song ->
+      // Abort the destructive mirror on any pagination failure: a partial track list
+      // must never replace the user's local playlist.
+      val tracks = fetchTracks(source) ?: return@withContext
+      val existing = loadLocalSongs(localPlaylistId)
+      val matched = mutableListOf<SongItem>()
+      for (track in tracks) {
+        val reusable = existing.firstOrNull { song ->
           SpotifyMapper.matchScore(
             spotifyTitle = track.name,
             spotifyArtist = track.artists.firstOrNull()?.name.orEmpty(),
@@ -234,20 +235,22 @@ constructor(
             candidateDurationSec = song.duration,
           ) > 80.0
         }
-      val resolved = reusable ?: matchSearch(track)
-      if (resolved != null) matched += resolved
+        val resolved = reusable ?: matchSearch(track)
+        if (resolved != null) matched += resolved
+      }
+      mutationMutex.withLock {
+        mirror(localPlaylistId, source.title, source.thumbnailUrl, matched)
+      }
     }
-    mutationMutex.withLock {
-      mirror(localPlaylistId, source.title, source.thumbnailUrl, matched)
-    }
-  }
 
   // ------------------------------------------------------------------ implementation
 
   internal fun parsePlaylistId(input: String): String? {
     val value = input.trim()
     if (value.isBlank()) return null
-    Regex("^[A-Za-z0-9]{16,}$").matchEntire(value)?.let { return value }
+    Regex("^[A-Za-z0-9]{16,}$").matchEntire(value)?.let {
+      return value
+    }
     if (value.startsWith("spotify:playlist:")) {
       val id = value.removePrefix("spotify:playlist:").substringBefore("?")
       return id.takeIf { it.matches(Regex("[A-Za-z0-9]{16,}")) }
@@ -272,18 +275,22 @@ constructor(
   private suspend fun refreshTokenIfNeeded() {
     if (Spotify.accessToken != null) return
     val session = sessionManager.getSession(context) ?: return
-    if (session.expiresAt > System.currentTimeMillis() + GRACE_MS &&
-      !session.accessToken.isNullOrBlank()
+    if (
+      session.expiresAt > System.currentTimeMillis() + GRACE_MS &&
+        !session.accessToken.isNullOrBlank()
     ) {
       Spotify.accessToken = session.accessToken
       return
     }
-    val token = SpotifyAuth.fetchAccessToken(session.spDc, session.spKey.orEmpty()).getOrNull()
-      ?: return
+    val token =
+      SpotifyAuth.fetchAccessToken(session.spDc, session.spKey.orEmpty()).getOrNull() ?: return
     Spotify.accessToken = token.accessToken
     sessionManager.saveSession(
       context,
-      session.copy(accessToken = token.accessToken, expiresAt = token.accessTokenExpirationTimestampMs),
+      session.copy(
+        accessToken = token.accessToken,
+        expiresAt = token.accessTokenExpirationTimestampMs,
+      ),
     )
   }
 
@@ -307,10 +314,11 @@ constructor(
           async {
             if (playlist.tracks?.total != null) return@async playlist
             semaphore.withPermit {
-              val total =
-                withAuthRetry { Spotify.playlistTracks(playlist.id, limit = 1, offset = 0) }
-                  .getOrNull()
-                  ?.total
+              val total = withAuthRetry {
+                Spotify.playlistTracks(playlist.id, limit = 1, offset = 0)
+              }
+                .getOrNull()
+                ?.total
               total?.let { playlist.copy(tracks = SpotifyPlaylistTracksRef(total = it)) }
                 ?: playlist
             }
@@ -335,8 +343,7 @@ constructor(
           total = paging.total
         }
         is SpotifyImportSource.Playlist -> {
-          val result =
-            withAuthRetry { Spotify.playlistTracks(source.playlist.id, PAGE, offset) }
+          val result = withAuthRetry { Spotify.playlistTracks(source.playlist.id, PAGE, offset) }
           if (result.isFailure) return null
           val paging = result.getOrThrow()
           items = paging.items.mapNotNull { it.track }

@@ -15,13 +15,13 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
+import com.revenge.core.ui.utils.resize
 import com.revenge.music.R
 import com.revenge.music.ui.component.IconButton
 import com.revenge.music.ui.component.LocalAlbumsGrid
 import com.revenge.music.ui.component.LocalArtistsGrid
 import com.revenge.music.ui.component.LocalSongsGrid
 import com.revenge.music.ui.component.NavigationTitle
-import com.revenge.core.ui.utils.resize
 import com.revenge.music.utils.joinByBullet
 import com.revenge.music.utils.makeTimeString
 import com.revenge.music.viewmodels.DetailedListeningHistoryViewModel

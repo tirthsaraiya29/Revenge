@@ -18,9 +18,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import com.google.android.gms.cast.framework.CastContext
-import com.google.android.gms.cast.framework.CastSession
-import com.revenge.music.R
 import com.revenge.core.constants.EnableGoogleCastKey
+import com.revenge.music.R
 import com.revenge.music.utils.rememberPreference
 
 @Composable

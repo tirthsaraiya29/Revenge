@@ -29,33 +29,37 @@ class LrcFormatTest {
 
   @Test
   fun `syllables are grouped into words`() {
-    val item = LyricsItem(
-      time = 0,
-      syllabus = listOf(
-        Syllable(text = "Hello", time = 0),
-        Syllable(text = " world", time = 500),
-        Syllable(text = "!", time = 900),
-      ),
-    )
+    val item =
+      LyricsItem(
+        time = 0,
+        syllabus =
+          listOf(
+            Syllable(text = "Hello", time = 0),
+            Syllable(text = " world", time = 500),
+            Syllable(text = "!", time = 900),
+          ),
+      )
     assertEquals("[00:00.000]<00:00.000>Hello <00:00.500>world!", listOf(item).toLrc())
   }
 
   @Test
   fun `background syllables add the background marker`() {
-    val item = LyricsItem(
-      time = 1_000,
-      syllabus = listOf(Syllable(text = "la", time = 1_000, isBackground = true)),
-    )
+    val item =
+      LyricsItem(
+        time = 1_000,
+        syllabus = listOf(Syllable(text = "la", time = 1_000, isBackground = true)),
+      )
     assertEquals("[00:01.000]{bg}<00:01.000>la", listOf(item).toLrc())
   }
 
   @Test
   fun `lines are joined and textless items keep their timestamp`() {
-    val items = listOf(
-      LyricsItem(text = "first", time = 1_000),
-      LyricsItem(time = 0),
-      LyricsItem(text = "third", time = 3_000),
-    )
+    val items =
+      listOf(
+        LyricsItem(text = "first", time = 1_000),
+        LyricsItem(time = 0),
+        LyricsItem(text = "third", time = 3_000),
+      )
     assertEquals("[00:01.000]first\n[00:00.000]\n[00:03.000]third", items.toLrc())
   }
 }

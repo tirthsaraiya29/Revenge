@@ -5,47 +5,47 @@ import androidx.media3.exoplayer.ExoPlayer
 import kotlinx.coroutines.flow.StateFlow
 
 sealed interface ArmedStatus {
-    data object Idle : ArmedStatus
+  data object Idle : ArmedStatus
 
-    data class Preparing(
-        val targetMediaId: String,
-        val startedAt: Long,
-    ) : ArmedStatus
+  data class Preparing(
+    val targetMediaId: String,
+    val startedAt: Long,
+  ) : ArmedStatus
 
-    data class Armed(
-        val standbyPlayer: ExoPlayer,
-        val targetMediaId: String,
-    ) : ArmedStatus
+  data class Armed(
+    val standbyPlayer: ExoPlayer,
+    val targetMediaId: String,
+  ) : ArmedStatus
 
-    data class Fading(val progress: Float) : ArmedStatus
+  data class Fading(val progress: Float) : ArmedStatus
 }
 
 interface StandbyCrossfadeScheduler {
 
-    val isCrossfading: StateFlow<Boolean>
+  val isCrossfading: StateFlow<Boolean>
 
-    val armedState: StateFlow<ArmedStatus>
+  val armedState: StateFlow<ArmedStatus>
 
-    val preArmManager: AdaptivePreArmManager
+  val preArmManager: AdaptivePreArmManager
 
-    var onCrossfadeSwapped: ((outgoingPlayer: ExoPlayer, incomingPlayer: ExoPlayer) -> Unit)?
+  var onCrossfadeSwapped: ((outgoingPlayer: ExoPlayer, incomingPlayer: ExoPlayer) -> Unit)?
 
-    fun onQueueOrTrackChanged(
-        primaryPlayer: ExoPlayer,
-        nextItem: MediaItem?,
-        crossfadeDurationMs: Long,
-    )
+  fun onQueueOrTrackChanged(
+    primaryPlayer: ExoPlayer,
+    nextItem: MediaItem?,
+    crossfadeDurationMs: Long,
+  )
 
-    fun onPlaybackPositionTick(
-        primaryPlayer: ExoPlayer,
-        currentPositionMs: Long,
-        durationMs: Long,
-        playerFactory: () -> ExoPlayer,
-    )
+  fun onPlaybackPositionTick(
+    primaryPlayer: ExoPlayer,
+    currentPositionMs: Long,
+    durationMs: Long,
+    playerFactory: () -> ExoPlayer,
+  )
 
-    fun triggerCrossfadeNow(primaryPlayer: ExoPlayer)
+  fun triggerCrossfadeNow(primaryPlayer: ExoPlayer)
 
-    fun cancelCrossfade()
+  fun cancelCrossfade()
 
-    fun release()
+  fun release()
 }

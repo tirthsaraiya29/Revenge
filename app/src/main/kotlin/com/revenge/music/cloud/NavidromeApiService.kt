@@ -5,6 +5,8 @@ import java.net.URI
 import java.net.URLEncoder
 import java.security.MessageDigest
 import java.util.concurrent.ThreadLocalRandom
+import javax.inject.Inject
+import javax.inject.Singleton
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -14,8 +16,6 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import javax.inject.Inject
-import javax.inject.Singleton
 
 class SubsonicApiException(val code: Int, val serverMessage: String) :
   Exception("API Error $code: $serverMessage")
@@ -35,42 +35,41 @@ class NavidromeApiService @Inject constructor() {
   /** Replaced in tests so the salt used for token authentication is deterministic. */
   internal var saltFactory: () -> String = {
     val alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-    buildString(6) { repeat(6) { append(alphabet[ThreadLocalRandom.current().nextInt(alphabet.length)]) } }
+    buildString(6) {
+      repeat(6) { append(alphabet[ThreadLocalRandom.current().nextInt(alphabet.length)]) }
+    }
   }
 
-  suspend fun ping(credentials: NavidromeCredentials): Result<NavidromeCredentials> =
-    wrap {
-      val (_, effective) = request(credentials, "ping.view")
-      credentials.copy(authMethod = effective)
-    }
+  suspend fun ping(credentials: NavidromeCredentials): Result<NavidromeCredentials> = wrap {
+    val (_, effective) = request(credentials, "ping.view")
+    credentials.copy(authMethod = effective)
+  }
 
   suspend fun getPlaylists(credentials: NavidromeCredentials): Result<List<NavidromePlaylist>> =
     wrap {
       val root = request(credentials, "getPlaylists.view").first
-      val array = root["subsonic-response"]?.jsonObject?.get("playlists")?.jsonObject?.get("playlist")
+      val array =
+        root["subsonic-response"]?.jsonObject?.get("playlists")?.jsonObject?.get("playlist")
       array.asArray().mapNotNull { parsePlaylist(it) }
     }
 
   suspend fun getPlaylistSongs(
     credentials: NavidromeCredentials,
     playlistId: String,
-  ): Result<List<NavidromeSong>> =
-    wrap {
-      val root = request(credentials, "getPlaylist.view", mapOf("id" to playlistId)).first
-      val array = root["subsonic-response"]?.jsonObject?.get("playlist")?.jsonObject?.get("entry")
-      array.asArray().mapNotNull { parseSong(it) }
-    }
+  ): Result<List<NavidromeSong>> = wrap {
+    val root = request(credentials, "getPlaylist.view", mapOf("id" to playlistId)).first
+    val array = root["subsonic-response"]?.jsonObject?.get("playlist")?.jsonObject?.get("entry")
+    array.asArray().mapNotNull { parseSong(it) }
+  }
 
   suspend fun getRandomSongs(
     credentials: NavidromeCredentials,
     size: Int = 50,
-  ): Result<List<NavidromeSong>> =
-    wrap {
-      val root =
-        request(credentials, "getRandomSongs.view", mapOf("size" to size.toString())).first
-      val array = root["subsonic-response"]?.jsonObject?.get("randomSongs")?.jsonObject?.get("song")
-      array.asArray().mapNotNull { parseSong(it) }
-    }
+  ): Result<List<NavidromeSong>> = wrap {
+    val root = request(credentials, "getRandomSongs.view", mapOf("size" to size.toString())).first
+    val array = root["subsonic-response"]?.jsonObject?.get("randomSongs")?.jsonObject?.get("song")
+    array.asArray().mapNotNull { parseSong(it) }
+  }
 
   fun getStreamUrl(credentials: NavidromeCredentials, songId: String): String =
     buildUrl(
@@ -88,20 +87,21 @@ class NavidromeApiService @Inject constructor() {
     credentials: NavidromeCredentials,
     method: String,
     extra: Map<String, String> = emptyMap(),
-  ): Pair<JsonObject, NavidromeAuthMethod> = withContext(Dispatchers.IO) {
-    var effective = credentials.authMethod
-    try {
-      execute(credentials, method, extra) to effective
-    } catch (e: SubsonicApiException) {
-      if (e.code == 41 && effective == NavidromeAuthMethod.TOKEN) {
-        effective = NavidromeAuthMethod.PASSWORD
-        execute(credentials.copy(authMethod = NavidromeAuthMethod.PASSWORD), method, extra) to
-          effective
-      } else {
-        throw e
+  ): Pair<JsonObject, NavidromeAuthMethod> =
+    withContext(Dispatchers.IO) {
+      var effective = credentials.authMethod
+      try {
+        execute(credentials, method, extra) to effective
+      } catch (e: SubsonicApiException) {
+        if (e.code == 41 && effective == NavidromeAuthMethod.TOKEN) {
+          effective = NavidromeAuthMethod.PASSWORD
+          execute(credentials.copy(authMethod = NavidromeAuthMethod.PASSWORD), method, extra) to
+            effective
+        } else {
+          throw e
+        }
       }
     }
-  }
 
   private fun execute(
     credentials: NavidromeCredentials,
@@ -117,8 +117,9 @@ class NavidromeApiService @Inject constructor() {
       }
       val text = connection.inputStream.bufferedReader().use { it.readText() }
       val body = json.parseToJsonElement(text).jsonObject
-      val response = body["subsonic-response"]?.jsonObject
-        ?: throw IllegalStateException("Invalid Subsonic response")
+      val response =
+        body["subsonic-response"]?.jsonObject
+          ?: throw IllegalStateException("Invalid Subsonic response")
       if (response["status"]?.jsonPrimitive?.content != "ok") {
         val error = response["error"]?.jsonObject
         throw SubsonicApiException(
@@ -147,12 +148,13 @@ class NavidromeApiService @Inject constructor() {
     extra: Map<String, String>,
   ): String {
     val base = credentials.serverUrl.trim().trimEnd('/') + "/rest/" + method
-    val params = linkedMapOf(
-      "u" to credentials.username,
-      "v" to "1.16.1",
-      "c" to "Revenge",
-      "f" to "json",
-    )
+    val params =
+      linkedMapOf(
+        "u" to credentials.username,
+        "v" to "1.16.1",
+        "c" to "Revenge",
+        "f" to "json",
+      )
     when (credentials.authMethod) {
       NavidromeAuthMethod.TOKEN -> {
         val salt = saltFactory()
@@ -164,9 +166,11 @@ class NavidromeApiService @Inject constructor() {
       }
     }
     params.putAll(extra)
-    return base + "?" + params.entries.joinToString("&") { (k, v) ->
-      URLEncoder.encode(k, "UTF-8") + "=" + URLEncoder.encode(v, "UTF-8")
-    }
+    return base +
+      "?" +
+      params.entries.joinToString("&") { (k, v) ->
+        URLEncoder.encode(k, "UTF-8") + "=" + URLEncoder.encode(v, "UTF-8")
+      }
   }
 
   // ------------------------------------------------------------------ mapping
@@ -219,13 +223,14 @@ class NavidromeApiService @Inject constructor() {
     fun md5Hex(value: String): String =
       hex(MessageDigest.getInstance("MD5").digest(value.toByteArray(Charsets.UTF_8)))
 
-    fun hex(bytes: ByteArray): String = buildString(bytes.size * 2) {
-      for (b in bytes) {
-        val v = b.toInt() and 0xff
-        append("0123456789abcdef"[v ushr 4])
-        append("0123456789abcdef"[v and 0x0f])
+    fun hex(bytes: ByteArray): String =
+      buildString(bytes.size * 2) {
+        for (b in bytes) {
+          val v = b.toInt() and 0xff
+          append("0123456789abcdef"[v ushr 4])
+          append("0123456789abcdef"[v and 0x0f])
+        }
       }
-    }
   }
 }
 

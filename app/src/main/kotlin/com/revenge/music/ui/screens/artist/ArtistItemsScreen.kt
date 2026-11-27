@@ -31,6 +31,10 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
+import com.revenge.core.constants.GridItemSize
+import com.revenge.core.constants.GridItemsSizeKey
+import com.revenge.core.constants.GridThumbnailHeight
+import com.revenge.core.models.toMediaMetadata
 import com.revenge.innertube.models.AlbumItem
 import com.revenge.innertube.models.ArtistItem
 import com.revenge.innertube.models.PlaylistItem
@@ -39,11 +43,6 @@ import com.revenge.innertube.models.WatchEndpoint
 import com.revenge.music.LocalPlayerAwareWindowInsets
 import com.revenge.music.LocalPlayerConnection
 import com.revenge.music.R
-import com.revenge.core.constants.GridItemSize
-import com.revenge.core.constants.GridItemsSizeKey
-import com.revenge.core.constants.GridThumbnailHeight
-import com.revenge.core.models.toMediaMetadata
-import com.revenge.playback.queues.YouTubeQueue
 import com.revenge.music.ui.component.IconButton
 import com.revenge.music.ui.component.LocalMenuState
 import com.revenge.music.ui.component.YouTubeGridItem
@@ -59,6 +58,7 @@ import com.revenge.music.ui.utils.backToMain
 import com.revenge.music.utils.listItemShape
 import com.revenge.music.utils.rememberEnumPreference
 import com.revenge.music.viewmodels.ArtistItemsViewModel
+import com.revenge.playback.queues.YouTubeQueue
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable

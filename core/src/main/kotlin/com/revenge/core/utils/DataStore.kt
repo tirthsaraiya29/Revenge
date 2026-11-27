@@ -12,31 +12,32 @@ import kotlinx.coroutines.runBlocking
 
 val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
-private fun <T> readBlocking(store: DataStore<Preferences>, key: Preferences.Key<T>): T? = try {
+private fun <T> readBlocking(store: DataStore<Preferences>, key: Preferences.Key<T>): T? =
+  try {
     runBlocking { store.data.first()[key] }
-} catch (_: Exception) {
+  } catch (_: Exception) {
     null
-}
+  }
 
 operator fun <T> DataStore<Preferences>.get(key: Preferences.Key<T>): T? = readBlocking(this, key)
 
 fun <T> DataStore<Preferences>.get(key: Preferences.Key<T>, defaultValue: T): T =
-    get(key) ?: defaultValue
+  get(key) ?: defaultValue
 
 fun <T> preference(
-    context: Context,
-    key: Preferences.Key<T>,
-    defaultValue: T,
+  context: Context,
+  key: Preferences.Key<T>,
+  defaultValue: T,
 ): ReadOnlyProperty<Any?, T> = delegate { context.dataStore.get(key, defaultValue) }
 
 inline fun <reified T : Enum<T>> enumPreference(
-    context: Context,
-    key: Preferences.Key<String>,
-    defaultValue: T,
+  context: Context,
+  key: Preferences.Key<String>,
+  defaultValue: T,
 ): ReadOnlyProperty<Any?, T> = delegate { context.dataStore[key].toEnum(defaultValue) }
 
 @PublishedApi
 internal fun <T> delegate(read: () -> T): ReadOnlyProperty<Any?, T> =
-    object : ReadOnlyProperty<Any?, T> {
-        override fun getValue(thisRef: Any?, property: KProperty<*>): T = read()
-    }
+  object : ReadOnlyProperty<Any?, T> {
+    override fun getValue(thisRef: Any?, property: KProperty<*>): T = read()
+  }

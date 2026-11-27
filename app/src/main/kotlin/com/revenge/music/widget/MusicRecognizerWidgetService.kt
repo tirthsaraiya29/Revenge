@@ -20,10 +20,10 @@ import coil3.imageLoader
 import coil3.request.ImageRequest
 import coil3.request.allowHardware
 import coil3.toBitmap
-import com.revenge.music.MainActivity
-import com.revenge.music.R
 import com.revenge.core.db.DatabaseDao
 import com.revenge.core.db.entities.RecognitionHistory
+import com.revenge.music.MainActivity
+import com.revenge.music.R
 import com.revenge.music.recognition.MusicRecognitionService
 import com.revenge.shazamkit.models.RecognitionStatus
 import dagger.hilt.EntryPoint

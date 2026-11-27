@@ -4,7 +4,6 @@ import com.revenge.youlyplus.models.LyricsResponse
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 private val json = Json {
@@ -15,7 +14,8 @@ private val json = Json {
 class LyricsResponseTest {
   @Test
   fun `decodes the lrclib style payload and ignores unknown keys`() {
-    val fixture = """
+    val fixture =
+      """
       {
         "id": 1,
         "syncedLyrics": "[00:01.00]synced",
@@ -23,7 +23,8 @@ class LyricsResponseTest {
         "type": "lyrics",
         "unknown": {"nested": true}
       }
-    """.trimIndent()
+      """
+        .trimIndent()
 
     val response = json.decodeFromString<LyricsResponse>(fixture)
 
@@ -35,7 +36,8 @@ class LyricsResponseTest {
 
   @Test
   fun `decodes the kpoe style payload`() {
-    val fixture = """
+    val fixture =
+      """
       {
         "lyrics": [
           {
@@ -48,7 +50,8 @@ class LyricsResponseTest {
           }
         ]
       }
-    """.trimIndent()
+      """
+        .trimIndent()
 
     val response = json.decodeFromString<LyricsResponse>(fixture)
 
@@ -72,11 +75,12 @@ class LyricsResponseTest {
     val synced = LyricsResponse(syncedLyrics = "synced", plainLyrics = "plain")
     assertEquals("synced", synced.bestLyrics())
 
-    val kpoe = LyricsResponse(
-      syncedLyrics = "  ",
-      plainLyrics = "plain",
-      lyrics = listOf(com.revenge.youlyplus.models.LyricsItem(text = "kpoe", time = 0)),
-    )
+    val kpoe =
+      LyricsResponse(
+        syncedLyrics = "  ",
+        plainLyrics = "plain",
+        lyrics = listOf(com.revenge.youlyplus.models.LyricsItem(text = "kpoe", time = 0)),
+      )
     assertEquals("[00:00.000]kpoe", kpoe.bestLyrics())
 
     val plain = LyricsResponse(syncedLyrics = "", plainLyrics = "plain")

@@ -35,11 +35,9 @@ object Paxsenix {
 
   private val initLock = Any()
 
-  @Volatile
-  private var client: HttpClient? = null
+  @Volatile private var client: HttpClient? = null
 
-  @Volatile
-  private var version: String = "Unknown"
+  @Volatile private var version: String = "Unknown"
 
   internal var testClient: HttpClient? = null
 
@@ -48,18 +46,19 @@ object Paxsenix {
     synchronized(initLock) {
       if (client != null) return
       version = readVersion(context)
-      client = HttpClient(OkHttp) {
-        expectSuccess = true
-        install(ContentEncoding) {
-          gzip()
-          deflate()
+      client =
+        HttpClient(OkHttp) {
+          expectSuccess = true
+          install(ContentEncoding) {
+            gzip()
+            deflate()
+          }
+          install(HttpTimeout) {
+            requestTimeoutMillis = 5_000
+            connectTimeoutMillis = 4_000
+            socketTimeoutMillis = 5_000
+          }
         }
-        install(HttpTimeout) {
-          requestTimeoutMillis = 5_000
-          connectTimeoutMillis = 4_000
-          socketTimeoutMillis = 5_000
-        }
-      }
     }
   }
 
@@ -116,16 +115,16 @@ object Paxsenix {
 
   private fun readVersion(context: Context): String {
     return try {
-      context.packageManager.getPackageInfo(context.packageName, 0).versionName
-        ?.takeIf { it.isNotBlank() } ?: "Unknown"
+      context.packageManager.getPackageInfo(context.packageName, 0).versionName?.takeIf {
+        it.isNotBlank()
+      } ?: "Unknown"
     } catch (e: Exception) {
       Timber.w(e, "Paxsenix could not read app version")
       "Unknown"
     }
   }
 
-  private fun http(): HttpClient =
-    testClient ?: client ?: throw IllegalStateException(INIT_ERROR)
+  private fun http(): HttpClient = testClient ?: client ?: throw IllegalStateException(INIT_ERROR)
 
   private fun trackTarget(title: String, artist: String, duration: Int): TrackTarget {
     val (cleanTitle, cleanArtist) = MetadataCleaner.clean(title, artist).toSearchQuery()
@@ -150,7 +149,9 @@ object Paxsenix {
       getJson(
         path = "/apple-music/search",
         params = listOf("q" to query),
-      ) { body -> json.decodeFromString<List<SearchResult>>(body) }
+      ) { body ->
+        json.decodeFromString<List<SearchResult>>(body)
+      }
     } catch (e: CancellationException) {
       throw e
     } catch (e: Exception) {
@@ -160,10 +161,13 @@ object Paxsenix {
   }
 
   private suspend fun fetchLyrics(id: String): LyricsCandidate {
-    val response = getJson(
-      path = "/apple-music/lyrics",
-      params = listOf("id" to id),
-    ) { body -> json.decodeFromString<LyricsResponse>(body) }
+    val response =
+      getJson(
+        path = "/apple-music/lyrics",
+        params = listOf("id" to id),
+      ) { body ->
+        json.decodeFromString<LyricsResponse>(body)
+      }
     return PaxsenixCore.buildLyrics(response, ::convertTtmlToLrc).getOrThrow()
   }
 
@@ -172,12 +176,13 @@ object Paxsenix {
     params: List<Pair<String, Any?>>,
     decode: (String) -> T,
   ): T {
-    val response = http().get("$BASE_URL$path") {
-      header(HttpHeaders.UserAgent, "revenge/$version")
-      for ((key, value) in params) {
-        parameter(key, value)
+    val response =
+      http().get("$BASE_URL$path") {
+        header(HttpHeaders.UserAgent, "revenge/$version")
+        for ((key, value) in params) {
+          parameter(key, value)
+        }
       }
-    }
     return decode(response.bodyAsText())
   }
 
@@ -191,13 +196,14 @@ object Paxsenix {
       val results = Channel<LyricsCandidate?>(Channel.UNLIMITED)
       val jobs = targets.map { scored ->
         launch {
-          val candidate = try {
-            fetchLyrics(scored.result.id)
-          } catch (e: CancellationException) {
-            throw e
-          } catch (e: Exception) {
-            null
-          }
+          val candidate =
+            try {
+              fetchLyrics(scored.result.id)
+            } catch (e: CancellationException) {
+              throw e
+            } catch (e: Exception) {
+              null
+            }
           results.send(candidate)
         }
       }

@@ -52,7 +52,11 @@ fun CastSessionSheet(
         session.castDevice?.friendlyName ?: "Cast device",
         style = MaterialTheme.typography.titleLarge,
       )
-      Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 12.dp))
+      Text(
+        title,
+        style = MaterialTheme.typography.titleMedium,
+        modifier = Modifier.padding(top = 12.dp),
+      )
       artist?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
       Button(
         onClick = {
@@ -60,7 +64,9 @@ fun CastSessionSheet(
           onDismiss()
         },
         modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
-      ) { Text("Disconnect") }
+      ) {
+        Text("Disconnect")
+      }
     }
   }
 }

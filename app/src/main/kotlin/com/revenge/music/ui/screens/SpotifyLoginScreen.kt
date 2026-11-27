@@ -40,11 +40,14 @@ fun SpotifyLoginScreen(
     if (captured.value) return
     val cookie = cookieHeader ?: return
     val values =
-      cookie.split(';').mapNotNull { part ->
-        val index = part.indexOf('=')
-        if (index <= 0) null
-        else part.substring(0, index).trim() to part.substring(index + 1).trim()
-      }.toMap()
+      cookie
+        .split(';')
+        .mapNotNull { part ->
+          val index = part.indexOf('=')
+          if (index <= 0) null
+          else part.substring(0, index).trim() to part.substring(index + 1).trim()
+        }
+        .toMap()
     val spDc = values["sp_dc"]?.takeIf { it.isNotBlank() } ?: return
     val spKey = values["sp_key"].orEmpty()
     captured.value = true
@@ -79,7 +82,8 @@ fun SpotifyLoginScreen(
       factory = { context ->
         val webView =
           WebView(context).apply {
-            // nosemgrep: revenge-webview-javascript -- Spotify OAuth page requires JS; no JS interface is added.
+            // nosemgrep: revenge-webview-javascript -- Spotify OAuth page requires JS; no JS
+            // interface is added.
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
             settings.setSupportMultipleWindows(true)

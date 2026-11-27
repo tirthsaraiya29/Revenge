@@ -5,12 +5,12 @@ import com.revenge.core.models.MediaMetadata
 
 object EmptyQueue : Queue {
 
-    override val preloadItem: MediaMetadata? = null
+  override val preloadItem: MediaMetadata? = null
 
-    override suspend fun getInitialStatus(): Queue.Status =
-        Queue.Status(title = null, items = emptyList(), mediaItemIndex = -1)
+  override suspend fun getInitialStatus(): Queue.Status =
+    Queue.Status(title = null, items = emptyList(), mediaItemIndex = -1)
 
-    override fun hasNextPage(): Boolean = false
+  override fun hasNextPage(): Boolean = false
 
-    override suspend fun nextPage(): List<MediaItem> = emptyList()
+  override suspend fun nextPage(): List<MediaItem> = emptyList()
 }

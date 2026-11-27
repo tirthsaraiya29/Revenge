@@ -3,11 +3,6 @@ package com.revenge.music.viewmodels
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.revenge.innertube.YouTube
-import com.revenge.innertube.models.YTItem
-import com.revenge.innertube.models.filterExplicit
-import com.revenge.innertube.models.filterVideoSongs
-import com.revenge.innertube.utils.YouTubeUrlParser
 import com.revenge.core.constants.DislikedSongsKey
 import com.revenge.core.constants.HideExplicitKey
 import com.revenge.core.constants.HideVideoSongsKey
@@ -15,6 +10,11 @@ import com.revenge.core.db.MusicDatabase
 import com.revenge.core.db.entities.SearchHistory
 import com.revenge.core.utils.dataStore
 import com.revenge.core.utils.get
+import com.revenge.innertube.YouTube
+import com.revenge.innertube.models.YTItem
+import com.revenge.innertube.models.filterExplicit
+import com.revenge.innertube.models.filterVideoSongs
+import com.revenge.innertube.utils.YouTubeUrlParser
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject

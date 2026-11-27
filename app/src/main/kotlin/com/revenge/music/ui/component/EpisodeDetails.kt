@@ -15,13 +15,13 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.revenge.core.extensions.toMediaItem
+import com.revenge.core.models.toMediaMetadata
 import com.revenge.innertube.models.SongItem
 import com.revenge.music.LocalPlayerConnection
 import com.revenge.music.R
-import com.revenge.core.extensions.toMediaItem
-import com.revenge.core.models.toMediaMetadata
-import com.revenge.playback.queues.ListQueue
 import com.revenge.music.utils.makeTimeString
+import com.revenge.playback.queues.ListQueue
 
 /** A chapter from an episode's description: a line such as "12:23 Title". */
 data class EpisodeChapter(val startMs: Long, val title: String)

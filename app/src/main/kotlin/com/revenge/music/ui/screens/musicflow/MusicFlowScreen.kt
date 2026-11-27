@@ -74,6 +74,12 @@ import androidx.media3.exoplayer.offline.Download
 import androidx.media3.exoplayer.offline.DownloadRequest
 import androidx.media3.exoplayer.offline.DownloadService
 import androidx.navigation.NavController
+import com.revenge.core.db.MusicDatabase
+import com.revenge.core.db.entities.LyricsEntity
+import com.revenge.core.db.entities.Song
+import com.revenge.core.db.entities.SongEntity
+import com.revenge.core.models.toMediaMetadata
+import com.revenge.core.models.toSongEntity
 import com.revenge.innertube.YouTube
 import com.revenge.innertube.models.SongItem
 import com.revenge.music.LocalDatabase
@@ -82,12 +88,6 @@ import com.revenge.music.LocalExpandPlayer
 import com.revenge.music.LocalPlayerConnection
 import com.revenge.music.LocalSyncUtils
 import com.revenge.music.R
-import com.revenge.core.db.MusicDatabase
-import com.revenge.core.db.entities.LyricsEntity
-import com.revenge.core.db.entities.Song
-import com.revenge.core.db.entities.SongEntity
-import com.revenge.core.models.toMediaMetadata
-import com.revenge.core.models.toSongEntity
 import com.revenge.music.musicflow.MusicFlowFeedError
 import com.revenge.music.musicflow.MusicFlowItem
 import com.revenge.music.musicflow.MusicFlowPlaybackStatus

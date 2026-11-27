@@ -84,7 +84,9 @@ object SpotifyMapper {
   }
 
   internal fun normalize(value: String): String {
-    normalizedCache[value]?.let { return it }
+    normalizedCache[value]?.let {
+      return it
+    }
     var text = value.lowercase()
     text = text.replace(Regex("\\([^)]*(feat|ft)\\.?[^)]*\\)"), " ")
     text = text.replace(Regex("\\[[^\\]]*\\]"), " ")
@@ -105,7 +107,9 @@ object SpotifyMapper {
 
   private fun bigrams(text: String): Set<String> {
     if (text.isEmpty()) return emptySet()
-    bigramCache[text]?.let { return it }
+    bigramCache[text]?.let {
+      return it
+    }
     val result =
       if (text.length < 2) setOf(text)
       else buildSet { for (i in 0 until text.length - 1) add(text.substring(i, i + 2)) }

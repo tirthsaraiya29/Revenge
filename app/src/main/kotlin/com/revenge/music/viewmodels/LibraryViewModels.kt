@@ -8,10 +8,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.revenge.innertube.YouTube
-import com.revenge.innertube.models.PlaylistItem
-import com.revenge.innertube.models.SongItem
-import com.revenge.innertube.pages.HomePage
 import com.revenge.core.constants.AlbumFilter
 import com.revenge.core.constants.AlbumFilterKey
 import com.revenge.core.constants.AlbumSortDescendingKey
@@ -45,12 +41,16 @@ import com.revenge.core.extensions.filterExplicitAlbums
 import com.revenge.core.extensions.filterVideoSongs
 import com.revenge.core.extensions.filterYoutubeShorts
 import com.revenge.core.extensions.toEnum
+import com.revenge.core.utils.dataStore
+import com.revenge.core.utils.reportException
+import com.revenge.innertube.YouTube
+import com.revenge.innertube.models.PlaylistItem
+import com.revenge.innertube.models.SongItem
+import com.revenge.innertube.pages.HomePage
 import com.revenge.music.playback.DownloadUtil
 import com.revenge.music.utils.EpisodeDates
 import com.revenge.music.utils.PodcastShowStore
 import com.revenge.music.utils.SyncUtils
-import com.revenge.core.utils.dataStore
-import com.revenge.core.utils.reportException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.time.Duration
@@ -517,7 +517,9 @@ constructor(
         results
           .filterNotNull()
           .flatten()
-          .sortedByDescending { it.publishedText?.let { text -> EpisodeDates.parse(text, now) } ?: 0L }
+          .sortedByDescending {
+            it.publishedText?.let { text -> EpisodeDates.parse(text, now) } ?: 0L
+          }
           .take(MAX_EPISODES)
       if (results.none { it == null }) {
         newEpisodesFor = showIds

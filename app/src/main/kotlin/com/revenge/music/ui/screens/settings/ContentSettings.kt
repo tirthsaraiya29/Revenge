@@ -59,9 +59,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import androidx.navigation.NavController
-import com.revenge.innertube.models.IpVersion
-import com.revenge.music.LocalPlayerAwareWindowInsets
-import com.revenge.music.R
 import com.revenge.core.constants.AlbumCanvasEnabledKey
 import com.revenge.core.constants.AppLanguageKey
 import com.revenge.core.constants.ContentCountryKey
@@ -119,7 +116,11 @@ import com.revenge.core.constants.SpotifySpDcKey
 import com.revenge.core.constants.SuggestionRegionKey
 import com.revenge.core.constants.SuggestionRegionSlugToName
 import com.revenge.core.constants.TopSize
+import com.revenge.core.utils.PlaybackLogManager
+import com.revenge.innertube.models.IpVersion
 import com.revenge.lyrics.lyrics.LyricsProviderRegistry
+import com.revenge.music.LocalPlayerAwareWindowInsets
+import com.revenge.music.R
 import com.revenge.music.ui.component.DraggableLyricsProviderItem
 import com.revenge.music.ui.component.DraggableLyricsProviderList
 import com.revenge.music.ui.component.EnumDialog
@@ -129,7 +130,6 @@ import com.revenge.music.ui.component.Material3SettingsItem
 import com.revenge.music.ui.component.PlaybackLogsDialog
 import com.revenge.music.ui.screens.search.suggestions.SuggestionRegionSheet
 import com.revenge.music.ui.utils.backToMain
-import com.revenge.core.utils.PlaybackLogManager
 import com.revenge.music.utils.rememberEnumPreference
 import com.revenge.music.utils.rememberPreference
 import java.net.Proxy

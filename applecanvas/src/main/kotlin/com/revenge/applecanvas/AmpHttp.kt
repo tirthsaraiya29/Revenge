@@ -12,43 +12,46 @@ import java.util.concurrent.TimeUnit
 internal data class AmpHttpResponse(val status: Int, val body: String)
 
 internal interface AmpTransport {
-    suspend fun get(
-        target: String,
-        params: List<Pair<String, String>>,
-        headers: Map<String, String>,
-    ): AmpHttpResponse
+  suspend fun get(
+    target: String,
+    params: List<Pair<String, String>>,
+    headers: Map<String, String>,
+  ): AmpHttpResponse
 }
 
 internal fun ktorAmpTransport(
-    connectTimeoutSeconds: Long,
-    requestTimeoutSeconds: Long,
-    readTimeoutSeconds: Long,
-): AmpTransport = object : AmpTransport {
-    private val client = HttpClient(OkHttp) {
+  connectTimeoutSeconds: Long,
+  requestTimeoutSeconds: Long,
+  readTimeoutSeconds: Long,
+): AmpTransport =
+  object : AmpTransport {
+    private val client =
+      HttpClient(OkHttp) {
         expectSuccess = false
         install(ContentEncoding) {
-            gzip()
-            deflate()
+          gzip()
+          deflate()
         }
         engine {
-            config {
-                connectTimeout(connectTimeoutSeconds, TimeUnit.SECONDS)
-                readTimeout(readTimeoutSeconds, TimeUnit.SECONDS)
-                writeTimeout(readTimeoutSeconds, TimeUnit.SECONDS)
-                callTimeout(requestTimeoutSeconds, TimeUnit.SECONDS)
-            }
+          config {
+            connectTimeout(connectTimeoutSeconds, TimeUnit.SECONDS)
+            readTimeout(readTimeoutSeconds, TimeUnit.SECONDS)
+            writeTimeout(readTimeoutSeconds, TimeUnit.SECONDS)
+            callTimeout(requestTimeoutSeconds, TimeUnit.SECONDS)
+          }
         }
-    }
+      }
 
     override suspend fun get(
-        target: String,
-        params: List<Pair<String, String>>,
-        headers: Map<String, String>,
+      target: String,
+      params: List<Pair<String, String>>,
+      headers: Map<String, String>,
     ): AmpHttpResponse {
-        val response = client.get(target) {
-            params.forEach { (key, value) -> parameter(key, value) }
-            headers.forEach { (key, value) -> header(key, value) }
+      val response =
+        client.get(target) {
+          params.forEach { (key, value) -> parameter(key, value) }
+          headers.forEach { (key, value) -> header(key, value) }
         }
-        return AmpHttpResponse(response.status.value, response.bodyAsText())
+      return AmpHttpResponse(response.status.value, response.bodyAsText())
     }
-}
+  }

@@ -56,7 +56,16 @@ private fun LyricsItem.toLrcLine(): String {
 }
 
 internal fun LyricsResponse.bestLyrics(): String? {
-  syncedLyrics?.takeIf { it.isNotBlank() }?.let { return it }
-  lyrics?.toLrc()?.takeIf { it.isNotBlank() }?.let { return it }
+  syncedLyrics
+    ?.takeIf { it.isNotBlank() }
+    ?.let {
+      return it
+    }
+  lyrics
+    ?.toLrc()
+    ?.takeIf { it.isNotBlank() }
+    ?.let {
+      return it
+    }
   return plainLyrics?.takeIf { it.isNotBlank() }
 }

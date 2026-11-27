@@ -22,39 +22,45 @@ private const val SansFlexRoundness = 100f
  * Sans Flex is a two-axis variable font: weight plus an app-specific "ROND" axis that softens the
  * terminal shapes. Both sans families below intentionally share the same resource and axes.
  */
-private fun sansFlexFont(weight: FontWeight, wght: Int): Font = Font(
-  resId = R.font.sans_flex,
-  weight = weight,
-  variationSettings = FontVariation.Settings(
-    FontVariation.weight(wght),
-    FontVariation.width(SansFlexWidth),
-    FontVariation.Setting(RoundnessAxis, SansFlexRoundness),
-  ),
-)
+private fun sansFlexFont(weight: FontWeight, wght: Int): Font =
+  Font(
+    resId = R.font.sans_flex,
+    weight = weight,
+    variationSettings =
+      FontVariation.Settings(
+        FontVariation.weight(wght),
+        FontVariation.width(SansFlexWidth),
+        FontVariation.Setting(RoundnessAxis, SansFlexRoundness),
+      ),
+  )
 
-private fun variableFont(resId: Int, weight: FontWeight, wght: Int): Font = Font(
-  resId = resId,
-  weight = weight,
-  variationSettings = FontVariation.Settings(FontVariation.weight(wght)),
-)
+private fun variableFont(resId: Int, weight: FontWeight, wght: Int): Font =
+  Font(
+    resId = resId,
+    weight = weight,
+    variationSettings = FontVariation.Settings(FontVariation.weight(wght)),
+  )
 
-val SansFlexFontFamily: FontFamily = FontFamily(
-  sansFlexFont(FontWeight.Normal, 400),
-  sansFlexFont(FontWeight.Medium, 500),
-  sansFlexFont(FontWeight.Bold, 700),
-)
+val SansFlexFontFamily: FontFamily =
+  FontFamily(
+    sansFlexFont(FontWeight.Normal, 400),
+    sansFlexFont(FontWeight.Medium, 500),
+    sansFlexFont(FontWeight.Bold, 700),
+  )
 
 /** Behavioural alias of [SansFlexFontFamily]; the brand "Google Sans" is the bundled Sans Flex. */
 val GoogleSansFontFamily: FontFamily = SansFlexFontFamily
 
-val OutfitFontFamily: FontFamily = FontFamily(
-  variableFont(R.font.outfit, FontWeight.Normal, 400),
-  variableFont(R.font.outfit, FontWeight.Medium, 500),
-  variableFont(R.font.outfit, FontWeight.Bold, 700),
-)
+val OutfitFontFamily: FontFamily =
+  FontFamily(
+    variableFont(R.font.outfit, FontWeight.Normal, 400),
+    variableFont(R.font.outfit, FontWeight.Medium, 500),
+    variableFont(R.font.outfit, FontWeight.Bold, 700),
+  )
 
-val PlusJakartaSansFontFamily: FontFamily = FontFamily(
-  variableFont(R.font.plus_jakarta_sans, FontWeight.Normal, 400),
-  variableFont(R.font.plus_jakarta_sans, FontWeight.Medium, 500),
-  variableFont(R.font.plus_jakarta_sans, FontWeight.Bold, 700),
-)
+val PlusJakartaSansFontFamily: FontFamily =
+  FontFamily(
+    variableFont(R.font.plus_jakarta_sans, FontWeight.Normal, 400),
+    variableFont(R.font.plus_jakarta_sans, FontWeight.Medium, 500),
+    variableFont(R.font.plus_jakarta_sans, FontWeight.Bold, 700),
+  )

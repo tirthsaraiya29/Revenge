@@ -31,37 +31,34 @@ class JellyfinApiService @Inject constructor() {
     serverUrl: String,
     username: String,
     password: String,
-  ): Result<JellyfinCredentials> =
-    wrap {
-      val base = normalize(serverUrl)
-      val body =
-        buildJsonObject {
-          put("Username", username)
-          put("Pw", password)
-        }
-      val response = post(base + "/Users/AuthenticateByName", authHeader(null), body.toString())
-      val user = response["User"]?.jsonObject
-      val token = response.string("AccessToken")
-      val userId = user?.string("Id")
-      if (token.isNullOrBlank() || userId.isNullOrBlank()) {
-        throw Exception("Invalid authentication response from Jellyfin")
-      }
-      JellyfinCredentials(
-        serverUrl = serverUrl.trim().trimEnd('/'),
-        username = username,
-        accessToken = token,
-        userId = userId,
-        serverId = response.string("ServerId"),
-      )
+  ): Result<JellyfinCredentials> = wrap {
+    val base = normalize(serverUrl)
+    val body = buildJsonObject {
+      put("Username", username)
+      put("Pw", password)
     }
+    val response = post(base + "/Users/AuthenticateByName", authHeader(null), body.toString())
+    val user = response["User"]?.jsonObject
+    val token = response.string("AccessToken")
+    val userId = user?.string("Id")
+    if (token.isNullOrBlank() || userId.isNullOrBlank()) {
+      throw Exception("Invalid authentication response from Jellyfin")
+    }
+    JellyfinCredentials(
+      serverUrl = serverUrl.trim().trimEnd('/'),
+      username = username,
+      accessToken = token,
+      userId = userId,
+      serverId = response.string("ServerId"),
+    )
+  }
 
-  suspend fun ping(credentials: JellyfinCredentials): Result<String> =
-    wrap {
-      val response = get(credentials, "/System/Info")
-      val name = response.string("ServerName")?.takeIf { it.isNotBlank() } ?: "Jellyfin Server"
-      val version = response.string("Version").orEmpty()
-      "$name (v$version)"
-    }
+  suspend fun ping(credentials: JellyfinCredentials): Result<String> = wrap {
+    val response = get(credentials, "/System/Info")
+    val name = response.string("ServerName")?.takeIf { it.isNotBlank() } ?: "Jellyfin Server"
+    val version = response.string("Version").orEmpty()
+    "$name (v$version)"
+  }
 
   suspend fun getPlaylists(credentials: JellyfinCredentials): Result<List<JellyfinPlaylist>> =
     wrap {
@@ -86,33 +83,31 @@ class JellyfinApiService @Inject constructor() {
   suspend fun getPlaylistSongs(
     credentials: JellyfinCredentials,
     playlistId: String,
-  ): Result<List<JellyfinSong>> =
-    wrap {
-      val userId = credentials.userId ?: throw Exception("Missing User ID")
-      val response =
-        get(
-          credentials,
-          "/Playlists/${encode(playlistId)}/Items?userId=${encode(userId)}" +
-            "&fields=ItemCounts,PrimaryImageAspectRatio,Path,MediaSources",
-        )
-      response.items().mapNotNull { parseSong(it) }
-    }
+  ): Result<List<JellyfinSong>> = wrap {
+    val userId = credentials.userId ?: throw Exception("Missing User ID")
+    val response =
+      get(
+        credentials,
+        "/Playlists/${encode(playlistId)}/Items?userId=${encode(userId)}" +
+          "&fields=ItemCounts,PrimaryImageAspectRatio,Path,MediaSources",
+      )
+    response.items().mapNotNull { parseSong(it) }
+  }
 
   suspend fun getSongs(
     credentials: JellyfinCredentials,
     limit: Int = 100,
-  ): Result<List<JellyfinSong>> =
-    wrap {
-      val userId = credentials.userId ?: throw Exception("Missing User ID")
-      val response =
-        get(
-          credentials,
-          "/Users/${encode(userId)}/Items?includeItemTypes=Audio&recursive=true" +
-            "&sortBy=DateCreated&sortOrder=Descending&limit=$limit" +
-            "&fields=ItemCounts,PrimaryImageAspectRatio,Path,MediaSources",
-        )
-      response.items().mapNotNull { parseSong(it) }
-    }
+  ): Result<List<JellyfinSong>> = wrap {
+    val userId = credentials.userId ?: throw Exception("Missing User ID")
+    val response =
+      get(
+        credentials,
+        "/Users/${encode(userId)}/Items?includeItemTypes=Audio&recursive=true" +
+          "&sortBy=DateCreated&sortOrder=Descending&limit=$limit" +
+          "&fields=ItemCounts,PrimaryImageAspectRatio,Path,MediaSources",
+      )
+    response.items().mapNotNull { parseSong(it) }
+  }
 
   fun getStreamUrl(credentials: JellyfinCredentials, songId: String): String? {
     val token = credentials.accessToken?.takeIf { it.isNotBlank() } ?: return null
@@ -158,18 +153,19 @@ class JellyfinApiService @Inject constructor() {
     authorizationOverride: String? = null,
   ): JsonObject {
     val url = normalize(serverUrl) + path
-    val connection = (URI(url).toURL().openConnection() as HttpURLConnection).apply {
-      requestMethod = method
-      connectTimeout = 15_000
-      readTimeout = 30_000
-      useCaches = false
-      setRequestProperty("Accept", "application/json")
-      setRequestProperty("Authorization", authorizationOverride ?: authHeader(token))
-      if (body != null) {
-        doOutput = true
-        setRequestProperty("Content-Type", "application/json")
+    val connection =
+      (URI(url).toURL().openConnection() as HttpURLConnection).apply {
+        requestMethod = method
+        connectTimeout = 15_000
+        readTimeout = 30_000
+        useCaches = false
+        setRequestProperty("Accept", "application/json")
+        setRequestProperty("Authorization", authorizationOverride ?: authHeader(token))
+        if (body != null) {
+          doOutput = true
+          setRequestProperty("Content-Type", "application/json")
+        }
       }
-    }
     try {
       if (body != null) {
         connection.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }

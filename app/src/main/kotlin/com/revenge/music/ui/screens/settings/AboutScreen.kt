@@ -143,7 +143,8 @@ fun AboutScreen(
       item {
         Card(
           modifier = Modifier.fillMaxWidth(),
-          colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+          colors =
+            CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
           shape = RoundedCornerShape(20.dp),
         ) {
           Column(
@@ -162,11 +163,14 @@ fun AboutScreen(
               color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Text(
-              text = "Revenge is licensed under GNU GPL version 3.0 only. You may redistribute and modify it under that licence. This program comes with ABSOLUTELY NO WARRANTY.",
+              text =
+                "Revenge is licensed under GNU GPL version 3.0 only. You may redistribute and modify it under that licence. This program comes with ABSOLUTELY NO WARRANTY.",
               style = MaterialTheme.typography.bodyMedium,
               color = MaterialTheme.colorScheme.onSurface,
             )
-            TextButton(onClick = { uriHandler.openUri("https://www.gnu.org/licenses/gpl-3.0.html") }) {
+            TextButton(
+              onClick = { uriHandler.openUri("https://www.gnu.org/licenses/gpl-3.0.html") },
+            ) {
               Text("View GNU GPL v3.0 licence")
             }
           }

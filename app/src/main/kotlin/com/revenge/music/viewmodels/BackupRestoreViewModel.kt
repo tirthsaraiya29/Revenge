@@ -5,8 +5,6 @@ import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import androidx.lifecycle.ViewModel
-import com.revenge.music.MainActivity
-import com.revenge.music.R
 import com.revenge.core.db.InternalDatabase
 import com.revenge.core.db.MusicDatabase
 import com.revenge.core.db.entities.ArtistEntity
@@ -16,9 +14,11 @@ import com.revenge.core.extensions.div
 import com.revenge.core.extensions.tryOrNull
 import com.revenge.core.extensions.zipInputStream
 import com.revenge.core.extensions.zipOutputStream
+import com.revenge.core.utils.reportException
+import com.revenge.music.MainActivity
+import com.revenge.music.R
 import com.revenge.music.playback.MusicService
 import com.revenge.music.playback.MusicService.Companion.PERSISTENT_QUEUE_FILE
-import com.revenge.core.utils.reportException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.io.FileInputStream
 import java.io.FileOutputStream

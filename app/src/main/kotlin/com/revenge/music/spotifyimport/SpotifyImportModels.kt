@@ -3,7 +3,10 @@ package com.revenge.music.spotifyimport
 import com.revenge.music.spotify.SpotifyMapper
 import com.revenge.music.spotify.models.SpotifyPlaylist
 
-enum class SpotifyImportSourceType { PLAYLIST, LIKED_SONGS }
+enum class SpotifyImportSourceType {
+  PLAYLIST,
+  LIKED_SONGS,
+}
 
 data class SpotifyImportSession(
   val isAuthenticated: Boolean = false,

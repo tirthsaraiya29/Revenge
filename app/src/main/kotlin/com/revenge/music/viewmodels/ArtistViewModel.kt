@@ -9,11 +9,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.revenge.applecanvas.AppleMusicCanvasProvider
 import com.revenge.canvas.YouTubeVideoCanvasProvider
-import com.revenge.innertube.YouTube
-import com.revenge.innertube.models.filterExplicit
-import com.revenge.innertube.models.filterVideoSongs
-import com.revenge.innertube.models.filterYoutubeShorts
-import com.revenge.innertube.pages.ArtistPage
 import com.revenge.core.constants.HideExplicitKey
 import com.revenge.core.constants.HideVideoSongsKey
 import com.revenge.core.constants.HideYoutubeShortsKey
@@ -24,6 +19,11 @@ import com.revenge.core.extensions.filterVideoSongs as filterVideoSongsLocal
 import com.revenge.core.utils.dataStore
 import com.revenge.core.utils.get
 import com.revenge.core.utils.reportException
+import com.revenge.innertube.YouTube
+import com.revenge.innertube.models.filterExplicit
+import com.revenge.innertube.models.filterVideoSongs
+import com.revenge.innertube.models.filterYoutubeShorts
+import com.revenge.innertube.pages.ArtistPage
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject

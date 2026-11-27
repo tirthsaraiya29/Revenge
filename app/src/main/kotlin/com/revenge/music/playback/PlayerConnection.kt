@@ -12,7 +12,6 @@ import androidx.media3.common.Player.STATE_ENDED
 import androidx.media3.common.Timeline
 import androidx.media3.exoplayer.ExoPlayer
 import com.revenge.core.constants.SponsorBlockEnabledKey
-import com.revenge.music.data.SponsorBlockRepository
 import com.revenge.core.db.MusicDatabase
 import com.revenge.core.extensions.currentMetadata
 import com.revenge.core.extensions.getCurrentQueueIndex
@@ -20,12 +19,13 @@ import com.revenge.core.extensions.getQueueWindows
 import com.revenge.core.extensions.metadata
 import com.revenge.core.extensions.togglePlayPause
 import com.revenge.core.models.SponsorBlockSegment
-import com.revenge.music.playback.MusicService.MusicBinder
-import com.revenge.playback.queues.Queue
 import com.revenge.core.utils.PlaybackLogLevel
 import com.revenge.core.utils.PlaybackLogManager
 import com.revenge.core.utils.dataStore
 import com.revenge.core.utils.reportException
+import com.revenge.music.data.SponsorBlockRepository
+import com.revenge.music.playback.MusicService.MusicBinder
+import com.revenge.playback.queues.Queue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job

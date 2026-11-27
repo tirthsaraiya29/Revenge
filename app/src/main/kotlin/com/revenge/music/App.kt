@@ -28,8 +28,8 @@ import com.revenge.core.constants.ContentCountryKey
 import com.revenge.core.constants.ContentLanguageKey
 import com.revenge.core.constants.CountryCodeToName
 import com.revenge.core.constants.DataSyncIdKey
-import com.revenge.core.constants.IpVersionKey
 import com.revenge.core.constants.InnerTubeCookieKey
+import com.revenge.core.constants.IpVersionKey
 import com.revenge.core.constants.LanguageCodeToName
 import com.revenge.core.constants.MaxImageCacheSizeKey
 import com.revenge.core.constants.PlaybackEngineKey
@@ -80,8 +80,8 @@ import kotlinx.coroutines.withContext
 import timber.log.Timber
 
 /**
- * Application entry point. Process routing is significant: the crash process and the secondary
- * Cast SDK process must never touch application state, workers or the settings DataStore.
+ * Application entry point. Process routing is significant: the crash process and the secondary Cast
+ * SDK process must never touch application state, workers or the settings DataStore.
  */
 @HiltAndroidApp
 class App : Application(), SingletonImageLoader.Factory, Configuration.Provider {
@@ -144,8 +144,9 @@ class App : Application(), SingletonImageLoader.Factory, Configuration.Provider 
     return try {
       super.startForegroundService(service)
     } catch (exception: Exception) {
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-        exception is android.app.ForegroundServiceStartNotAllowedException
+      if (
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+          exception is android.app.ForegroundServiceStartNotAllowedException
       ) {
         Timber.w(exception, "Foreground service start was not allowed")
         null
@@ -263,7 +264,8 @@ class App : Application(), SingletonImageLoader.Factory, Configuration.Provider 
                 dataStore.edit { it[VisitorDataKey] = refreshed }
               }
             }
-          }.onFailure { Timber.w(it, "visitorData observer failed") }
+          }
+            .onFailure { Timber.w(it, "visitorData observer failed") }
         }
     }
 
@@ -333,7 +335,8 @@ class App : Application(), SingletonImageLoader.Factory, Configuration.Provider 
           )
           .apply { description = getString(R.string.update_channel_desc) }
       manager.createNotificationChannel(channel)
-    }.onFailure { Timber.w(it, "Could not create update notification channel") }
+    }
+      .onFailure { Timber.w(it, "Could not create update notification channel") }
   }
 
   private fun resolveLocale(
@@ -344,8 +347,7 @@ class App : Application(), SingletonImageLoader.Factory, Configuration.Provider 
     val systemLocale =
       appLanguage
         ?.takeIf { it.isNotBlank() && it != SYSTEM_DEFAULT }
-        ?.let { Locale.forLanguageTag(it) }
-        ?: Locale.getDefault()
+        ?.let { Locale.forLanguageTag(it) } ?: Locale.getDefault()
 
     val country =
       storedCountry?.takeIf { it.isNotBlank() && it != SYSTEM_DEFAULT }
@@ -400,9 +402,12 @@ class App : Application(), SingletonImageLoader.Factory, Configuration.Provider 
   }
 
   private fun parseProxyType(raw: String?): Proxy.Type {
-    return raw?.trim()?.takeIf { it.isNotEmpty() }?.let {
-      runCatching { Proxy.Type.valueOf(it.uppercase(Locale.US)) }.getOrNull()
-    } ?: Proxy.Type.HTTP
+    return raw
+      ?.trim()
+      ?.takeIf { it.isNotEmpty() }
+      ?.let {
+        runCatching { Proxy.Type.valueOf(it.uppercase(Locale.US)) }.getOrNull()
+      } ?: Proxy.Type.HTTP
   }
 
   private fun buildProxy(type: Proxy.Type, rawUrl: String): Proxy {
@@ -464,7 +469,8 @@ class App : Application(), SingletonImageLoader.Factory, Configuration.Provider 
           android.webkit.CookieManager.getInstance().removeAllCookies(null)
           android.webkit.CookieManager.getInstance().flush()
         }
-      }.onFailure { Timber.w(it, "forgetAccount failed") }
+      }
+        .onFailure { Timber.w(it, "forgetAccount failed") }
     }
   }
 }

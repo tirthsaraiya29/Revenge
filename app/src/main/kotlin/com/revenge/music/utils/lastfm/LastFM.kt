@@ -14,7 +14,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
@@ -57,8 +56,8 @@ object LastFM {
 
   fun getKtorClient(): HttpClient = ktor
 
-  suspend fun getToken(): Result<TokenResponse> = signed(mapOf("method" to "auth.getToken"))
-    .mapCatching { body ->
+  suspend fun getToken(): Result<TokenResponse> =
+    signed(mapOf("method" to "auth.getToken")).mapCatching { body ->
       val obj = json.parseToJsonElement(body).jsonObject
       TokenResponse(obj["token"]?.jsonPrimitive?.content.orEmpty())
     }
@@ -158,12 +157,11 @@ object LastFM {
 
   private suspend fun signed(params: Map<String, String>): Result<String> {
     if (!isInitialized()) return Result.failure(Exception("Last.fm is not initialized"))
-    val complete =
-      buildMap {
-        put("method", params["method"].orEmpty())
-        put("api_key", apiKey)
-        params.filterKeys { it != "method" }.forEach { (key, value) -> put(key, value) }
-      }
+    val complete = buildMap {
+      put("method", params["method"].orEmpty())
+      put("api_key", apiKey)
+      params.filterKeys { it != "method" }.forEach { (key, value) -> put(key, value) }
+    }
     val form = signedForm(complete)
     return transport(form)
   }

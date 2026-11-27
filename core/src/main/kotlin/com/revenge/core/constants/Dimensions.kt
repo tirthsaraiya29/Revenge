@@ -6,7 +6,6 @@ import androidx.compose.animation.core.spring
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
-
 const val CONTENT_TYPE_HEADER = 0
 const val CONTENT_TYPE_LIST = 1
 const val CONTENT_TYPE_SONG = 2
@@ -35,10 +34,10 @@ val ThumbnailCornerRadius = 6.dp
 val PlayerHorizontalPadding = 32.dp
 
 val NavigationBarAnimationSpec: AnimationSpec<Dp> =
-    spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessLow)
+  spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessLow)
 
 val BottomSheetAnimationSpec: AnimationSpec<Dp> =
-    spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow)
+  spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow)
 
 val BottomSheetSoftAnimationSpec: AnimationSpec<Dp> =
-    spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessLow)
+  spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessLow)

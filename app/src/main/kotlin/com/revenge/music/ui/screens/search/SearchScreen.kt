@@ -75,6 +75,10 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
+import com.revenge.core.constants.PauseSearchHistoryKey
+import com.revenge.core.constants.SearchSource
+import com.revenge.core.constants.SearchSourceKey
+import com.revenge.core.db.entities.SearchHistory
 import com.revenge.innertube.models.WatchEndpoint
 import com.revenge.innertube.utils.YouTubeUrlParser
 import com.revenge.music.LocalDatabase
@@ -82,23 +86,18 @@ import com.revenge.music.LocalIsPlayerExpanded
 import com.revenge.music.LocalPlayerAwareWindowInsets
 import com.revenge.music.LocalPlayerConnection
 import com.revenge.music.R
-import com.revenge.core.constants.PauseSearchHistoryKey
-import com.revenge.core.constants.SearchSource
-import com.revenge.core.constants.SearchSourceKey
-import com.revenge.core.db.entities.SearchHistory
-import com.revenge.playback.queues.YouTubeQueue
+import com.revenge.music.ui.theme.RevengeColor
+import com.revenge.music.ui.theme.RevengeRadius
+import com.revenge.music.ui.theme.RevengeSpacing
 import com.revenge.music.utils.rememberEnumPreference
 import com.revenge.music.utils.rememberPreference
 import com.revenge.music.viewmodels.HomeViewModel
 import com.revenge.music.viewmodels.MoodAndGenresViewModel
+import com.revenge.playback.queues.YouTubeQueue
 import java.net.URLEncoder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-
-import com.revenge.music.ui.theme.RevengeColor
-import com.revenge.music.ui.theme.RevengeRadius
-import com.revenge.music.ui.theme.RevengeSpacing
 
 data class ExploreGenreCategory(
   val title: String,

@@ -1,25 +1,5 @@
 package com.revenge.music.spotify
 
-import java.net.HttpURLConnection
-import java.net.URI
-import java.net.URLEncoder
-import java.time.ZoneId
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeout
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonArray
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
-import kotlinx.serialization.json.put
 import com.revenge.music.spotify.models.SpotifyAlbum
 import com.revenge.music.spotify.models.SpotifyArtist
 import com.revenge.music.spotify.models.SpotifyHomeFeed
@@ -40,6 +20,24 @@ import com.revenge.music.spotify.models.SpotifySimpleAlbum
 import com.revenge.music.spotify.models.SpotifySimpleArtist
 import com.revenge.music.spotify.models.SpotifyTrack
 import com.revenge.music.spotify.models.SpotifyUser
+import java.net.HttpURLConnection
+import java.net.URI
+import java.net.URLEncoder
+import java.time.ZoneId
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.put
 
 data class PlaylistItemRef(val uri: String, val uid: String)
 
@@ -102,23 +100,24 @@ object Spotify {
   // ------------------------------------------------------------------ public operations
 
   suspend fun me(): Result<SpotifyUser> =
-    graphql("profileAttributes", buildJsonObject {}).fold(
-      onSuccess = { data ->
-        val profile = data.obj("me")?.obj("profile")
-        if (profile == null) restMe()
-        else {
-          val uri = profile.str("uri")
-          Result.success(
-            SpotifyUser(
-              id = idFromUri(uri).ifBlank { profile.str("id").orEmpty() },
-              displayName = profile.str("name") ?: profile.obj("profile")?.str("name"),
-              images = imagesFrom(profile.obj("avatar")?.get("sources") ?: profile["images"]),
-            ),
-          )
-        }
-      },
-      onFailure = { restMe() },
-    )
+    graphql("profileAttributes", buildJsonObject {})
+      .fold(
+        onSuccess = { data ->
+          val profile = data.obj("me")?.obj("profile")
+          if (profile == null) restMe()
+          else {
+            val uri = profile.str("uri")
+            Result.success(
+              SpotifyUser(
+                id = idFromUri(uri).ifBlank { profile.str("id").orEmpty() },
+                displayName = profile.str("name") ?: profile.obj("profile")?.str("name"),
+                images = imagesFrom(profile.obj("avatar")?.get("sources") ?: profile["images"]),
+              ),
+            )
+          }
+        },
+        onFailure = { restMe() },
+      )
 
   private suspend fun restMe(): Result<SpotifyUser> =
     rest("GET", "me").map { body ->
@@ -159,13 +158,14 @@ object Spotify {
       val data = wrapper.obj("data") ?: return@library null
       when (data.str("__typename")) {
         "Playlist" -> SpotifyLibraryItem.Playlist(parsePlaylist(data))
-        "Folder" -> SpotifyLibraryItem.Folder(
-          SpotifyLibraryFolder(
-            uri = data.str("uri").orEmpty(),
-            name = data.str("name").orEmpty(),
-            totalChildren = data.int("totalCount") ?: 0,
-          ),
-        )
+        "Folder" ->
+          SpotifyLibraryItem.Folder(
+            SpotifyLibraryFolder(
+              uri = data.str("uri").orEmpty(),
+              name = data.str("name").orEmpty(),
+              totalChildren = data.int("totalCount") ?: 0,
+            ),
+          )
         else -> null
       }
     }
@@ -208,8 +208,9 @@ object Spotify {
         },
       )
       .map { data ->
-        val root = data.obj("me")?.obj("libraryV3")
-          ?: throw SpotifyException(500, "Invalid libraryV3 response")
+        val root =
+          data.obj("me")?.obj("libraryV3")
+            ?: throw SpotifyException(500, "Invalid libraryV3 response")
         val items = root.arr("items").mapNotNull { it.asObj()?.let(item) }
         val paging = root.obj("pagingInfo")
         SpotifyPaging(
@@ -229,8 +230,8 @@ object Spotify {
         },
       )
       .map { data ->
-        val union = data.obj("playlistV2")
-          ?: throw SpotifyException(500, "Invalid fetchPlaylist response")
+        val union =
+          data.obj("playlistV2") ?: throw SpotifyException(500, "Invalid fetchPlaylist response")
         parsePlaylist(union)
       }
 
@@ -248,18 +249,20 @@ object Spotify {
         },
       )
       .map { data ->
-        val content = data.obj("playlistV2")?.obj("content")
-          ?: throw SpotifyException(500, "Invalid fetchPlaylist response")
-        val items = content.arr("items").mapNotNull { element ->
-          val outer = element.asObj() ?: return@mapNotNull null
-          val inner = outer.obj("itemV2") ?: return@mapNotNull null
-          val trackData = inner.obj("data")?.let { parseTrack(it) } ?: return@mapNotNull null
-          SpotifyPlaylistTrack(
-            uid = outer.str("uid") ?: inner.str("uid") ?: trackData.uri?.let(::idFromUri),
-            track = trackData,
-            isLocal = trackData.isLocal,
-          )
-        }
+        val content =
+          data.obj("playlistV2")?.obj("content")
+            ?: throw SpotifyException(500, "Invalid fetchPlaylist response")
+        val items =
+          content.arr("items").mapNotNull { element ->
+            val outer = element.asObj() ?: return@mapNotNull null
+            val inner = outer.obj("itemV2") ?: return@mapNotNull null
+            val trackData = inner.obj("data")?.let { parseTrack(it) } ?: return@mapNotNull null
+            SpotifyPlaylistTrack(
+              uid = outer.str("uid") ?: inner.str("uid") ?: trackData.uri?.let(::idFromUri),
+              track = trackData,
+              isLocal = trackData.isLocal,
+            )
+          }
         SpotifyPaging(
           items = items,
           total = content.int("totalCount") ?: items.size,
@@ -278,7 +281,7 @@ object Spotify {
             put("newPosition", "BOTTOM_OF_PLAYLIST")
           },
         )
-        .map { }
+        .map {}
     }
 
   suspend fun removeTracksFromPlaylist(
@@ -299,7 +302,7 @@ object Spotify {
           )
         },
       )
-      .map { }
+      .map {}
 
   suspend fun moveItemsInPlaylist(
     playlistId: String,
@@ -319,7 +322,7 @@ object Spotify {
           }
         },
       )
-      .map { }
+      .map {}
 
   suspend fun editPlaylistAttributes(
     playlistId: String,
@@ -334,7 +337,7 @@ object Spotify {
           newDescription?.let { put("description", it) }
         },
       )
-      .map { }
+      .map {}
 
   suspend fun likedSongs(
     limit: Int = 50,
@@ -348,26 +351,33 @@ object Spotify {
         },
       )
       .map { data ->
-        val tracks = data.obj("me")?.obj("library")?.obj("tracks")
-          ?: throw SpotifyException(500, "Invalid fetchLibraryTracks response")
-        val items = tracks.arr("items").mapNotNull { element ->
-          val track = element.asObj()?.obj("track")?.obj("data")?.let(::parseTrack)
-            ?: return@mapNotNull null
-          SpotifySavedTrack(track = track)
-        }
-        SpotifyPaging(items = items, total = tracks.int("totalCount") ?: items.size, limit = limit, offset = offset)
+        val tracks =
+          data.obj("me")?.obj("library")?.obj("tracks")
+            ?: throw SpotifyException(500, "Invalid fetchLibraryTracks response")
+        val items =
+          tracks.arr("items").mapNotNull { element ->
+            val track =
+              element.asObj()?.obj("track")?.obj("data")?.let(::parseTrack)
+                ?: return@mapNotNull null
+            SpotifySavedTrack(track = track)
+          }
+        SpotifyPaging(
+          items = items,
+          total = tracks.int("totalCount") ?: items.size,
+          limit = limit,
+          offset = offset,
+        )
       }
 
   suspend fun addToLibrary(uris: List<String>): Result<Unit> =
-    graphql("addToLibrary", libraryUris(uris)).map { }
+    graphql("addToLibrary", libraryUris(uris)).map {}
 
   suspend fun removeFromLibrary(uris: List<String>): Result<Unit> =
-    graphql("removeFromLibrary", libraryUris(uris)).map { }
+    graphql("removeFromLibrary", libraryUris(uris)).map {}
 
-  private fun libraryUris(uris: List<String>) =
-    buildJsonObject {
-      put("libraryItemUris", buildJsonArray { uris.forEach { add(JsonPrimitive(it)) } })
-    }
+  private fun libraryUris(uris: List<String>) = buildJsonObject {
+    put("libraryItemUris", buildJsonArray { uris.forEach { add(JsonPrimitive(it)) } })
+  }
 
   suspend fun topTracks(
     timeRange: String = "medium_term",
@@ -399,12 +409,12 @@ object Spotify {
     seedGenres: List<String> = emptyList(),
     limit: Int = 50,
   ): Result<SpotifyRecommendations> {
-    val seeds =
-      buildList {
-        seedTrackIds.forEach { add(it) }
-        seedArtistIds.forEach { add(it) }
-        seedGenres.forEach { add(it) }
-      }.joinToString(",")
+    val seeds = buildList {
+      seedTrackIds.forEach { add(it) }
+      seedArtistIds.forEach { add(it) }
+      seedGenres.forEach { add(it) }
+    }
+      .joinToString(",")
     return rest(
         "GET",
         "recommendations?limit=$limit&seed_tracks=${encode(seedTrackIds.joinToString(","))}" +
@@ -435,20 +445,27 @@ object Spotify {
         },
       )
       .map { data ->
-        val root = data.obj("searchV2")
-          ?: throw SpotifyException(500, "Invalid searchDesktop response")
+        val root =
+          data.obj("searchV2") ?: throw SpotifyException(500, "Invalid searchDesktop response")
         SpotifySearchResult(
           tracks =
             parseSearchSection(root.obj("tracksV2"), "Track") { obj -> parseTrack(obj) }
               ?: SpotifyPaging(items = emptyList(), limit = limit, offset = offset),
           albums = parseSearchSection(root.obj("albumsV2"), "Album") { obj -> parseAlbum(obj) },
           artists = parseSearchSection(root.obj("artists"), "Artist") { obj -> parseArtist(obj) },
-          playlists = parseSearchSection(root.obj("playlists"), "Playlist") { obj -> parsePlaylist(obj) },
+          playlists =
+            parseSearchSection(root.obj("playlists"), "Playlist") { obj -> parsePlaylist(obj) },
         )
       }
 
   suspend fun newReleases(limit: Int = 20, offset: Int = 0): Result<NewReleasesResponse> =
-    graphql("queryWhatsNewFeed", buildJsonObject { put("limit", limit); put("offset", offset) })
+    graphql(
+        "queryWhatsNewFeed",
+        buildJsonObject {
+          put("limit", limit)
+          put("offset", offset)
+        },
+      )
       .map { data ->
         val root = data.arr("whatsNewFeedItems")
         val albums = root.mapNotNull { element ->
@@ -457,7 +474,8 @@ object Spotify {
           parseAlbum(dataObj)
         }
         NewReleasesResponse(
-          albums = SpotifyPaging(items = albums, total = albums.size, limit = limit, offset = offset),
+          albums =
+            SpotifyPaging(items = albums, total = albums.size, limit = limit, offset = offset),
         )
       }
 
@@ -473,22 +491,28 @@ object Spotify {
         },
       )
       .map { data ->
-        val root = data.obj("home")
-          ?: throw SpotifyException(500, "Invalid home response")
+        val root = data.obj("home") ?: throw SpotifyException(500, "Invalid home response")
         val container = root.obj("sectionContainer")
-        val sections = container?.arr("sections")?.mapNotNull { element ->
-          val obj = element.asObj() ?: return@mapNotNull null
-          val items = obj.arr("sectionItems").mapNotNull { it.asObj()?.let(::parseHomeItem) }
-          if (items.isEmpty()) return@mapNotNull null
-          SpotifyHomeFeedSection(
-            sectionUri = obj.obj("sectionUri")?.str("uri") ?: obj.str("uri").orEmpty(),
-            title = obj.obj("title")?.str("transformedLabel") ?: obj.str("title"),
-            typename = obj.str("__typename").orEmpty(),
-            totalCount = obj.int("totalCount") ?: items.size,
-            items = items,
-          )
-        }.orEmpty()
-        SpotifyHomeFeed(greeting = root.obj("greeting")?.str("transformedLabel"), sections = sections)
+        val sections =
+          container
+            ?.arr("sections")
+            ?.mapNotNull { element ->
+              val obj = element.asObj() ?: return@mapNotNull null
+              val items = obj.arr("sectionItems").mapNotNull { it.asObj()?.let(::parseHomeItem) }
+              if (items.isEmpty()) return@mapNotNull null
+              SpotifyHomeFeedSection(
+                sectionUri = obj.obj("sectionUri")?.str("uri") ?: obj.str("uri").orEmpty(),
+                title = obj.obj("title")?.str("transformedLabel") ?: obj.str("title"),
+                typename = obj.str("__typename").orEmpty(),
+                totalCount = obj.int("totalCount") ?: items.size,
+                items = items,
+              )
+            }
+            .orEmpty()
+        SpotifyHomeFeed(
+          greeting = root.obj("greeting")?.str("transformedLabel"),
+          sections = sections,
+        )
       }
 
   suspend fun album(albumId: String): Result<SpotifyAlbum> =
@@ -502,15 +526,20 @@ object Spotify {
         },
       )
       .map { data ->
-        val union = data.obj("albumUnion")
-          ?: throw SpotifyException(500, "Invalid getAlbum response")
+        val union =
+          data.obj("albumUnion") ?: throw SpotifyException(500, "Invalid getAlbum response")
         val tracks =
-          union.obj("tracksV2")?.arr("items")?.mapNotNull { element ->
-            element.asObj()?.obj("track")?.let(::parseTrack)
-          }.orEmpty()
-        parseAlbum(union).copy(
-          tracks = SpotifyPaging(items = tracks, total = tracks.size, limit = 50, offset = 0),
-        )
+          union
+            .obj("tracksV2")
+            ?.arr("items")
+            ?.mapNotNull { element ->
+              element.asObj()?.obj("track")?.let(::parseTrack)
+            }
+            .orEmpty()
+        parseAlbum(union)
+          .copy(
+            tracks = SpotifyPaging(items = tracks, total = tracks.size, limit = 50, offset = 0),
+          )
       }
 
   suspend fun artist(artistId: String): Result<SpotifyArtist> =
@@ -523,7 +552,8 @@ object Spotify {
         },
       )
       .map { data ->
-        data.obj("artistUnion") ?: throw SpotifyException(500, "Invalid queryArtistOverview response")
+        data.obj("artistUnion")
+          ?: throw SpotifyException(500, "Invalid queryArtistOverview response")
       }
       .map(::parseArtist)
 
@@ -539,10 +569,14 @@ object Spotify {
         },
       )
       .map { data ->
-        val union = data.obj("artistUnion")
-          ?: throw SpotifyException(500, "Invalid queryArtistOverview response")
+        val union =
+          data.obj("artistUnion")
+            ?: throw SpotifyException(500, "Invalid queryArtistOverview response")
         val items =
-          union.obj("discography")?.obj("topTracks")?.arr("items")
+          union
+            .obj("discography")
+            ?.obj("topTracks")
+            ?.arr("items")
             ?.mapNotNull { it.asObj()?.obj("track")?.let(::parseTrack) }
             .orEmpty()
         ArtistTopTracksResponse(tracks = items)
@@ -557,9 +591,13 @@ object Spotify {
         },
       )
       .map { data ->
-        val union = data.obj("artistUnion")
-          ?: throw SpotifyException(500, "Invalid queryArtistOverview response")
-        union.obj("relatedContent")?.obj("relatedArtists")?.arr("items")
+        val union =
+          data.obj("artistUnion")
+            ?: throw SpotifyException(500, "Invalid queryArtistOverview response")
+        union
+          .obj("relatedContent")
+          ?.obj("relatedArtists")
+          ?.arr("items")
           ?.mapNotNull { it.asObj()?.obj("data")?.let(::parseArtist) }
           .orEmpty()
       }
@@ -586,8 +624,8 @@ object Spotify {
   }
 
   suspend fun getCanvasForSong(title: String, artist: String): String? {
-    val track = search("$artist $title", limit = 1).getOrNull()?.tracks?.items?.firstOrNull()
-      ?: return null
+    val track =
+      search("$artist $title", limit = 1).getOrNull()?.tracks?.items?.firstOrNull() ?: return null
     return getCanvas(track.id)
   }
 
@@ -597,13 +635,10 @@ object Spotify {
     try {
       val token = accessToken ?: throw SpotifyException(401, "Not authenticated")
       val primary = SpotifyHashProvider.getHash(operationName)
-      val hashes =
-        buildList {
-          add(primary)
-          SpotifyHashProvider.getPreviousHash(operationName)
-            ?.takeIf { it != primary }
-            ?.let(::add)
-        }
+      val hashes = buildList {
+        add(primary)
+        SpotifyHashProvider.getPreviousHash(operationName)?.takeIf { it != primary }?.let(::add)
+      }
       var rotated = false
       for (hash in hashes) {
         var notFound = false
@@ -613,23 +648,22 @@ object Spotify {
               method = "POST",
               url = GRAPHQL_URL,
               headers = graphqlHeaders(token),
-              body =
-                buildJsonObject {
-                    put("variables", variables)
-                    put("operationName", operationName)
-                    put(
-                      "extensions",
-                      buildJsonObject {
-                        put(
-                          "persistedQuery",
-                          buildJsonObject {
-                            put("version", 1)
-                            put("sha256Hash", hash)
-                          },
-                        )
-                      },
-                    )
-                  }
+              body = buildJsonObject {
+                  put("variables", variables)
+                  put("operationName", operationName)
+                  put(
+                    "extensions",
+                    buildJsonObject {
+                      put(
+                        "persistedQuery",
+                        buildJsonObject {
+                          put("version", 1)
+                          put("sha256Hash", hash)
+                        },
+                      )
+                    },
+                  )
+                }
                   .toString(),
             )
           val response = transport(request)
@@ -661,8 +695,9 @@ object Spotify {
                 }
                 throw SpotifyException(400, "GraphQL: $errorMessage")
               }
-              val data = parsed?.obj("data")
-                ?: throw SpotifyException(500, "Invalid $operationName response")
+              val data =
+                parsed?.obj("data")
+                  ?: throw SpotifyException(500, "Invalid $operationName response")
               return Result.success(data)
             }
           }
@@ -709,8 +744,7 @@ object Spotify {
           }
           response.status !in 200..299 ->
             throw SpotifyException(response.status, "HTTP ${response.status}: ${response.body}")
-          else ->
-            return Result.success(json.parseToJsonElement(response.body).jsonObject)
+          else -> return Result.success(json.parseToJsonElement(response.body).jsonObject)
         }
       }
       throw SpotifyException(429, "Rate limited")
@@ -745,17 +779,18 @@ object Spotify {
 
   private suspend fun realTransport(request: HttpRequest): HttpResponse =
     withContext(Dispatchers.IO) {
-      val connection = (URI(request.url).toURL().openConnection() as HttpURLConnection).apply {
-        requestMethod = request.method
-        connectTimeout = 15_000
-        readTimeout = 30_000
-        useCaches = false
-        request.headers.forEach { (k, v) -> setRequestProperty(k, v) }
-        if (request.body != null) {
-          doOutput = true
-          setRequestProperty("Content-Type", "application/json")
+      val connection =
+        (URI(request.url).toURL().openConnection() as HttpURLConnection).apply {
+          requestMethod = request.method
+          connectTimeout = 15_000
+          readTimeout = 30_000
+          useCaches = false
+          request.headers.forEach { (k, v) -> setRequestProperty(k, v) }
+          if (request.body != null) {
+            doOutput = true
+            setRequestProperty("Content-Type", "application/json")
+          }
         }
-      }
       try {
         if (request.body != null) {
           connection.outputStream.use { it.write(request.body.toByteArray(Charsets.UTF_8)) }
@@ -805,7 +840,13 @@ object Spotify {
       name = obj.str("name").orEmpty(),
       description = obj.str("description"),
       images =
-        imagesFromList(obj.obj("images")?.arr("items")?.flatMap { it.asObj()?.arr("sources").orEmpty() }.orEmpty())
+        imagesFromList(
+            obj
+              .obj("images")
+              ?.arr("items")
+              ?.flatMap { it.asObj()?.arr("sources").orEmpty() }
+              .orEmpty(),
+          )
           .ifEmpty { imagesFrom(obj["images"]) },
       owner =
         owner?.let {
@@ -850,10 +891,14 @@ object Spotify {
   internal fun parseAlbum(obj: JsonObject): SpotifyAlbum {
     val uri = obj.str("uri")
     val artists =
-      obj.obj("artists")?.arr("items")?.mapNotNull { element ->
-        element.asObj()?.obj("profile")?.str("name")?.let { SpotifySimpleArtist(name = it) }
-          ?: element.asObj()?.str("name")?.let { SpotifySimpleArtist(name = it) }
-      }.orEmpty()
+      obj
+        .obj("artists")
+        ?.arr("items")
+        ?.mapNotNull { element ->
+          element.asObj()?.obj("profile")?.str("name")?.let { SpotifySimpleArtist(name = it) }
+            ?: element.asObj()?.str("name")?.let { SpotifySimpleArtist(name = it) }
+        }
+        .orEmpty()
     return SpotifyAlbum(
       id = idFromUri(uri).ifBlank { obj.str("id").orEmpty() },
       name = obj.str("name").orEmpty(),
@@ -893,13 +938,29 @@ object Spotify {
   }
 
   private fun parseDurationMs(obj: JsonObject): Int {
-    obj.obj("trackDuration")?.long("totalMilliseconds")?.takeIf { it > 0 }
-      ?.let { return it.toInt() }
-    obj.obj("duration")?.long("totalMilliseconds")?.takeIf { it > 0 }?.let { return it.toInt() }
-    (obj.long("durationMs") ?: obj.long("duration_ms"))?.takeIf { it > 0 }?.let { return it.toInt() }
+    obj
+      .obj("trackDuration")
+      ?.long("totalMilliseconds")
+      ?.takeIf { it > 0 }
+      ?.let {
+        return it.toInt()
+      }
+    obj
+      .obj("duration")
+      ?.long("totalMilliseconds")
+      ?.takeIf { it > 0 }
+      ?.let {
+        return it.toInt()
+      }
+    (obj.long("durationMs") ?: obj.long("duration_ms"))
+      ?.takeIf { it > 0 }
+      ?.let {
+        return it.toInt()
+      }
     val seconds = (obj["duration"] as? JsonPrimitive)?.content?.toLongOrNull()
     if (seconds != null && seconds > 0) return (seconds * 1000).toInt()
-    val nested = obj.obj("track")?.let { (it["duration"] as? JsonPrimitive)?.content?.toLongOrNull() }
+    val nested =
+      obj.obj("track")?.let { (it["duration"] as? JsonPrimitive)?.content?.toLongOrNull() }
     if (nested != null && nested > 0) return (nested * 1000).toInt()
     return 0
   }
@@ -917,9 +978,15 @@ object Spotify {
           description = data.str("description"),
           totalCount = data.int("totalCount") ?: 0,
           imageUrl =
-            data.obj("images")?.arr("items")?.firstOrNull()?.asObj()
-              ?.arr("sources")?.firstOrNull()?.asObj()?.str("url")
-              ?: imagesFrom(data["images"]).firstOrNull()?.url,
+            data
+              .obj("images")
+              ?.arr("items")
+              ?.firstOrNull()
+              ?.asObj()
+              ?.arr("sources")
+              ?.firstOrNull()
+              ?.asObj()
+              ?.str("url") ?: imagesFrom(data["images"]).firstOrNull()?.url,
           ownerName = data.obj("ownerV2")?.obj("data")?.str("name"),
         )
       typename?.contains("Album") == true ->
@@ -965,9 +1032,10 @@ object Spotify {
 
   private fun <T> pagingOf(body: JsonObject, parser: (JsonObject) -> T?): SpotifyPaging<T> =
     SpotifyPaging(
-      items = body.arr("items").mapNotNull { element ->
-        element.asObj()?.let(parser)
-      },
+      items =
+        body.arr("items").mapNotNull { element ->
+          element.asObj()?.let(parser)
+        },
       total = body.int("total") ?: 0,
       limit = body.int("limit") ?: 20,
       offset = body.int("offset") ?: 0,
@@ -1005,7 +1073,8 @@ internal fun JsonElement?.asString(): String? =
 
 internal fun JsonObject.obj(key: String): JsonObject? = (this[key] as? JsonObject)
 
-internal fun JsonObject.arr(key: String): List<JsonElement> = (this[key] as? JsonArray)?.toList().orEmpty()
+internal fun JsonObject.arr(key: String): List<JsonElement> =
+  (this[key] as? JsonArray)?.toList().orEmpty()
 
 internal fun JsonObject.str(key: String): String? =
   (this[key] as? JsonPrimitive)?.let { runCatching { it.content }.getOrNull() }

@@ -13,32 +13,36 @@ internal fun LyricsData.matchesDuration(targetSeconds: Int): Boolean =
   targetSeconds <= 0 || durationDistance(targetSeconds) <= DURATION_TOLERANCE_SECONDS
 
 internal fun LyricsData.bestLyricsText(): String? =
-  sequenceOf(richSyncLyrics, syncedLyrics, plainLyrics)
-    .firstOrNull { !it.isNullOrBlank() }
+  sequenceOf(richSyncLyrics, syncedLyrics, plainLyrics).firstOrNull { !it.isNullOrBlank() }
 
 internal fun selectLyrics(tracks: List<LyricsData>, durationSeconds: Int): String? {
   val candidates = tracks.filter { it.matchesDuration(durationSeconds) }
   if (candidates.isEmpty()) return null
-  val chosen = if (durationSeconds > 0) {
-    candidates.minByOrNull { it.durationDistance(durationSeconds) }
-  } else {
-    candidates.first()
-  }
+  val chosen =
+    if (durationSeconds > 0) {
+      candidates.minByOrNull { it.durationDistance(durationSeconds) }
+    } else {
+      candidates.first()
+    }
   return chosen?.bestLyricsText()
 }
 
-internal fun collectAlternativeLyrics(tracks: List<LyricsData>, durationSeconds: Int): List<String> {
-  val ordered = if (durationSeconds > 0) {
-    tracks.sortedBy { it.durationDistance(durationSeconds) }
-  } else {
-    tracks
-  }
+internal fun collectAlternativeLyrics(
+  tracks: List<LyricsData>,
+  durationSeconds: Int,
+): List<String> {
+  val ordered =
+    if (durationSeconds > 0) {
+      tracks.sortedBy { it.durationDistance(durationSeconds) }
+    } else {
+      tracks
+    }
   val emitted = ArrayList<String>()
   var plainEmitted = false
   for (track in ordered) {
     if (!track.matchesDuration(durationSeconds)) continue
-    val synced = sequenceOf(track.richSyncLyrics, track.syncedLyrics)
-      .firstOrNull { !it.isNullOrBlank() }
+    val synced =
+      sequenceOf(track.richSyncLyrics, track.syncedLyrics).firstOrNull { !it.isNullOrBlank() }
     if (synced != null) {
       emitted.add(synced)
       if (emitted.size >= MAX_ALTERNATE_LYRICS) break

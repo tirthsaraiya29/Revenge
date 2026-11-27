@@ -67,7 +67,9 @@ class FakeLastFmTasteApi : LastFmTasteApi {
 
 @RunWith(RobolectricTestRunner::class)
 class TasteProfileProviderTest {
-  private val context get() = RuntimeEnvironment.getApplication()
+  private val context
+    get() = RuntimeEnvironment.getApplication()
+
   private lateinit var internalDatabase: InternalDatabase
   private lateinit var database: MusicDatabase
   private lateinit var fakeApi: FakeLastFmTasteApi

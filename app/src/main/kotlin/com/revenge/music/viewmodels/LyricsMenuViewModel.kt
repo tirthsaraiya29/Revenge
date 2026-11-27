@@ -7,10 +7,10 @@ import androidx.lifecycle.viewModelScope
 import com.revenge.core.db.MusicDatabase
 import com.revenge.core.db.entities.LyricsEntity
 import com.revenge.core.db.entities.Song
-import com.revenge.lyrics.lyrics.LyricsHelper
-import com.revenge.lyrics.lyrics.LyricsResult
 import com.revenge.core.models.MediaMetadata
 import com.revenge.core.utils.NetworkConnectivityObserver
+import com.revenge.lyrics.lyrics.LyricsHelper
+import com.revenge.lyrics.lyrics.LyricsResult
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers

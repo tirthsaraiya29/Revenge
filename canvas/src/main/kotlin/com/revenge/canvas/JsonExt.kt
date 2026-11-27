@@ -9,4 +9,5 @@ internal fun JsonObject.objectValue(key: String): JsonObject? = this[key] as? Js
 
 internal fun JsonObject.arrayValue(key: String): JsonArray? = this[key] as? JsonArray
 
-internal fun JsonObject.textValue(key: String): String? = (this[key] as? JsonPrimitive)?.contentOrNull
+internal fun JsonObject.textValue(key: String): String? =
+  (this[key] as? JsonPrimitive)?.contentOrNull

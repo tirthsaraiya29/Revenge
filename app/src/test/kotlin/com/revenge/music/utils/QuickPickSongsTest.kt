@@ -27,7 +27,8 @@ class QuickPickSongsTest {
   fun changingHiddenSongIdsRemovesSongsFromTheAlreadyLoadedFeed() {
     val loaded = listOf(song("first"), song("second"))
     val initial = QuickPickSongs.filterQuickPickSongs(loaded, emptySet(), emptySet(), false, false)
-    val updated = QuickPickSongs.filterQuickPickSongs(loaded, setOf("first"), emptySet(), false, false)
+    val updated =
+      QuickPickSongs.filterQuickPickSongs(loaded, setOf("first"), emptySet(), false, false)
 
     assertEquals(listOf("first", "second"), initial.map { it.id })
     assertEquals(listOf("second"), updated.map { it.id })

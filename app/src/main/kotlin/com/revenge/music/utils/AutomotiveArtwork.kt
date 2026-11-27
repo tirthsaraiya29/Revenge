@@ -3,11 +3,11 @@ package com.revenge.music.utils
 import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata as Media3Metadata
 import coil3.imageLoader
 import coil3.request.allowHardware
 import coil3.toBitmap
-import androidx.media3.common.MediaItem
-import androidx.media3.common.MediaMetadata as Media3Metadata
 import com.revenge.core.models.MediaMetadata
 import java.io.File
 import java.security.MessageDigest
@@ -19,7 +19,6 @@ import javax.crypto.spec.SecretKeySpec
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
-import kotlin.math.min
 
 /**
  * Maps remote artwork URLs to signed, read-only content URIs so other processes (Android Auto,
@@ -47,8 +46,11 @@ object AutomotiveArtwork {
     val scheme = uri.scheme?.lowercase()
     if (scheme != "http" && scheme != "https") return uri
     val url = uri.toString()
-    mappingCache[url]?.let { return it }
-    val encoded = Base64.getUrlEncoder().withoutPadding().encodeToString(url.toByteArray(Charsets.UTF_8))
+    mappingCache[url]?.let {
+      return it
+    }
+    val encoded =
+      Base64.getUrlEncoder().withoutPadding().encodeToString(url.toByteArray(Charsets.UTF_8))
     val signature = signature(context, url)
     val mapped =
       Uri.Builder()
@@ -71,7 +73,8 @@ object AutomotiveArtwork {
     val url =
       runCatching {
         String(Base64.getUrlDecoder().decode(segments[1]), Charsets.UTF_8)
-      }.getOrNull() ?: return null
+      }
+        .getOrNull() ?: return null
     if (!url.startsWith("http://") && !url.startsWith("https://")) return null
     val expected = signature(context, url)
     val matches =
@@ -98,7 +101,8 @@ object AutomotiveArtwork {
           bitmap.compress(Bitmap.CompressFormat.JPEG, 90, output)
           output.toByteArray()
         }
-      }.getOrNull() ?: return null
+      }
+        .getOrNull() ?: return null
     if (encoded.isEmpty()) return null
     val temp = File(directory, "${file.name}.tmp")
     return try {
@@ -121,11 +125,13 @@ object AutomotiveArtwork {
     val files = directory.listFiles()?.filter { it.isFile } ?: return
     var total = files.sumOf { it.length() }
     if (total <= MAX_BYTES) return
-    files.sortedBy { it.lastModified() }.forEach { file ->
-      if (total <= TRIM_BYTES) return@forEach
-      val length = file.length()
-      if (file.delete()) total -= length
-    }
+    files
+      .sortedBy { it.lastModified() }
+      .forEach { file ->
+        if (total <= TRIM_BYTES) return@forEach
+        val length = file.length()
+        if (file.delete()) total -= length
+      }
   }
 
   private fun signature(context: Context, url: String): String {
@@ -139,7 +145,9 @@ object AutomotiveArtwork {
     val preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
     val stored = preferences.getString(SECRET_KEY, null)
     if (stored != null) {
-      runCatching { return Base64.getDecoder().decode(stored) }
+      runCatching {
+        return Base64.getDecoder().decode(stored)
+      }
     }
     val generated = ByteArray(32).also { SecureRandom().nextBytes(it) }
     preferences.edit().putString(SECRET_KEY, Base64.getEncoder().encodeToString(generated)).apply()
@@ -147,9 +155,11 @@ object AutomotiveArtwork {
   }
 
   internal fun sha256Hex(value: String): String =
-    MessageDigest.getInstance("SHA-256")
-      .digest(value.toByteArray(Charsets.UTF_8))
-      .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+    MessageDigest.getInstance("SHA-256").digest(value.toByteArray(Charsets.UTF_8)).joinToString(
+      "",
+    ) {
+      "%02x".format(it.toInt() and 0xff)
+    }
 
   private suspend fun loadWithCoil(url: String): Bitmap? {
     val request =
@@ -159,15 +169,12 @@ object AutomotiveArtwork {
         .allowHardware(false)
         .build()
     val result =
-      withTimeoutOrNull(10_000L) { currentContext().imageLoader.execute(request) }
-        ?: return null
+      withTimeoutOrNull(10_000L) { currentContext().imageLoader.execute(request) } ?: return null
     return when (result) {
       is coil3.request.SuccessResult -> runCatching { result.image.toBitmap() }.getOrNull()
       is coil3.request.ErrorResult -> {
         val cached =
-          request.newBuilder()
-            .networkCachePolicy(coil3.request.CachePolicy.READ_ONLY)
-            .build()
+          request.newBuilder().networkCachePolicy(coil3.request.CachePolicy.READ_ONLY).build()
         val fallback = withTimeoutOrNull(10_000L) { currentContext().imageLoader.execute(cached) }
         (fallback as? coil3.request.SuccessResult)?.let {
           runCatching { it.image.toBitmap() }.getOrNull()
@@ -208,7 +215,6 @@ fun MediaItem.withAutomotiveArtworkUri(context: Context): MediaItem {
   val artwork = mediaMetadata.artworkUri ?: return this
   val mapped = AutomotiveArtwork.contentUriFor(context, artwork) ?: return this
   if (mapped == artwork) return this
-  val metadata: Media3Metadata =
-    mediaMetadata.buildUpon().setArtworkUri(mapped).build()
+  val metadata: Media3Metadata = mediaMetadata.buildUpon().setArtworkUri(mapped).build()
   return buildUpon().setMediaMetadata(metadata).build()
 }

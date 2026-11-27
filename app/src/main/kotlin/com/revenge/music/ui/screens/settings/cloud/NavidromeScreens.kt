@@ -33,7 +33,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
@@ -58,7 +57,10 @@ fun NavidromeLoginScreen(navController: NavController, repository: NavidromeRepo
   val scope = rememberCoroutineScope()
 
   fun submit() {
-    val url = serverUrl.trim().let { if (it.startsWith("http://") || it.startsWith("https://")) it else "https://$it" }
+    val url =
+      serverUrl.trim().let {
+        if (it.startsWith("http://") || it.startsWith("https://")) it else "https://$it"
+      }
     if (url.isBlank() || username.isBlank() || password.isBlank()) {
       error = "Server URL, username and password are required"
       return
@@ -66,18 +68,20 @@ fun NavidromeLoginScreen(navController: NavController, repository: NavidromeRepo
     error = null
     loading = true
     scope.launch {
-      repository.login(url, username, password).fold(
-        onSuccess = {
-          Toast.makeText(context, "Connected to ${url.trimEnd('/')}", Toast.LENGTH_SHORT).show()
-          navController.navigate("settings/navidrome_dashboard") {
-            popUpTo("settings/navidrome_login") { inclusive = true }
-          }
-        },
-        onFailure = {
-          error = it.localizedMessage ?: "Could not connect to the server"
-          loading = false
-        },
-      )
+      repository
+        .login(url, username, password)
+        .fold(
+          onSuccess = {
+            Toast.makeText(context, "Connected to ${url.trimEnd('/')}", Toast.LENGTH_SHORT).show()
+            navController.navigate("settings/navidrome_dashboard") {
+              popUpTo("settings/navidrome_login") { inclusive = true }
+            }
+          },
+          onFailure = {
+            error = it.localizedMessage ?: "Could not connect to the server"
+            loading = false
+          },
+        )
     }
   }
 
@@ -106,11 +110,22 @@ fun NavidromeLoginScreen(navController: NavController, repository: NavidromeRepo
         modifier = Modifier.fillMaxWidth(),
       )
       Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        // nosemgrep: revenge-cleartext-endpoint -- user-supplied LAN Navidrome server; HTTP is a supported local setup.
-        OutlinedButton(onClick = { serverUrl = "http://${serverUrl.trim().removePrefix("http://").removePrefix("https://")}" }) {
+        // nosemgrep: revenge-cleartext-endpoint -- user-supplied LAN Navidrome server; HTTP is a
+        // supported local setup.
+        OutlinedButton(
+          onClick = {
+            serverUrl =
+              "http://${serverUrl.trim().removePrefix("http://").removePrefix("https://")}"
+          },
+        ) {
           Text("Add http://")
         }
-        OutlinedButton(onClick = { serverUrl = "https://${serverUrl.trim().removePrefix("http://").removePrefix("https://")}" }) {
+        OutlinedButton(
+          onClick = {
+            serverUrl =
+              "https://${serverUrl.trim().removePrefix("http://").removePrefix("https://")}"
+          },
+        ) {
           Text("Add https://")
         }
       }
@@ -126,7 +141,8 @@ fun NavidromeLoginScreen(navController: NavController, repository: NavidromeRepo
         onValueChange = { password = it },
         label = { Text("Password") },
         singleLine = true,
-        visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+        visualTransformation =
+          if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
         trailingIcon = {
           IconButton(onClick = { passwordVisible = !passwordVisible }) {
             Text(if (passwordVisible) "Hide" else "Show")
@@ -183,32 +199,50 @@ fun NavidromeDashboardScreen(navController: NavController, repository: Navidrome
             enabled = !busy,
             onClick = {
               scope.launch {
-                repository.ping().fold(
-                  onSuccess = { Toast.makeText(context, it, Toast.LENGTH_SHORT).show() },
-                  onFailure = {
-                    Toast.makeText(context, it.localizedMessage ?: "Ping failed", Toast.LENGTH_SHORT).show()
-                  },
-                )
+                repository
+                  .ping()
+                  .fold(
+                    onSuccess = { Toast.makeText(context, it, Toast.LENGTH_SHORT).show() },
+                    onFailure = {
+                      Toast.makeText(
+                          context,
+                          it.localizedMessage ?: "Ping failed",
+                          Toast.LENGTH_SHORT,
+                        )
+                        .show()
+                    },
+                  )
               }
             },
-          ) { Text("Test Ping") }
+          ) {
+            Text("Test Ping")
+          }
           Button(
             enabled = !busy,
             onClick = {
               busy = true
               scope.launch {
-                repository.syncPlaylistsAndSongs().fold(
-                  onSuccess = { count ->
-                    Toast.makeText(context, "Synced $count songs", Toast.LENGTH_SHORT).show()
-                  },
-                  onFailure = {
-                    Toast.makeText(context, it.localizedMessage ?: "Sync failed", Toast.LENGTH_SHORT).show()
-                  },
-                )
+                repository
+                  .syncPlaylistsAndSongs()
+                  .fold(
+                    onSuccess = { count ->
+                      Toast.makeText(context, "Synced $count songs", Toast.LENGTH_SHORT).show()
+                    },
+                    onFailure = {
+                      Toast.makeText(
+                          context,
+                          it.localizedMessage ?: "Sync failed",
+                          Toast.LENGTH_SHORT,
+                        )
+                        .show()
+                    },
+                  )
                 refresh()
               }
             },
-          ) { Text(if (busy) "Working..." else "Sync to Library") }
+          ) {
+            Text(if (busy) "Working..." else "Sync to Library")
+          }
         }
       }
       HorizontalDivider()
@@ -234,7 +268,9 @@ fun NavidromeDashboardScreen(navController: NavController, repository: Navidrome
           }
         },
         modifier = Modifier.fillMaxWidth().padding(16.dp),
-      ) { Text("Log out") }
+      ) {
+        Text("Log out")
+      }
     }
   }
 }

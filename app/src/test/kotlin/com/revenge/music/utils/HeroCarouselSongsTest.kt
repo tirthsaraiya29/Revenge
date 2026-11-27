@@ -1,10 +1,10 @@
 package com.revenge.music.utils
 
+import com.revenge.core.db.entities.Song
+import com.revenge.core.db.entities.SongEntity
 import com.revenge.innertube.models.Album
 import com.revenge.innertube.models.Artist
 import com.revenge.innertube.models.SongItem
-import com.revenge.core.db.entities.Song
-import com.revenge.core.db.entities.SongEntity
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test

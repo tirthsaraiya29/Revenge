@@ -19,7 +19,6 @@ import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -165,13 +164,14 @@ class LrcLibLyricsTest {
   fun `query without a usable track falls through to the next query`() = runBlocking {
     val engine = FakeEngine { data ->
       val params = data.url.parameters
-      val body = if (params["track_name"] != null && params["artist_name"] != null) {
-        "[${trackJson(1, 100.0)}]"
-      } else if (params["track_name"] != null) {
-        "[${trackJson(2, 100.0, synced = "[00:01.00]from third query")}]"
-      } else {
-        "[${trackJson(3, 100.0)}]"
-      }
+      val body =
+        if (params["track_name"] != null && params["artist_name"] != null) {
+          "[${trackJson(1, 100.0)}]"
+        } else if (params["track_name"] != null) {
+          "[${trackJson(2, 100.0, synced = "[00:01.00]from third query")}]"
+        } else {
+          "[${trackJson(3, 100.0)}]"
+        }
       reply(data, HttpStatusCode.OK, body)
     }
     LrcLib.testClient = HttpClient(engine) { expectSuccess = true }
@@ -204,14 +204,17 @@ class LrcLibLyricsTest {
 
   @Test
   fun `getAllLyrics orders by duration distance and emits one plain document`() = runBlocking {
-    val tracks = listOf(
-      trackJson(1, 101.0, synced = "S101"),
-      trackJson(2, 104.0, synced = "S104", plain = "P104"),
-      trackJson(3, 99.0, synced = "S99"),
-      trackJson(4, 120.0, synced = "S120"),
-      trackJson(5, 102.0, synced = "S102", plain = "P102"),
-    )
-    val engine = FakeEngine { data -> reply(data, HttpStatusCode.OK, tracks.joinToString(",", "[", "]")) }
+    val tracks =
+      listOf(
+        trackJson(1, 101.0, synced = "S101"),
+        trackJson(2, 104.0, synced = "S104", plain = "P104"),
+        trackJson(3, 99.0, synced = "S99"),
+        trackJson(4, 120.0, synced = "S120"),
+        trackJson(5, 102.0, synced = "S102", plain = "P102"),
+      )
+    val engine = FakeEngine { data ->
+      reply(data, HttpStatusCode.OK, tracks.joinToString(",", "[", "]"))
+    }
     LrcLib.testClient = HttpClient(engine) { expectSuccess = true }
 
     val delivered = ArrayList<String>()
@@ -223,7 +226,9 @@ class LrcLibLyricsTest {
   @Test
   fun `getAllLyrics caps deliveries at five documents`() = runBlocking {
     val tracks = (1..8).map { index -> trackJson(index, 100.0, synced = "S$index") }
-    val engine = FakeEngine { data -> reply(data, HttpStatusCode.OK, tracks.joinToString(",", "[", "]")) }
+    val engine = FakeEngine { data ->
+      reply(data, HttpStatusCode.OK, tracks.joinToString(",", "[", "]"))
+    }
     LrcLib.testClient = HttpClient(engine) { expectSuccess = true }
 
     val delivered = ArrayList<String>()
@@ -235,11 +240,14 @@ class LrcLibLyricsTest {
 
   @Test
   fun `getAllLyrics with unknown duration ranks synced tracks ahead of plain`() = runBlocking {
-    val tracks = listOf(
-      trackJson(1, 10.0, plain = "plain only"),
-      trackJson(2, 20.0, synced = "synced"),
-    )
-    val engine = FakeEngine { data -> reply(data, HttpStatusCode.OK, tracks.joinToString(",", "[", "]")) }
+    val tracks =
+      listOf(
+        trackJson(1, 10.0, plain = "plain only"),
+        trackJson(2, 20.0, synced = "synced"),
+      )
+    val engine = FakeEngine { data ->
+      reply(data, HttpStatusCode.OK, tracks.joinToString(",", "[", "]"))
+    }
     LrcLib.testClient = HttpClient(engine) { expectSuccess = true }
 
     val delivered = ArrayList<String>()

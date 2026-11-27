@@ -25,16 +25,17 @@ private const val DURATION_TOLERANCE = 8
 private const val CREDIT_SCAN_LIMIT = 30
 private const val DURATION_UNKNOWN = -1
 
-private val TITLE_NOISE = listOf(
-  Regex("\\(.*\\)"),
-  Regex("（.*）"),
-  Regex("「.*」"),
-  Regex("『.*』"),
-  Regex("<.*>"),
-  Regex("《.*》"),
-  Regex("〈.*〉"),
-  Regex("＜.*＞"),
-)
+private val TITLE_NOISE =
+  listOf(
+    Regex("\\(.*\\)"),
+    Regex("（.*）"),
+    Regex("「.*」"),
+    Regex("『.*』"),
+    Regex("<.*>"),
+    Regex("《.*》"),
+    Regex("〈.*〉"),
+    Regex("＜.*＞"),
+  )
 
 private val PAREN_NOISE = listOf(Regex("\\(.*\\)"), Regex("（.*）"))
 
@@ -42,12 +43,13 @@ private val HEAD_CREDIT = Regex(".+].+[:：].+")
 
 internal val LRC_LINE_PATTERN = Regex("^\\[\\d\\d:\\d\\d\\.\\d{2,3}].*")
 
-internal val LRC_CREDIT_PATTERN = Regex(
-  "^\\[\\d\\d:\\d\\d\\.\\d{2,3}].*" +
-    "(作词|作曲|编曲|制作|监制|混音|母带|录音|和声|吉他|贝斯|出品|发行|策划|统筹|演唱|" +
-    "lyrics?\\s*by|compos|arrang|producer|mix|master|written|performed|music)",
-  RegexOption.IGNORE_CASE,
-)
+internal val LRC_CREDIT_PATTERN =
+  Regex(
+    "^\\[\\d\\d:\\d\\d\\.\\d{2,3}].*" +
+      "(作词|作曲|编曲|制作|监制|混音|母带|录音|和声|吉他|贝斯|出品|发行|策划|统筹|演唱|" +
+      "lyrics?\\s*by|compos|arrang|producer|mix|master|written|performed|music)",
+    RegexOption.IGNORE_CASE,
+  )
 
 internal fun buildSearchQuery(keyword: Keyword): String = buildString {
   append(keyword.title)
@@ -120,11 +122,8 @@ object KuGou {
     var cleanTitle = title
     for (pattern in TITLE_NOISE) cleanTitle = cleanTitle.replace(pattern, "")
 
-    var cleanArtist = artist
-      .replace(", ", "、")
-      .replace(" & ", "、")
-      .replace(".", "")
-      .replace("和", "、")
+    var cleanArtist =
+      artist.replace(", ", "、").replace(" & ", "、").replace(".", "").replace("和", "、")
     for (pattern in PAREN_NOISE) cleanArtist = cleanArtist.replace(pattern, "")
 
     return Keyword(cleanTitle, cleanArtist, album)
@@ -190,56 +189,66 @@ object KuGou {
   }
 
   suspend fun searchSongs(keyword: Keyword): SearchSongResponse {
-    val response = client().get(SONG_SEARCH_URL) {
-      url {
-        encodedParameters.append("version", "9108")
-        encodedParameters.append("plat", "0")
-        encodedParameters.append("pagesize", PAGE_SIZE)
-        encodedParameters.append("showtype", "0")
-        encodedParameters.append("keyword", buildSearchQuery(keyword).encodeURLParameter(spaceToPlus = false))
+    val response =
+      client().get(SONG_SEARCH_URL) {
+        url {
+          encodedParameters.append("version", "9108")
+          encodedParameters.append("plat", "0")
+          encodedParameters.append("pagesize", PAGE_SIZE)
+          encodedParameters.append("showtype", "0")
+          encodedParameters.append(
+            "keyword",
+            buildSearchQuery(keyword).encodeURLParameter(spaceToPlus = false),
+          )
+        }
       }
-    }
     return json.decodeFromString<SearchSongResponse>(response.bodyAsText())
   }
 
   private suspend fun searchLyricsByHash(hash: String): SearchLyricsResponse {
-    val response = client().get(LYRICS_SEARCH_URL) {
-      url {
-        encodedParameters.append("ver", "1")
-        encodedParameters.append("man", "yes")
-        encodedParameters.append("client", "pc")
-        encodedParameters.append("hash", hash)
+    val response =
+      client().get(LYRICS_SEARCH_URL) {
+        url {
+          encodedParameters.append("ver", "1")
+          encodedParameters.append("man", "yes")
+          encodedParameters.append("client", "pc")
+          encodedParameters.append("hash", hash)
+        }
       }
-    }
     return json.decodeFromString<SearchLyricsResponse>(response.bodyAsText())
   }
 
   private suspend fun searchLyricsByKeyword(keyword: Keyword, duration: Int): SearchLyricsResponse {
-    val response = client().get(LYRICS_SEARCH_URL) {
-      url {
-        encodedParameters.append("ver", "1")
-        encodedParameters.append("man", "yes")
-        encodedParameters.append("client", "pc")
-        if (duration != DURATION_UNKNOWN) {
-          encodedParameters.append("duration", (duration * 1000).toString())
+    val response =
+      client().get(LYRICS_SEARCH_URL) {
+        url {
+          encodedParameters.append("ver", "1")
+          encodedParameters.append("man", "yes")
+          encodedParameters.append("client", "pc")
+          if (duration != DURATION_UNKNOWN) {
+            encodedParameters.append("duration", (duration * 1000).toString())
+          }
+          encodedParameters.append(
+            "keyword",
+            buildSearchQuery(keyword).encodeURLParameter(spaceToPlus = false),
+          )
         }
-        encodedParameters.append("keyword", buildSearchQuery(keyword).encodeURLParameter(spaceToPlus = false))
       }
-    }
     return json.decodeFromString<SearchLyricsResponse>(response.bodyAsText())
   }
 
   private suspend fun download(candidate: SearchLyricsResponse.Candidate): String {
-    val response = client().get(LYRICS_DOWNLOAD_URL) {
-      url {
-        encodedParameters.append("fmt", "lrc")
-        encodedParameters.append("charset", "utf8")
-        encodedParameters.append("client", "pc")
-        encodedParameters.append("ver", "1")
-        encodedParameters.append("id", candidate.id.toString())
-        encodedParameters.append("accesskey", candidate.accesskey)
+    val response =
+      client().get(LYRICS_DOWNLOAD_URL) {
+        url {
+          encodedParameters.append("fmt", "lrc")
+          encodedParameters.append("charset", "utf8")
+          encodedParameters.append("client", "pc")
+          encodedParameters.append("ver", "1")
+          encodedParameters.append("id", candidate.id.toString())
+          encodedParameters.append("accesskey", candidate.accesskey)
+        }
       }
-    }
     return json.decodeFromString<DownloadLyricsResponse>(response.bodyAsText()).content
   }
 

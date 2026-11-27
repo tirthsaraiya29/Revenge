@@ -65,14 +65,14 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.NavController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import coil3.compose.AsyncImage
-import com.revenge.music.LocalPlayerAwareWindowInsets
-import com.revenge.music.R
 import com.revenge.core.constants.CONTENT_TYPE_HEADER
 import com.revenge.core.constants.GridItemSize
 import com.revenge.core.constants.GridItemsSizeKey
 import com.revenge.core.constants.GridThumbnailHeight
 import com.revenge.core.constants.ThumbnailCornerRadius
 import com.revenge.core.extensions.reversed
+import com.revenge.music.LocalPlayerAwareWindowInsets
+import com.revenge.music.R
 import com.revenge.music.spotify.SpotifyMapper
 import com.revenge.music.ui.component.GridItem
 import com.revenge.music.ui.component.SortHeader

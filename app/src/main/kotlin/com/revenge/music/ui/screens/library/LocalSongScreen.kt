@@ -100,9 +100,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.NavController
-import com.revenge.music.LocalPlayerAwareWindowInsets
-import com.revenge.music.LocalPlayerConnection
-import com.revenge.music.R
 import com.revenge.core.constants.CONTENT_TYPE_HEADER
 import com.revenge.core.constants.CONTENT_TYPE_SONG
 import com.revenge.core.constants.LocalSongsExcludedFoldersKey
@@ -113,10 +110,12 @@ import com.revenge.core.constants.LocalSongsSortDescendingKey
 import com.revenge.core.constants.LocalSongsSortTypeKey
 import com.revenge.core.extensions.toMediaItem
 import com.revenge.core.extensions.togglePlayPause
+import com.revenge.music.LocalPlayerAwareWindowInsets
+import com.revenge.music.LocalPlayerConnection
+import com.revenge.music.R
 import com.revenge.music.localmedia.LocalFolderFilterMode
 import com.revenge.music.localmedia.LocalSongScanConfig
 import com.revenge.music.localmedia.SupportedLocalAudio
-import com.revenge.playback.queues.ListQueue
 import com.revenge.music.ui.component.LocalMenuState
 import com.revenge.music.ui.component.SongListItem
 import com.revenge.music.ui.component.SortHeader
@@ -126,6 +125,7 @@ import com.revenge.music.utils.launchSafely
 import com.revenge.music.utils.rememberPreference
 import com.revenge.music.viewmodels.LocalSongsScanState
 import com.revenge.music.viewmodels.LocalSongsViewModel
+import com.revenge.playback.queues.ListQueue
 import java.text.Collator
 import java.time.LocalDateTime
 import java.util.Locale
@@ -1367,8 +1367,7 @@ private fun LocalSongScanSheet(
                         onExcludedFoldersChange(
                           excludedFolders
                             .filterNot {
-                              normalizeFolderEntry(it)
-                                .equals(folderPath, ignoreCase = true)
+                              normalizeFolderEntry(it).equals(folderPath, ignoreCase = true)
                             }
                             .toSet(),
                         )
@@ -1436,8 +1435,7 @@ private fun LocalSongScanSheet(
                         onIncludedFoldersChange(
                           includedFolders
                             .filterNot {
-                              normalizeFolderEntry(it)
-                                .equals(folderPath, ignoreCase = true)
+                              normalizeFolderEntry(it).equals(folderPath, ignoreCase = true)
                             }
                             .toSet(),
                         )
@@ -1719,7 +1717,9 @@ private fun Uri.toExcludedFolderEntry(): String? {
 }
 
 private fun normalizeFolderEntry(folder: String): String =
-  LocalSongScanConfig(excludedFolders = listOf(folder)).normalizedExcludedFolders.firstOrNull()
+  LocalSongScanConfig(excludedFolders = listOf(folder))
+    .normalizedExcludedFolders
+    .firstOrNull()
     .orEmpty()
 
 private enum class LocalSongSortType {

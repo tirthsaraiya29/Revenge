@@ -99,22 +99,24 @@ object Unison {
   }
 
   internal fun parseSingle(body: String): UnisonEntry? {
-    val response = try {
-      json.decodeFromString<UnisonResponse>(body)
-    } catch (e: Exception) {
-      return null
-    }
+    val response =
+      try {
+        json.decodeFromString<UnisonResponse>(body)
+      } catch (e: Exception) {
+        return null
+      }
     if (!response.success) return null
     val entry = response.data ?: return null
     return entry.takeIf { it.lyrics.isNotBlank() }
   }
 
   internal fun parseSearch(body: String): List<UnisonEntry> {
-    val response = try {
-      json.decodeFromString<UnisonSearchResponse>(body)
-    } catch (e: Exception) {
-      return emptyList()
-    }
+    val response =
+      try {
+        json.decodeFromString<UnisonSearchResponse>(body)
+      } catch (e: Exception) {
+        return emptyList()
+      }
     if (!response.success) return emptyList()
     return response.data.orEmpty().filter { it.lyrics.isNotBlank() }
   }
@@ -128,16 +130,19 @@ object Unison {
   ): UnisonEntry? {
     if (!videoId.isNullOrBlank()) {
       fetch("lyrics", listOf("v" to videoId))?.let { body ->
-        parseSingle(body)?.let { return it }
+        parseSingle(body)?.let {
+          return it
+        }
       }
     }
 
     val (cleanTitle, cleanArtist) = MetadataCleaner.clean(title, artist).toSearchQuery()
     if (cleanTitle.isBlank() || cleanArtist.isBlank()) return null
-    val body = fetch(
-      "lyrics",
-      metadataParams(cleanTitle, cleanArtist, album, durationSeconds),
-    ) ?: return null
+    val body =
+      fetch(
+        "lyrics",
+        metadataParams(cleanTitle, cleanArtist, album, durationSeconds),
+      ) ?: return null
     return parseSingle(body)
   }
 
@@ -149,10 +154,11 @@ object Unison {
   ): List<UnisonEntry> {
     val (cleanTitle, cleanArtist) = MetadataCleaner.clean(title, artist).toSearchQuery()
     if (cleanTitle.isBlank() || cleanArtist.isBlank()) return emptyList()
-    val body = fetch(
-      "lyrics/search",
-      metadataParams(cleanTitle, cleanArtist, album, durationSeconds),
-    ) ?: return emptyList()
+    val body =
+      fetch(
+        "lyrics/search",
+        metadataParams(cleanTitle, cleanArtist, album, durationSeconds),
+      ) ?: return emptyList()
     return parseSearch(body)
   }
 
@@ -172,11 +178,12 @@ object Unison {
 
   private suspend fun fetch(path: String, params: List<Pair<String, Any?>>): String? {
     return try {
-      val response = client().get("$BASE_URL$path") {
-        for ((key, value) in params) {
-          parameter(key, value)
+      val response =
+        client().get("$BASE_URL$path") {
+          for ((key, value) in params) {
+            parameter(key, value)
+          }
         }
-      }
       if (!response.status.isSuccess()) {
         null
       } else {

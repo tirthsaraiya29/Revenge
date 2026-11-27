@@ -1,9 +1,9 @@
 package com.revenge.music.spotify
 
+import com.revenge.music.spotify.models.SpotifyInternalToken
 import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URLEncoder
-import java.security.MessageDigest
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 import javax.crypto.Mac
@@ -18,7 +18,6 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import com.revenge.music.spotify.models.SpotifyInternalToken
 
 /**
  * Converts a Spotify `sp_dc` cookie into an internal web-player access token using the TOTP
@@ -34,7 +33,8 @@ object SpotifyAuth {
   private const val TOKEN_URL =
     "https://open.spotify.com/api/token?reason=transport&productType=web-player"
   private const val SERVER_TIME_URL = "https://open.spotify.com/api/server-time"
-  // nosemgrep: revenge-hardcoded-credential -- public Spotify web-player TOTP secret, not a user credential.
+  // nosemgrep: revenge-hardcoded-credential -- public Spotify web-player TOTP secret, not a user
+  // credential.
   private const val DEFAULT_SECRET = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
   private const val DEFAULT_VERSION = "5"
   private const val USER_AGENT =
@@ -80,8 +80,7 @@ object SpotifyAuth {
           append(spKey)
         }
       }
-      val url =
-        "$TOKEN_URL&totp=$totp&totpServer=$totp&totpVer=${encode(version)}"
+      val url = "$TOKEN_URL&totp=$totp&totpServer=$totp&totpVer=${encode(version)}"
       val response =
         http(
           url,
@@ -130,7 +129,8 @@ object SpotifyAuth {
         (obj["accessTokenExpirationTimestampMs"] as? JsonPrimitive)?.content?.toLongOrNull()
           ?: (obj["expires_at"] as? JsonPrimitive)?.content?.toLongOrNull()
           ?: 0L,
-      isAnonymous = (obj["isAnonymous"] as? JsonPrimitive)?.content?.toBooleanStrictOrNull() ?: false,
+      isAnonymous =
+        (obj["isAnonymous"] as? JsonPrimitive)?.content?.toBooleanStrictOrNull() ?: false,
       clientId = (obj["clientId"] as? JsonPrimitive)?.content.orEmpty(),
     )
   }
@@ -152,8 +152,7 @@ object SpotifyAuth {
   private suspend fun fetchNuance(): Pair<String, String>? =
     try {
       val response = http(GIST_URL, mapOf("Accept" to "application/vnd.github+json"))
-      if (response.status !in 200..299) null
-      else parseNuance(response.body)
+      if (response.status !in 200..299) null else parseNuance(response.body)
     } catch (e: CancellationException) {
       throw e
     } catch (e: Throwable) {
@@ -166,8 +165,8 @@ object SpotifyAuth {
     val entries = mutableListOf<Triple<Int, String, String>>()
     for (file in files.values) {
       val content = file.jsonObject["content"]?.jsonPrimitive?.content ?: continue
-      val parsed = runCatching { json.parseToJsonElement(content) as? JsonArray }.getOrNull()
-        ?: continue
+      val parsed =
+        runCatching { json.parseToJsonElement(content) as? JsonArray }.getOrNull() ?: continue
       parsed.forEach { element ->
         val obj = element as? JsonObject ?: return@forEach
         val secret = (obj["s"] as? JsonPrimitive)?.content ?: return@forEach
@@ -244,13 +243,14 @@ object SpotifyAuth {
 
   private suspend fun realGet(url: String, headers: Map<String, String>): HttpResult =
     withContext(Dispatchers.IO) {
-      val connection = (URI(url).toURL().openConnection() as HttpURLConnection).apply {
-        requestMethod = "GET"
-        connectTimeout = 15_000
-        readTimeout = 15_000
-        useCaches = false
-        headers.forEach { (k, v) -> setRequestProperty(k, v) }
-      }
+      val connection =
+        (URI(url).toURL().openConnection() as HttpURLConnection).apply {
+          requestMethod = "GET"
+          connectTimeout = 15_000
+          readTimeout = 15_000
+          useCaches = false
+          headers.forEach { (k, v) -> setRequestProperty(k, v) }
+        }
       try {
         val status = connection.responseCode
         val stream = if (status in 200..299) connection.inputStream else connection.errorStream

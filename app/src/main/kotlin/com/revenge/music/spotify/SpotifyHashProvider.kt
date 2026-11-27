@@ -2,7 +2,11 @@ package com.revenge.music.spotify
 
 import java.util.concurrent.ConcurrentHashMap
 
-enum class HashSource { HARDCODED, CACHED, REMOTE }
+enum class HashSource {
+  HARDCODED,
+  CACHED,
+  REMOTE,
+}
 
 data class GqlHashEntry(
   val hash: String,
@@ -90,5 +94,4 @@ object SpotifyHashProvider {
       registry[name] = GqlHashEntry(hash, source = HashSource.HARDCODED)
     }
   }
-
 }

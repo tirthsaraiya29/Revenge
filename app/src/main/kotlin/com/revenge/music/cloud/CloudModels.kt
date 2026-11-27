@@ -4,7 +4,10 @@ import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 
-enum class NavidromeAuthMethod { TOKEN, PASSWORD }
+enum class NavidromeAuthMethod {
+  TOKEN,
+  PASSWORD,
+}
 
 data class NavidromeCredentials(
   val serverUrl: String,
@@ -72,5 +75,6 @@ data class JellyfinPlaylist(
 @InstallIn(SingletonComponent::class)
 interface CloudEntryPoint {
   fun navidromeRepository(): NavidromeRepository
+
   fun jellyfinRepository(): JellyfinRepository
 }

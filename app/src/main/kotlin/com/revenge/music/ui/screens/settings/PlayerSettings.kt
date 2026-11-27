@@ -30,9 +30,6 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
-import com.revenge.music.BuildConfig
-import com.revenge.music.LocalPlayerAwareWindowInsets
-import com.revenge.music.R
 import com.revenge.core.constants.AudioNormalizationKey
 import com.revenge.core.constants.AudioOffload
 import com.revenge.core.constants.AudioQuality
@@ -70,6 +67,9 @@ import com.revenge.core.constants.SkipSilenceKey
 import com.revenge.core.constants.StopMusicOnTaskClearKey
 import com.revenge.core.constants.UsbDacVolumeModeKey
 import com.revenge.core.constants.VarispeedKey
+import com.revenge.music.BuildConfig
+import com.revenge.music.LocalPlayerAwareWindowInsets
+import com.revenge.music.R
 import com.revenge.music.ui.component.DefaultDialog
 import com.revenge.music.ui.component.EnumDialog
 import com.revenge.music.ui.component.IconButton

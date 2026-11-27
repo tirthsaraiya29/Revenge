@@ -25,17 +25,17 @@ import java.util.concurrent.atomic.AtomicLong
 import kotlin.random.Random
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
 
 /**
  * Shazam music recognition.
  *
- * Requests are rate limited (at most one start per second), executed with a bounded
- * concurrency of [MAX_CONCURRENT_REQUESTS], retried on transient failures and cached for
- * [CACHE_DURATION_MS]. All public calls are safe to invoke from any coroutine context.
+ * Requests are rate limited (at most one start per second), executed with a bounded concurrency of
+ * [MAX_CONCURRENT_REQUESTS], retried on transient failures and cached for [CACHE_DURATION_MS]. All
+ * public calls are safe to invoke from any coroutine context.
  */
 object Shazam {
 
@@ -51,12 +51,11 @@ object Shazam {
   private const val CONNECT_TIMEOUT_MS = 10_000L
   private const val WAITER_POLL_INTERVAL_MS = 50L
 
-  private val json =
-    Json {
-      ignoreUnknownKeys = true
-      isLenient = true
-      encodeDefaults = true
-    }
+  private val json = Json {
+    ignoreUnknownKeys = true
+    isLenient = true
+    encodeDefaults = true
+  }
 
   private val client by lazy {
     HttpClient(OkHttp) {
@@ -113,8 +112,8 @@ object Shazam {
    *
    * @param signature audio fingerprint in Shazam DejaVu format.
    * @param sampleDurationMs duration of the sampled audio in milliseconds.
-   * @return success with a [RecognitionResult], or failure with a readable message. A missing
-   *   match surfaces as a failure whose message contains "No match".
+   * @return success with a [RecognitionResult], or failure with a readable message. A missing match
+   *   surfaces as a failure whose message contains "No match".
    */
   suspend fun recognize(signature: String, sampleDurationMs: Long): Result<RecognitionResult> {
     if (signature.isBlank()) {
@@ -124,7 +123,9 @@ object Shazam {
       return Result.failure(IllegalArgumentException("Sample duration must be positive"))
     }
 
-    cachedResult(signature)?.let { return Result.success(it) }
+    cachedResult(signature)?.let {
+      return Result.success(it)
+    }
 
     if (inFlight.incrementAndGet() > MAX_QUEUE_SIZE) {
       inFlight.decrementAndGet()
@@ -153,8 +154,7 @@ object Shazam {
   }
 
   /** Number of requests currently waiting for an execution slot. */
-  fun getPendingRequestsCount(): Int =
-    (inFlight.get() - active.get()).coerceAtLeast(0)
+  fun getPendingRequestsCount(): Int = (inFlight.get() - active.get()).coerceAtLeast(0)
 
   /** Number of requests performing an HTTP call right now. */
   fun getActiveRequestsCount(): Int = active.get()
@@ -278,8 +278,7 @@ object Shazam {
         throw ShazamHttpException(response.status.value, "Malformed response from Shazam", e)
       }
 
-    return body.toRecognitionResult()
-      ?: throw ShazamHttpException(404, "No match found")
+    return body.toRecognitionResult() ?: throw ShazamHttpException(404, "No match found")
   }
 
   private fun cachedResult(signature: String): RecognitionResult? {
@@ -309,15 +308,16 @@ internal class ShazamHttpException(
 ) : Exception(message, cause)
 
 /**
- * Maps an HTTP status to the exception surfaced to callers, or null when the status is a
- * success code that needs no special handling.
+ * Maps an HTTP status to the exception surfaced to callers, or null when the status is a success
+ * code that needs no special handling.
  */
 internal fun httpErrorFor(statusCode: Int): ShazamHttpException? =
   when {
     statusCode in 200..299 -> null
     statusCode == 404 -> ShazamHttpException(404, "No match found")
     statusCode == 429 -> ShazamHttpException(429, "Too many requests")
-    statusCode in 500..599 -> ShazamHttpException(statusCode, "Shazam service temporarily unavailable")
+    statusCode in 500..599 ->
+      ShazamHttpException(statusCode, "Shazam service temporarily unavailable")
     else -> ShazamHttpException(statusCode, "Recognition failed (error $statusCode)")
   }
 
@@ -331,21 +331,36 @@ internal fun ShazamResponseJson.toRecognitionResult(): RecognitionResult? {
     metadata.firstOrNull { it.title == name }?.text?.takeIf { it.isNotBlank() }
 
   val appleAction =
-    track.hub?.options.orEmpty().filterNotNull()
+    track.hub
+      ?.options
+      .orEmpty()
+      .filterNotNull()
       .firstOrNull { it.providername?.contains("apple", ignoreCase = true) == true }
-      ?.actions.orEmpty().filterNotNull()
+      ?.actions
+      .orEmpty()
+      .filterNotNull()
       .firstOrNull()
 
   val spotifyAction =
-    track.hub?.providers.orEmpty().filterNotNull()
+    track.hub
+      ?.providers
+      .orEmpty()
+      .filterNotNull()
       .firstOrNull { it.caption?.contains("spotify", ignoreCase = true) == true }
-      ?.actions.orEmpty().filterNotNull()
+      ?.actions
+      .orEmpty()
+      .filterNotNull()
       .firstOrNull()
 
   val youtubeUri =
-    track.hub?.options.orEmpty().filterNotNull()
+    track.hub
+      ?.options
+      .orEmpty()
+      .filterNotNull()
       .firstOrNull { it.type?.contains("video", ignoreCase = true) == true }
-      ?.actions.orEmpty().filterNotNull()
+      ?.actions
+      .orEmpty()
+      .filterNotNull()
       .firstOrNull()
       ?.uri
 

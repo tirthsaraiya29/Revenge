@@ -3,10 +3,10 @@ package com.revenge.music.viewmodels
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.revenge.core.db.MusicDatabase
+import com.revenge.core.utils.reportException
 import com.revenge.music.localmedia.LocalSongScanConfig
 import com.revenge.music.localmedia.LocalSongScanSummary
 import com.revenge.music.localmedia.LocalSongScanner
-import com.revenge.core.utils.reportException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers

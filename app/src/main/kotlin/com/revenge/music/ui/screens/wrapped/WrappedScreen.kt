@@ -34,11 +34,11 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
+import com.revenge.core.db.entities.Song
+import com.revenge.core.models.toMediaMetadata
 import com.revenge.innertube.models.WatchEndpoint
 import com.revenge.music.LocalPlayerConnection
 import com.revenge.music.R
-import com.revenge.core.db.entities.Song
-import com.revenge.core.models.toMediaMetadata
 import com.revenge.playback.queues.YouTubeQueue
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow

@@ -5,6 +5,6 @@ import androidx.room.PrimaryKey
 
 @Entity(tableName = "set_video_id")
 data class SetVideoIdEntity(
-    @PrimaryKey val videoId: String = "",
-    val setVideoId: String? = null,
+  @PrimaryKey val videoId: String = "",
+  val setVideoId: String? = null,
 )

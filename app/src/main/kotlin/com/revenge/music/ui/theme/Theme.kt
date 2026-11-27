@@ -40,13 +40,14 @@ private val ThemeColorFallback = Color(0xFF4285F4)
 private val GradientFallbackStart = Color(0xFF595959)
 private val GradientFallbackEnd = Color(0xFF0D0D0D)
 
-private val RevengeShapes = Shapes(
-  extraSmall = RoundedCornerShape(RevengeRadius.xs),
-  small = RoundedCornerShape(RevengeRadius.sm),
-  medium = RoundedCornerShape(RevengeRadius.md),
-  large = RoundedCornerShape(RevengeRadius.lg),
-  extraLarge = RoundedCornerShape(RevengeRadius.xl),
-)
+private val RevengeShapes =
+  Shapes(
+    extraSmall = RoundedCornerShape(RevengeRadius.xs),
+    small = RoundedCornerShape(RevengeRadius.sm),
+    medium = RoundedCornerShape(RevengeRadius.md),
+    large = RoundedCornerShape(RevengeRadius.lg),
+    extraLarge = RoundedCornerShape(RevengeRadius.xl),
+  )
 
 /**
  * Applies the Revenge theme once at the activity root. Font preferences are read inside the
@@ -61,45 +62,55 @@ fun revengeTheme(
   content: @Composable () -> Unit,
 ) {
   val context = LocalContext.current
-  val selectedFont = rememberPreference(
-    key = SelectedFontKey,
-    defaultValue = AppFont.PLUS_JAKARTA_SANS.value,
-  ).value
-  val customFontPath = rememberPreference(
-    key = CustomFontPathKey,
-    defaultValue = "",
-  ).value
+  val selectedFont =
+    rememberPreference(
+        key = SelectedFontKey,
+        defaultValue = AppFont.PLUS_JAKARTA_SANS.value,
+      )
+      .value
+  val customFontPath =
+    rememberPreference(
+        key = CustomFontPathKey,
+        defaultValue = "",
+      )
+      .value
 
-  val fontFamily = remember(selectedFont, customFontPath) {
-    resolveFontFamily(selectedFont, customFontPath)
-  }
+  val fontFamily =
+    remember(selectedFont, customFontPath) {
+      resolveFontFamily(selectedFont, customFontPath)
+    }
 
-  val baseScheme: ColorScheme = when {
-    isMonochrome -> rememberDynamicColorScheme(
-      seedColor = MonochromeSeed,
-      isDark = darkTheme,
-      style = PaletteStyle.Monochrome,
-      specVersion = ColorSpec.SpecVersion.SPEC_2025,
-    ).toGrayscaleColorScheme()
+  val baseScheme: ColorScheme =
+    when {
+      isMonochrome ->
+        rememberDynamicColorScheme(
+            seedColor = MonochromeSeed,
+            isDark = darkTheme,
+            style = PaletteStyle.Monochrome,
+            specVersion = ColorSpec.SpecVersion.SPEC_2025,
+          )
+          .toGrayscaleColorScheme()
 
-    themeColor == DefaultThemeColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ->
-      if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+      themeColor == DefaultThemeColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ->
+        if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
 
-    else -> rememberDynamicColorScheme(
-      // The sentinel is never painted; on API < 31 it falls back to the brand seed.
-      seedColor = if (themeColor == DefaultThemeColor) BrandThemeColor else themeColor,
-      isDark = darkTheme,
-      style = PaletteStyle.TonalSpot,
-      specVersion = ColorSpec.SpecVersion.SPEC_2025,
-    )
-  }
+      else ->
+        rememberDynamicColorScheme(
+          // The sentinel is never painted; on API < 31 it falls back to the brand seed.
+          seedColor = if (themeColor == DefaultThemeColor) BrandThemeColor else themeColor,
+          isDark = darkTheme,
+          style = PaletteStyle.TonalSpot,
+          specVersion = ColorSpec.SpecVersion.SPEC_2025,
+        )
+    }
 
   // Monochrome is already a complete grayscale scheme and must not be tinted by the dark remap.
-  val colorScheme = if (darkTheme && !isMonochrome) {
-    baseScheme.toProfessionalDarkColorScheme(pureBlack)
-  } else {
-    baseScheme
-  }
+  val colorScheme =
+    if (darkTheme && !isMonochrome) {
+      baseScheme.toProfessionalDarkColorScheme(pureBlack)
+    } else {
+      baseScheme
+    }
 
   MaterialTheme(
     colorScheme = colorScheme,
@@ -138,53 +149,54 @@ fun ColorScheme.toProfessionalDarkColorScheme(pureBlack: Boolean): ColorScheme =
   }
 
 /** Alias for [toProfessionalDarkColorScheme]; returns exactly the same scheme. */
-fun ColorScheme.pureBlack(apply: Boolean): ColorScheme =
-  toProfessionalDarkColorScheme(apply)
+fun ColorScheme.pureBlack(apply: Boolean): ColorScheme = toProfessionalDarkColorScheme(apply)
 
 /** Keeps every role's alpha while removing its HSL saturation. */
-fun ColorScheme.toGrayscaleColorScheme(): ColorScheme = copy(
-  primary = primary.toGrayscale(),
-  onPrimary = onPrimary.toGrayscale(),
-  primaryContainer = primaryContainer.toGrayscale(),
-  onPrimaryContainer = onPrimaryContainer.toGrayscale(),
-  inversePrimary = inversePrimary.toGrayscale(),
-  secondary = secondary.toGrayscale(),
-  onSecondary = onSecondary.toGrayscale(),
-  secondaryContainer = secondaryContainer.toGrayscale(),
-  onSecondaryContainer = onSecondaryContainer.toGrayscale(),
-  tertiary = tertiary.toGrayscale(),
-  onTertiary = onTertiary.toGrayscale(),
-  tertiaryContainer = tertiaryContainer.toGrayscale(),
-  onTertiaryContainer = onTertiaryContainer.toGrayscale(),
-  background = background.toGrayscale(),
-  onBackground = onBackground.toGrayscale(),
-  surface = surface.toGrayscale(),
-  onSurface = onSurface.toGrayscale(),
-  surfaceVariant = surfaceVariant.toGrayscale(),
-  onSurfaceVariant = onSurfaceVariant.toGrayscale(),
-  surfaceTint = surfaceTint.toGrayscale(),
-  inverseSurface = inverseSurface.toGrayscale(),
-  inverseOnSurface = inverseOnSurface.toGrayscale(),
-  error = error.toGrayscale(),
-  onError = onError.toGrayscale(),
-  errorContainer = errorContainer.toGrayscale(),
-  onErrorContainer = onErrorContainer.toGrayscale(),
-  outline = outline.toGrayscale(),
-  outlineVariant = outlineVariant.toGrayscale(),
-  scrim = scrim.toGrayscale(),
-  surfaceBright = surfaceBright.toGrayscale(),
-  surfaceDim = surfaceDim.toGrayscale(),
-  surfaceContainer = surfaceContainer.toGrayscale(),
-  surfaceContainerHigh = surfaceContainerHigh.toGrayscale(),
-  surfaceContainerHighest = surfaceContainerHighest.toGrayscale(),
-  surfaceContainerLow = surfaceContainerLow.toGrayscale(),
-  surfaceContainerLowest = surfaceContainerLowest.toGrayscale(),
-)
+fun ColorScheme.toGrayscaleColorScheme(): ColorScheme =
+  copy(
+    primary = primary.toGrayscale(),
+    onPrimary = onPrimary.toGrayscale(),
+    primaryContainer = primaryContainer.toGrayscale(),
+    onPrimaryContainer = onPrimaryContainer.toGrayscale(),
+    inversePrimary = inversePrimary.toGrayscale(),
+    secondary = secondary.toGrayscale(),
+    onSecondary = onSecondary.toGrayscale(),
+    secondaryContainer = secondaryContainer.toGrayscale(),
+    onSecondaryContainer = onSecondaryContainer.toGrayscale(),
+    tertiary = tertiary.toGrayscale(),
+    onTertiary = onTertiary.toGrayscale(),
+    tertiaryContainer = tertiaryContainer.toGrayscale(),
+    onTertiaryContainer = onTertiaryContainer.toGrayscale(),
+    background = background.toGrayscale(),
+    onBackground = onBackground.toGrayscale(),
+    surface = surface.toGrayscale(),
+    onSurface = onSurface.toGrayscale(),
+    surfaceVariant = surfaceVariant.toGrayscale(),
+    onSurfaceVariant = onSurfaceVariant.toGrayscale(),
+    surfaceTint = surfaceTint.toGrayscale(),
+    inverseSurface = inverseSurface.toGrayscale(),
+    inverseOnSurface = inverseOnSurface.toGrayscale(),
+    error = error.toGrayscale(),
+    onError = onError.toGrayscale(),
+    errorContainer = errorContainer.toGrayscale(),
+    onErrorContainer = onErrorContainer.toGrayscale(),
+    outline = outline.toGrayscale(),
+    outlineVariant = outlineVariant.toGrayscale(),
+    scrim = scrim.toGrayscale(),
+    surfaceBright = surfaceBright.toGrayscale(),
+    surfaceDim = surfaceDim.toGrayscale(),
+    surfaceContainer = surfaceContainer.toGrayscale(),
+    surfaceContainerHigh = surfaceContainerHigh.toGrayscale(),
+    surfaceContainerHighest = surfaceContainerHighest.toGrayscale(),
+    surfaceContainerLow = surfaceContainerLow.toGrayscale(),
+    surfaceContainerLowest = surfaceContainerLowest.toGrayscale(),
+  )
 
-val ColorSaver: Saver<Color, Int> = Saver(
-  save = { it.toArgb() },
-  restore = { Color(it) },
-)
+val ColorSaver: Saver<Color, Int> =
+  Saver(
+    save = { it.toArgb() },
+    restore = { Color(it) },
+  )
 
 /** Picks the most theme-suitable colour of a small palette. */
 fun Bitmap.extractThemeColor(): Color {
@@ -198,34 +210,39 @@ fun Bitmap.extractThemeColor(): Color {
 fun Bitmap.extractGradientColors(): List<Color> {
   val palette = Palette.from(this).maximumColorCount(64).generate()
   val population = palette.swatches.associate { it.rgb to it.population }
-  val ranked = Score.score(
-    colorsToPopulation = population,
-    desired = 2,
-    fallbackColorArgb = 0xff4285f4.toInt(),
-    filter = true,
-  ).map { Color(it) }
+  val ranked =
+    Score.score(
+        colorsToPopulation = population,
+        desired = 2,
+        fallbackColorArgb = 0xff4285f4.toInt(),
+        filter = true,
+      )
+      .map { Color(it) }
 
   val sorted = ranked.sortedByDescending { it.luminance() }
-  return if (sorted.size >= 2) sorted.take(2) else listOf(GradientFallbackStart, GradientFallbackEnd)
+  return if (sorted.size >= 2) sorted.take(2)
+  else listOf(GradientFallbackStart, GradientFallbackEnd)
 }
 
 private fun resolveFontFamily(
   selectedFont: String,
   customFontPath: String,
-): FontFamily = when (AppFont.fromValue(selectedFont)) {
-  AppFont.SYSTEM -> FontFamily.Default
-  AppFont.GOOGLE_SANS -> GoogleSansFontFamily
-  AppFont.SANS_FLEX -> SansFlexFontFamily
-  AppFont.OUTFIT -> OutfitFontFamily
-  AppFont.PLUS_JAKARTA_SANS -> PlusJakartaSansFontFamily
-  AppFont.CUSTOM -> customTypefaceFamily(customFontPath)
-}
+): FontFamily =
+  when (AppFont.fromValue(selectedFont)) {
+    AppFont.SYSTEM -> FontFamily.Default
+    AppFont.GOOGLE_SANS -> GoogleSansFontFamily
+    AppFont.SANS_FLEX -> SansFlexFontFamily
+    AppFont.OUTFIT -> OutfitFontFamily
+    AppFont.PLUS_JAKARTA_SANS -> PlusJakartaSansFontFamily
+    AppFont.CUSTOM -> customTypefaceFamily(customFontPath)
+  }
 
 private fun customTypefaceFamily(path: String): FontFamily {
   if (path.isBlank() || !File(path).exists()) return FontFamily.Default
   return runCatching {
-    FontFamily(AndroidTypeface.createFromFile(File(path)))
-  }.getOrDefault(FontFamily.Default)
+      FontFamily(AndroidTypeface.createFromFile(File(path)))
+    }
+    .getOrDefault(FontFamily.Default)
 }
 
 /** HSL saturation = 0 leaves every channel equal to the original lightness. */

@@ -9,12 +9,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.navigation.NavController
-import com.revenge.innertube.models.PlaylistItem
-import com.revenge.innertube.models.WatchEndpoint
-import com.revenge.music.R
 import com.revenge.core.db.entities.Album
 import com.revenge.core.db.entities.Artist
 import com.revenge.core.db.entities.Playlist
+import com.revenge.innertube.models.PlaylistItem
+import com.revenge.innertube.models.WatchEndpoint
+import com.revenge.music.R
 import com.revenge.music.ui.menu.AlbumMenu
 import com.revenge.music.ui.menu.ArtistMenu
 import com.revenge.music.ui.menu.PlaylistMenu

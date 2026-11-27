@@ -70,10 +70,10 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.revenge.music.R
 import com.revenge.core.constants.PlayerBackgroundStyle
 import com.revenge.core.constants.PlayerButtonsStyle
 import com.revenge.core.constants.SliderStyle
+import com.revenge.music.R
 import com.revenge.music.ui.theme.PlayerSliderColors
 import kotlin.math.cos
 import kotlin.math.sin

@@ -53,10 +53,7 @@ private fun reply(data: HttpRequestData, status: HttpStatusCode, body: String): 
   )
 
 private fun jsonString(raw: String): String =
-  raw.replace("\\", "\\\\")
-    .replace("\"", "\\\"")
-    .replace("\r", "\\r")
-    .replace("\n", "\\n")
+  raw.replace("\\", "\\\\").replace("\"", "\\\"").replace("\r", "\\r").replace("\n", "\\n")
 
 private fun bodyFromPath(data: HttpRequestData): String = data.url.encodedPath
 
@@ -96,8 +93,9 @@ class KuGouTest {
 
   @Test
   fun `normalizeLyrics removes metadata and credit lines`() {
-    val raw = "some song info\n[00:00.00]作词: A\n[00:00.00]作曲: B\n" +
-      "[00:10.00]line one\n[00:20.50]line two"
+    val raw =
+      "some song info\n[00:00.00]作词: A\n[00:00.00]作曲: B\n" +
+        "[00:10.00]line one\n[00:20.50]line two"
     assertEquals("[00:10.00]line one\n[00:20.50]line two", raw.normalizeLyrics())
   }
 
@@ -115,9 +113,10 @@ class KuGouTest {
 
   @Test
   fun `normalizeLyrics keeps thirty-four body lines and drops a trailing credit`() {
-    val body = (0..33).joinToString("\n") { index ->
-      String.format(Locale.ROOT, "[00:%02d.00]line %d", index, index)
-    }
+    val body =
+      (0..33).joinToString("\n") { index ->
+        String.format(Locale.ROOT, "[00:%02d.00]line %d", index, index)
+      }
     val raw = body + "\n[00:33.00]作词: Someone"
 
     val normalized = raw.normalizeLyrics()
@@ -130,7 +129,8 @@ class KuGouTest {
 
   @Test
   fun `search lyrics response decodes snake case and defaults`() {
-    val fixture = """
+    val fixture =
+      """
       {
         "status": 1,
         "info": "ok",
@@ -142,7 +142,8 @@ class KuGouTest {
         ],
         "unknown": 1
       }
-    """.trimIndent()
+      """
+        .trimIndent()
     val decoded = Json { ignoreUnknownKeys = true }.decodeFromString<SearchLyricsResponse>(fixture)
     val candidate = decoded.candidates.single()
     assertEquals(123L, candidate.id)
@@ -158,8 +159,9 @@ class KuGouTest {
   @Test
   fun `downloads MIME wrapped base64 and normalises it`() = runBlocking {
     val rawLyrics = "[00:00.00]作词: A\n[00:10.00]line one\n[00:20.50]line two"
-    val encoded = Base64.getMimeEncoder(8, "\r\n".toByteArray())
-      .encodeToString(rawLyrics.toByteArray(Charsets.UTF_8))
+    val encoded =
+      Base64.getMimeEncoder(8, "\r\n".toByteArray())
+        .encodeToString(rawLyrics.toByteArray(Charsets.UTF_8))
 
     val engine = FakeEngine { data ->
       when (bodyFromPath(data)) {

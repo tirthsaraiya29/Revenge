@@ -46,10 +46,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.revenge.music.LocalPlayerConnection
 import com.revenge.core.constants.LyricsAnimationStyle
 import com.revenge.core.constants.LyricsRomanizeAsMainKey
 import com.revenge.lyrics.lyrics.LyricsEntry
+import com.revenge.music.LocalPlayerConnection
 import com.revenge.music.ui.screens.settings.LyricsPosition
 import com.revenge.music.utils.rememberPreference
 import kotlin.math.PI

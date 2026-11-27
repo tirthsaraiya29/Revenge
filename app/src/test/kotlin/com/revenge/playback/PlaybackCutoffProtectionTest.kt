@@ -2,8 +2,6 @@ package com.revenge.playback
 
 import androidx.media3.common.C
 import com.revenge.core.models.MediaMetadata
-import com.revenge.playback.CutoffDecision
-import com.revenge.playback.PlaybackCutoffGuard
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test

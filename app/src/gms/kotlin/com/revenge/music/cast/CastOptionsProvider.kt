@@ -6,8 +6,8 @@ import com.google.android.gms.cast.framework.CastOptions
 import com.google.android.gms.cast.framework.OptionsProvider
 import com.google.android.gms.cast.framework.SessionProvider
 import com.google.android.gms.cast.framework.media.CastMediaOptions
-import com.google.android.gms.cast.framework.media.NotificationOptions
 import com.google.android.gms.cast.framework.media.MediaIntentReceiver
+import com.google.android.gms.cast.framework.media.NotificationOptions
 
 class CastOptionsProvider : OptionsProvider {
 
@@ -25,9 +25,7 @@ class CastOptionsProvider : OptionsProvider {
         )
         .build()
     val castMediaOptions =
-      CastMediaOptions.Builder()
-        .setNotificationOptions(notificationOptions)
-        .build()
+      CastMediaOptions.Builder().setNotificationOptions(notificationOptions).build()
     return CastOptions.Builder()
       .setReceiverApplicationId(CastMediaControlIntent.DEFAULT_MEDIA_RECEIVER_APPLICATION_ID)
       .setCastMediaOptions(castMediaOptions)

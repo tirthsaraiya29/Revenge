@@ -7,9 +7,10 @@ import androidx.media3.common.Player
 import com.revenge.core.db.MusicDatabase
 import com.revenge.core.db.entities.LyricsEntity
 import com.revenge.core.db.entities.RecommendationExclusionEntity
-import com.revenge.lyrics.lyrics.LyricsHelper
 import com.revenge.core.models.MediaMetadata
 import com.revenge.core.models.toMediaMetadata
+import com.revenge.core.utils.dataStore
+import com.revenge.lyrics.lyrics.LyricsHelper
 import com.revenge.music.musicflow.MusicFlowCoordinator
 import com.revenge.music.musicflow.MusicFlowItem
 import com.revenge.music.musicflow.MusicFlowPlaybackStatus
@@ -21,7 +22,6 @@ import com.revenge.music.musicflow.PlayerConnectionMusicFlowPlayer
 import com.revenge.music.musicflow.toMusicFlowSongItem
 import com.revenge.music.musicflow.trackKeyOf
 import com.revenge.music.playback.PlayerConnection
-import com.revenge.core.utils.dataStore
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -107,8 +107,9 @@ constructor(
     attachedJobs += viewModelScope.launch {
       requests.filterNotNull().collectLatest { request ->
         delay(SETTLE_DEBOUNCE_MS)
-        val item = session.state.value.items.firstOrNull { it.songId == request.songId }
-          ?: return@collectLatest
+        val item =
+          session.state.value.items.firstOrNull { it.songId == request.songId }
+            ?: return@collectLatest
         playbackStatus.value =
           flowCoordinator.select(
             requestId = request.requestId,
@@ -336,7 +337,8 @@ constructor(
           MusicFlowPlaybackStatus.Synced
         }
         current is MusicFlowPlaybackStatus.Blocked -> current
-        current == MusicFlowPlaybackStatus.Switching && flowPlayer?.isAnyFlowQueueActive == true -> current
+        current == MusicFlowPlaybackStatus.Switching && flowPlayer?.isAnyFlowQueueActive == true ->
+          current
         mediaId == null -> MusicFlowPlaybackStatus.Idle
         else -> MusicFlowPlaybackStatus.ExternalOverride
       }

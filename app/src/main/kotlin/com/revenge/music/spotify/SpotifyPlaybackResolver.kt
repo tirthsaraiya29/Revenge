@@ -44,7 +44,10 @@ open class SpotifyPlaybackResolver @Inject constructor() {
 
   open suspend fun resolveTrack(track: SpotifyTrack, hideExplicit: Boolean = false): SongItem? {
     val id = track.id
-    if (id.isNotBlank()) cache[id]?.let { return it }
+    if (id.isNotBlank())
+      cache[id]?.let {
+        return it
+      }
     if (id.isNotBlank()) {
       val mine = CompletableDeferred<SongItem?>()
       val running = inFlight.putIfAbsent(id, mine)
@@ -201,14 +204,16 @@ open class SpotifyPlaybackResolver @Inject constructor() {
       val candidateTitle = SpotifyMapper.normalize(candidate.title)
       var score = 0
       if (candidateTitle == sourceTitle) score += 30
-      else if (sourceTitle.isNotEmpty() &&
-        (candidateTitle.contains(sourceTitle) || sourceTitle.contains(candidateTitle))
+      else if (
+        sourceTitle.isNotEmpty() &&
+          (candidateTitle.contains(sourceTitle) || sourceTitle.contains(candidateTitle))
       ) {
         score += 15
       }
 
       val candidateArtists = candidate.artists.map { SpotifyMapper.normalize(it.name) }
-      if (candidateArtists.any { artist ->
+      if (
+        candidateArtists.any { artist ->
           artist.isNotEmpty() &&
             (artist == sourceArtist ||
               sourceArtist.contains(artist) ||

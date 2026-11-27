@@ -44,20 +44,20 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import coil3.compose.AsyncImage
+import com.revenge.core.constants.ThumbnailCornerRadius
+import com.revenge.core.extensions.toMediaItem
+import com.revenge.core.models.toMediaMetadata
 import com.revenge.innertube.models.PlaylistItem
 import com.revenge.innertube.models.SongItem
 import com.revenge.music.LocalPlayerAwareWindowInsets
 import com.revenge.music.LocalPlayerConnection
 import com.revenge.music.R
-import com.revenge.core.constants.ThumbnailCornerRadius
-import com.revenge.core.extensions.toMediaItem
-import com.revenge.core.models.toMediaMetadata
-import com.revenge.playback.queues.ListQueue
 import com.revenge.music.ui.component.EmptyPlaceholder
 import com.revenge.music.ui.component.NavigationTitle
 import com.revenge.music.ui.component.podcastHome
 import com.revenge.music.ui.component.rememberEpisodesInProgress
 import com.revenge.music.viewmodels.PodcastsViewModel
+import com.revenge.playback.queues.ListQueue
 
 @Composable
 fun PodcastsScreen(

@@ -45,7 +45,6 @@ import androidx.navigation.NavController
 import coil3.compose.AsyncImage
 import com.revenge.music.spotifyimport.SpotifyImportSourceType
 import com.revenge.music.spotifyimport.SpotifyImportSourceUi
-import com.revenge.music.spotifyimport.SpotifyImportUiState
 import com.revenge.music.spotifyimport.SpotifyImportViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -81,48 +80,66 @@ fun SpotifyImportScreen(
           onClick = { navController.navigate("settings/spotify_login") },
           enabled = !busy,
           modifier = Modifier.fillMaxWidth(),
-        ) { Text("Connect") }
+        ) {
+          Text("Connect")
+        }
         OutlinedButton(
           onClick = { showLink = true },
           enabled = !busy,
           modifier = Modifier.fillMaxWidth(),
-        ) { Text("Import by link") }
+        ) {
+          Text("Import by link")
+        }
       } else {
         Row(verticalAlignment = Alignment.CenterVertically) {
           AsyncImage(
             model = state.accountAvatarUrl,
             contentDescription = null,
             contentScale = ContentScale.Crop,
-            modifier = Modifier.clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant),
+            modifier =
+              Modifier.clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant),
           )
           Spacer(Modifier.padding(8.dp))
-          Text(state.accountName.ifBlank { "Spotify" }, style = MaterialTheme.typography.titleMedium)
+          Text(
+            state.accountName.ifBlank { "Spotify" },
+            style = MaterialTheme.typography.titleMedium,
+          )
         }
         Button(
           onClick = { showPicker = true },
           enabled = !busy,
           modifier = Modifier.fillMaxWidth(),
-        ) { Text("Select sources") }
+        ) {
+          Text("Select sources")
+        }
         OutlinedButton(
           onClick = { showLink = true },
           enabled = !busy,
           modifier = Modifier.fillMaxWidth(),
-        ) { Text("Import by link") }
+        ) {
+          Text("Import by link")
+        }
         Button(
           onClick = spotifyImportViewModel::importSelectedSources,
           enabled = state.canImport,
           modifier = Modifier.fillMaxWidth(),
-        ) { Text("Import selected") }
+        ) {
+          Text("Import selected")
+        }
         OutlinedButton(
           onClick = spotifyImportViewModel::loadSources,
           enabled = !busy,
           modifier = Modifier.fillMaxWidth(),
-        ) { Text("Refresh") }
+        ) {
+          Text("Refresh")
+        }
         OutlinedButton(
           onClick = spotifyImportViewModel::logout,
           enabled = state.progress == null,
           modifier = Modifier.fillMaxWidth(),
-        ) { Text("Logout") }
+        ) {
+          Text("Logout")
+        }
         if (state.isLoading) Text("Loading...", style = MaterialTheme.typography.bodySmall)
       }
     }
@@ -163,7 +180,9 @@ fun SpotifyImportScreen(
             spotifyImportViewModel.addPlaylistByUrl(link)
             showLink = false
           },
-        ) { Text("Import") }
+        ) {
+          Text("Import")
+        }
       },
       dismissButton = { TextButton(onClick = { showLink = false }) { Text("Cancel") } },
     )
@@ -255,16 +274,15 @@ private fun SourcePickerDialog(
               )
               Column(modifier = Modifier.weight(1f)) {
                 Text(source.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                val subtitle =
-                  buildString {
-                    if (source.type == SpotifyImportSourceType.PLAYLIST &&
-                      source.subtitle.isNotBlank()
-                    ) {
-                      append(source.subtitle)
-                      append(" · ")
-                    }
-                    source.trackCount?.let { append("$it songs") }
+                val subtitle = buildString {
+                  if (
+                    source.type == SpotifyImportSourceType.PLAYLIST && source.subtitle.isNotBlank()
+                  ) {
+                    append(source.subtitle)
+                    append(" · ")
                   }
+                  source.trackCount?.let { append("$it songs") }
+                }
                 if (subtitle.isNotBlank()) {
                   Text(
                     subtitle,

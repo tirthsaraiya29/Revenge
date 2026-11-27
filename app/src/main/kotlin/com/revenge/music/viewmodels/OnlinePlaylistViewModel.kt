@@ -4,6 +4,11 @@ import android.content.Context
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.revenge.core.constants.HideVideoSongsKey
+import com.revenge.core.db.MusicDatabase
+import com.revenge.core.utils.dataStore
+import com.revenge.core.utils.get
+import com.revenge.core.utils.reportException
 import com.revenge.innertube.YouTube
 import com.revenge.innertube.models.Artist
 import com.revenge.innertube.models.PlaylistItem
@@ -11,13 +16,8 @@ import com.revenge.innertube.models.SongItem
 import com.revenge.innertube.models.YTItem
 import com.revenge.innertube.models.filterVideoSongs
 import com.revenge.innertube.pages.PodcastPage
-import com.revenge.core.constants.HideVideoSongsKey
-import com.revenge.core.db.MusicDatabase
 import com.revenge.music.utils.PodcastProgress
 import com.revenge.music.utils.PodcastShowStore
-import com.revenge.core.utils.dataStore
-import com.revenge.core.utils.get
-import com.revenge.core.utils.reportException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject

@@ -4,10 +4,10 @@ import com.revenge.metadata.cleaner.MetadataCleaner
 import com.revenge.metadata.models.CleanedMetadata
 
 val SongItem.cleanedMetadata: CleanedMetadata
-    get() = MetadataCleaner.clean(title, artists.firstOrNull()?.name.orEmpty())
+  get() = MetadataCleaner.clean(title, artists.firstOrNull()?.name.orEmpty())
 
 val SongItem.displayTitle: String
-    get() = cleanedMetadata.toDisplayTitle()
+  get() = cleanedMetadata.toDisplayTitle()
 
 val SongItem.cleanArtistName: String
-    get() = cleanedMetadata.primaryArtist
+  get() = cleanedMetadata.primaryArtist

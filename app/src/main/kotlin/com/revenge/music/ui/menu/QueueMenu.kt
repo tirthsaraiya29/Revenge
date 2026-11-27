@@ -52,19 +52,18 @@ import androidx.media3.exoplayer.offline.DownloadRequest
 import androidx.media3.exoplayer.offline.DownloadService
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
+import com.revenge.core.constants.ListItemHeight
+import com.revenge.core.constants.ListThumbnailSize
+import com.revenge.core.extensions.toMediaItem
+import com.revenge.core.models.MediaMetadata
+import com.revenge.core.models.toMediaMetadata
 import com.revenge.innertube.YouTube
 import com.revenge.music.LocalDatabase
 import com.revenge.music.LocalDownloadUtil
 import com.revenge.music.LocalPlayerConnection
 import com.revenge.music.LocalSyncUtils
 import com.revenge.music.R
-import com.revenge.core.constants.ListItemHeight
-import com.revenge.core.constants.ListThumbnailSize
-import com.revenge.core.extensions.toMediaItem
-import com.revenge.core.models.MediaMetadata
-import com.revenge.core.models.toMediaMetadata
 import com.revenge.music.playback.ExoDownloadService
-import com.revenge.playback.queues.YouTubeQueue
 import com.revenge.music.ui.component.BottomSheetState
 import com.revenge.music.ui.component.ListDialog
 import com.revenge.music.ui.component.Material3MenuGroup
@@ -72,6 +71,7 @@ import com.revenge.music.ui.component.Material3MenuItemData
 import com.revenge.music.ui.component.MediaMetadataListItem
 import com.revenge.music.ui.component.NewAction
 import com.revenge.music.ui.component.NewActionGrid
+import com.revenge.playback.queues.YouTubeQueue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
@@ -514,7 +514,9 @@ fun QueueMenu(
                     YouTube.queue(listOf(mediaMetadata.id)).onSuccess {
                       val newSong = it.firstOrNull()
                       if (newSong != null && librarySong != null) {
-                        database.withTransaction { update(librarySong!!, newSong.toMediaMetadata()) }
+                        database.withTransaction {
+                          update(librarySong!!, newSong.toMediaMetadata())
+                        }
                       }
                     }
                   }

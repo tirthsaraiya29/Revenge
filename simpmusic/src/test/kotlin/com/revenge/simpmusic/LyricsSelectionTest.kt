@@ -53,12 +53,13 @@ private fun data(
   synced: String? = null,
   plain: String? = null,
   rich: String? = null,
-): LyricsData = LyricsData(
-  duration = duration,
-  syncedLyrics = synced,
-  plainLyrics = plain,
-  richSyncLyrics = rich,
-)
+): LyricsData =
+  LyricsData(
+    duration = duration,
+    syncedLyrics = synced,
+    plainLyrics = plain,
+    richSyncLyrics = rich,
+  )
 
 class LyricsSelectionTest {
   @Before
@@ -97,17 +98,19 @@ class LyricsSelectionTest {
 
   @Test
   fun `selection uses the first result for an unknown duration`() {
-    val tracks = listOf(data(duration = 300, plain = "first"), data(duration = 100, plain = "second"))
+    val tracks =
+      listOf(data(duration = 300, plain = "first"), data(duration = 100, plain = "second"))
     assertEquals("first", selectLyrics(tracks, 0))
   }
 
   @Test
   fun `selection picks the closest matching duration`() {
-    val tracks = listOf(
-      data(duration = 240, plain = "far"),
-      data(duration = 202, plain = "closest"),
-      data(duration = 215, plain = "mid"),
-    )
+    val tracks =
+      listOf(
+        data(duration = 240, plain = "far"),
+        data(duration = 202, plain = "closest"),
+        data(duration = 215, plain = "mid"),
+      )
     assertEquals("closest", selectLyrics(tracks, 200))
     assertNull(selectLyrics(listOf(data(duration = 300, plain = "none")), 200))
     assertNull(selectLyrics(emptyList(), 200))
@@ -115,12 +118,13 @@ class LyricsSelectionTest {
 
   @Test
   fun `alternative collection orders by distance and emits one plain document`() {
-    val tracks = listOf(
-      data(duration = 104, synced = "S104", plain = "P104"),
-      data(duration = 101, synced = "S101"),
-      data(duration = 150, synced = "S150"),
-      data(duration = 102, synced = "S102", plain = "P102"),
-    )
+    val tracks =
+      listOf(
+        data(duration = 104, synced = "S104", plain = "P104"),
+        data(duration = 101, synced = "S101"),
+        data(duration = 150, synced = "S150"),
+        data(duration = 102, synced = "S102", plain = "P102"),
+      )
 
     assertEquals(listOf("S101", "S102", "P102", "S104"), collectAlternativeLyrics(tracks, 100))
   }
@@ -138,10 +142,14 @@ class LyricsSelectionTest {
       if (host == "api-lyrics.simpmusic.org") {
         reply(request, HttpStatusCode.InternalServerError, "")
       } else {
-        reply(request, HttpStatusCode.OK, """{"type":"success","data":[{"songTitle":"x","durationSeconds":100,"plainLyric":"fallback"}]}""")
+        reply(
+          request,
+          HttpStatusCode.OK,
+          """{"type":"success","data":[{"songTitle":"x","durationSeconds":100,"plainLyric":"fallback"}]}""",
+        )
       }
     }
-    SimpMusicLyrics.testClient = HttpClient(engine) { }
+    SimpMusicLyrics.testClient = HttpClient(engine) {}
 
     val tracks = SimpMusicLyrics.getLyricsByVideoId("v1")
 
@@ -155,7 +163,7 @@ class LyricsSelectionTest {
     val engine = FakeEngine { request ->
       reply(request, HttpStatusCode.OK, """{"type":"error","data":[{"songTitle":"x"}]}""")
     }
-    SimpMusicLyrics.testClient = HttpClient(engine) { }
+    SimpMusicLyrics.testClient = HttpClient(engine) {}
 
     val tracks = SimpMusicLyrics.getLyricsByVideoId("v1")
 
@@ -166,7 +174,7 @@ class LyricsSelectionTest {
   @Test
   fun `transport failures on both endpoints yield an empty list`() = runBlocking {
     val engine = FakeEngine { request -> reply(request, HttpStatusCode.InternalServerError, "") }
-    SimpMusicLyrics.testClient = HttpClient(engine) { }
+    SimpMusicLyrics.testClient = HttpClient(engine) {}
 
     val tracks = SimpMusicLyrics.getLyricsByVideoId("v1")
 
@@ -177,9 +185,13 @@ class LyricsSelectionTest {
   @Test
   fun `getLyrics fails when no candidate matches the duration`() = runBlocking {
     val engine = FakeEngine { request ->
-      reply(request, HttpStatusCode.OK, """{"type":"success","data":[{"songTitle":"x","durationSeconds":500,"plainLyric":"far"}]}""")
+      reply(
+        request,
+        HttpStatusCode.OK,
+        """{"type":"success","data":[{"songTitle":"x","durationSeconds":500,"plainLyric":"far"}]}""",
+      )
     }
-    SimpMusicLyrics.testClient = HttpClient(engine) { }
+    SimpMusicLyrics.testClient = HttpClient(engine) {}
 
     val result = SimpMusicLyrics.getLyrics("v1", 100)
 
@@ -190,9 +202,13 @@ class LyricsSelectionTest {
   @Test
   fun `getLyrics succeeds with an unsynced document`() = runBlocking {
     val engine = FakeEngine { request ->
-      reply(request, HttpStatusCode.OK, """{"type":"success","data":[{"songTitle":"x","durationSeconds":100,"plainLyric":"plain text"}]}""")
+      reply(
+        request,
+        HttpStatusCode.OK,
+        """{"type":"success","data":[{"songTitle":"x","durationSeconds":100,"plainLyric":"plain text"}]}""",
+      )
     }
-    SimpMusicLyrics.testClient = HttpClient(engine) { }
+    SimpMusicLyrics.testClient = HttpClient(engine) {}
 
     val result = SimpMusicLyrics.getLyrics("v1", 100)
 

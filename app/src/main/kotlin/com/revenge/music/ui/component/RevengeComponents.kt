@@ -1,9 +1,6 @@
 package com.revenge.music.ui.component
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -13,11 +10,9 @@ import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -29,24 +24,18 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.PlainTooltip
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TooltipBox
 import androidx.compose.material3.TooltipDefaults
 import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -56,7 +45,6 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.painter.Painter
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
@@ -79,7 +67,6 @@ import com.revenge.music.ui.theme.RevengeSpacing
  *
  * Highly reusable, accessible, cohesive components adhering to the Revenge design system.
  */
-
 enum class RevengeButtonVariant {
   PRIMARY,
   SECONDARY,
@@ -108,11 +95,12 @@ fun RevengeButton(
 ) {
   val interactionSource = remember { MutableInteractionSource() }
   val isPressed by interactionSource.collectIsPressedAsState()
-  val scale by animateFloatAsState(
-    targetValue = if (isPressed) 0.97f else 1f,
-    animationSpec = RevengeMotion.quickTween(),
-    label = "button_scale",
-  )
+  val scale by
+    animateFloatAsState(
+      targetValue = if (isPressed) 0.97f else 1f,
+      animationSpec = RevengeMotion.quickTween(),
+      label = "button_scale",
+    )
 
   val (containerColor, contentColor, borderStroke) =
     when (variant) {
@@ -208,37 +196,39 @@ fun RevengeIconButton(
 ) {
   val interactionSource = remember { MutableInteractionSource() }
   val isPressed by interactionSource.collectIsPressedAsState()
-  val scale by animateFloatAsState(
-    targetValue = if (isPressed) 0.92f else 1f,
-    animationSpec = RevengeMotion.quickTween(),
-    label = "icon_btn_scale",
-  )
+  val scale by
+    animateFloatAsState(
+      targetValue = if (isPressed) 0.92f else 1f,
+      animationSpec = RevengeMotion.quickTween(),
+      label = "icon_btn_scale",
+    )
 
-  val buttonContent = @Composable {
-    Box(
-      modifier =
-        modifier
-          .size(size)
-          .scale(scale)
-          .clip(CircleShape)
-          .background(containerColor)
-          .clickable(
-            interactionSource = interactionSource,
-            indication = androidx.compose.material3.ripple(bounded = true, radius = size / 2),
-            enabled = enabled,
-            role = Role.Button,
-            onClick = onClick,
-          ),
-      contentAlignment = Alignment.Center,
-    ) {
-      Icon(
-        painter = icon,
-        contentDescription = contentDescription,
-        tint = if (enabled) tint else tint.copy(alpha = 0.38f),
-        modifier = Modifier.size(iconSize),
-      )
+  val buttonContent =
+    @Composable {
+      Box(
+        modifier =
+          modifier
+            .size(size)
+            .scale(scale)
+            .clip(CircleShape)
+            .background(containerColor)
+            .clickable(
+              interactionSource = interactionSource,
+              indication = androidx.compose.material3.ripple(bounded = true, radius = size / 2),
+              enabled = enabled,
+              role = Role.Button,
+              onClick = onClick,
+            ),
+        contentAlignment = Alignment.Center,
+      ) {
+        Icon(
+          painter = icon,
+          contentDescription = contentDescription,
+          tint = if (enabled) tint else tint.copy(alpha = 0.38f),
+          modifier = Modifier.size(iconSize),
+        )
+      }
     }
-  }
 
   if (tooltip != null) {
     TooltipBox(
@@ -271,10 +261,7 @@ fun RevengeCard(
         .background(containerColor, shape)
         .clickable(role = Role.Button, onClick = onClick)
     } else {
-      modifier
-        .clip(shape)
-        .border(1.dp, borderColor, shape)
-        .background(containerColor, shape)
+      modifier.clip(shape).border(1.dp, borderColor, shape).background(containerColor, shape)
     }
 
   Box(modifier = cardModifier) {
@@ -293,17 +280,19 @@ fun RevengeSectionHeader(
   actionIcon: Painter? = null,
 ) {
   Row(
-    modifier = modifier.fillMaxWidth().padding(horizontal = RevengeSpacing.lg, vertical = RevengeSpacing.sm),
+    modifier =
+      modifier.fillMaxWidth().padding(horizontal = RevengeSpacing.lg, vertical = RevengeSpacing.sm),
     horizontalArrangement = Arrangement.SpaceBetween,
     verticalAlignment = Alignment.CenterVertically,
   ) {
     Column(modifier = Modifier.weight(1f, fill = false)) {
       Text(
         text = title,
-        style = MaterialTheme.typography.titleLarge.copy(
-          fontWeight = FontWeight.Bold,
-          letterSpacing = (-0.2).sp,
-        ),
+        style =
+          MaterialTheme.typography.titleLarge.copy(
+            fontWeight = FontWeight.Bold,
+            letterSpacing = (-0.2).sp,
+          ),
         color = MaterialTheme.colorScheme.onSurface,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
@@ -379,9 +368,10 @@ fun RevengeSearchInput(
         value = query,
         onValueChange = onQueryChange,
         singleLine = true,
-        textStyle = MaterialTheme.typography.bodyMedium.copy(
-          color = MaterialTheme.colorScheme.onSurface,
-        ),
+        textStyle =
+          MaterialTheme.typography.bodyMedium.copy(
+            color = MaterialTheme.colorScheme.onSurface,
+          ),
         cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
         keyboardActions = KeyboardActions(onSearch = { onSearch(query) }),
@@ -426,8 +416,7 @@ fun RevengeEmptyState(
   ) {
     Box(
       modifier =
-        Modifier
-          .size(72.dp)
+        Modifier.size(72.dp)
           .clip(CircleShape)
           .background(MaterialTheme.colorScheme.surfaceContainerHigh),
       contentAlignment = Alignment.Center,

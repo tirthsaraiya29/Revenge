@@ -47,8 +47,6 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
 import androidx.navigation.compose.currentBackStackEntryAsState
-import com.revenge.music.LocalPlayerAwareWindowInsets
-import com.revenge.music.R
 import com.revenge.core.constants.ArtistFilter
 import com.revenge.core.constants.ArtistFilterKey
 import com.revenge.core.constants.ArtistSortDescendingKey
@@ -62,6 +60,8 @@ import com.revenge.core.constants.GridItemsSizeKey
 import com.revenge.core.constants.GridThumbnailHeight
 import com.revenge.core.constants.LibraryViewType
 import com.revenge.core.constants.YtmSyncKey
+import com.revenge.music.LocalPlayerAwareWindowInsets
+import com.revenge.music.R
 import com.revenge.music.ui.component.ChipsRow
 import com.revenge.music.ui.component.EmptyPlaceholder
 import com.revenge.music.ui.component.LibraryArtistGridItem

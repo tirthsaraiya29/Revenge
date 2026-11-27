@@ -1,8 +1,8 @@
 package com.revenge.music.listentogether
 
 /**
- * Suppresses the manager's own outbound player reports while a guest sync is being applied or
- * right after it sent an action, so a remote-originated change is not echoed back.
+ * Suppresses the manager's own outbound player reports while a guest sync is being applied or right
+ * after it sent an action, so a remote-originated change is not echoed back.
  */
 internal class SuppressionWindow(
   private val sentWindowMs: Long = 300,

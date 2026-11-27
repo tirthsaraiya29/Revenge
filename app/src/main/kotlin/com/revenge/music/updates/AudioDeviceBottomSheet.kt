@@ -107,9 +107,9 @@ import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.revenge.core.constants.PreferredAudioAddonIdKey
 import com.revenge.music.LocalPlayerConnection
 import com.revenge.music.R
-import com.revenge.core.constants.PreferredAudioAddonIdKey
 import com.revenge.music.ui.screens.settings.ExtensionSettingsViewModel
 import com.revenge.music.updates.shapes.RoundedStarShape
 import com.revenge.music.utils.rememberPreference

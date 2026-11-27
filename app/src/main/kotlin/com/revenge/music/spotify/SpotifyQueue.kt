@@ -1,11 +1,10 @@
 package com.revenge.music.spotify
 
 import androidx.media3.common.MediaItem
-import com.revenge.innertube.models.SongItem
 import com.revenge.core.extensions.toMediaItem
 import com.revenge.core.models.MediaMetadata
-import com.revenge.playback.queues.Queue
 import com.revenge.music.spotify.models.SpotifyTrack
+import com.revenge.playback.queues.Queue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -33,8 +32,7 @@ class SpotifyQueue(
   private val windowStart = (safeStartIndex - WINDOW_BEFORE).coerceAtLeast(0)
   private val windowEnd = (safeStartIndex + WINDOW_AFTER).coerceAtMost(tracks.size)
 
-  private val pending: ArrayDeque<SpotifyTrack> =
-    ArrayDeque(tracks.drop(windowEnd).map { it })
+  private val pending: ArrayDeque<SpotifyTrack> = ArrayDeque(tracks.drop(windowEnd).map { it })
 
   private var initialized = false
 

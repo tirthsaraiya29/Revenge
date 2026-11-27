@@ -44,13 +44,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import com.revenge.core.db.entities.FormatEntity
+import com.revenge.core.db.entities.Song
 import com.revenge.innertube.YouTube
 import com.revenge.innertube.models.MediaInfo
 import com.revenge.music.LocalDatabase
 import com.revenge.music.LocalPlayerConnection
 import com.revenge.music.R
-import com.revenge.core.db.entities.FormatEntity
-import com.revenge.core.db.entities.Song
 import com.revenge.music.ui.component.LocalBottomSheetPageState
 import com.revenge.music.ui.component.shimmer.ShimmerHost
 import com.revenge.music.ui.component.shimmer.TextPlaceholder
@@ -269,8 +269,7 @@ fun ShowMediaInfo(videoId: String) {
                 value =
                   currentFormat?.contentLength?.let {
                     Formatter.formatShortFileSize(context, it.toLong())
-                  }
-                    ?: "N/A",
+                  } ?: "N/A",
                 modifier = Modifier.weight(1f),
               )
               InfoItem(

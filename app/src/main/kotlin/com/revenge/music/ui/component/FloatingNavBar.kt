@@ -105,7 +105,8 @@ fun AppFloatingNavBar(
   val tabScreens = remember(navigationItems) { navigationItems }
   // Below 360dp the four icon tabs plus a selected label no longer fit; keep icons only so the
   // bar never runs off the screen.
-  val compactNavigation = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp < 360
+  val compactNavigation =
+    androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp < 360
 
   val accessoryContentColor =
     when {
@@ -194,7 +195,5 @@ fun AppFloatingNavBar(
         onClick = { onItemClick(screen, isSelected) },
       )
     }
-
-
   }
 }

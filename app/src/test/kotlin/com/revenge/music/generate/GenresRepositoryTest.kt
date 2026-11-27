@@ -52,7 +52,9 @@ private class FakeGenresTasteApi : LastFmTasteApi {
 @RunWith(RobolectricTestRunner::class)
 class GenresRepositoryTest {
 
-  private val context get() = RuntimeEnvironment.getApplication()
+  private val context
+    get() = RuntimeEnvironment.getApplication()
+
   private lateinit var internalDatabase: InternalDatabase
   private lateinit var database: MusicDatabase
   private lateinit var fakeApi: FakeGenresTasteApi

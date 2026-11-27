@@ -7,16 +7,12 @@ import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -32,7 +28,6 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
@@ -57,7 +52,6 @@ import androidx.compose.ui.unit.sp
 import com.revenge.music.R
 import com.revenge.music.ui.screens.Screens
 import com.revenge.music.ui.theme.RevengeColor
-import com.revenge.music.ui.theme.RevengeRadius
 import com.revenge.music.ui.theme.RevengeSize
 import com.revenge.music.ui.theme.RevengeSpacing
 import kotlinx.coroutines.delay
@@ -77,8 +71,8 @@ fun isRouteSelected(
 /**
  * Reconstructed Revenge Bottom Navigation Bar
  *
- * Professional, flush, accessible navigation chrome with subtle hairline border,
- * clear indicator pills, and readable typography.
+ * Professional, flush, accessible navigation chrome with subtle hairline border, clear indicator
+ * pills, and readable typography.
  */
 @Composable
 fun AppNavigationBar(
@@ -95,18 +89,13 @@ fun AppNavigationBar(
     if (pureBlack) RevengeColor.DarkPureBlackCanvas
     else MaterialTheme.colorScheme.surfaceContainerHigh
   val topBorderColor =
-    if (pureBlack) Color.White.copy(alpha = 0.08f)
-    else MaterialTheme.colorScheme.outlineVariant
+    if (pureBlack) Color.White.copy(alpha = 0.08f) else MaterialTheme.colorScheme.outlineVariant
 
   val haptics = LocalHapticFeedback.current
   val viewConfiguration = LocalViewConfiguration.current
 
   NavigationBar(
-    modifier =
-      modifier
-        .fillMaxWidth()
-        .border(1.dp, topBorderColor)
-        .background(containerColor),
+    modifier = modifier.fillMaxWidth().border(1.dp, topBorderColor).background(containerColor),
     containerColor = containerColor,
     contentColor = MaterialTheme.colorScheme.onSurface,
     tonalElevation = 0.dp,
@@ -170,10 +159,11 @@ fun AppNavigationBar(
             {
               Text(
                 text = stringResource(screen.titleId),
-                style = MaterialTheme.typography.labelSmall.copy(
-                  fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
-                  fontSize = 11.sp,
-                ),
+                style =
+                  MaterialTheme.typography.labelSmall.copy(
+                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                    fontSize = 11.sp,
+                  ),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
               )
@@ -224,8 +214,7 @@ fun AppNavigationRail(
     if (pureBlack) RevengeColor.DarkPureBlackCanvas
     else MaterialTheme.colorScheme.surfaceContainerHigh
   val rightBorderColor =
-    if (pureBlack) Color.White.copy(alpha = 0.08f)
-    else MaterialTheme.colorScheme.outlineVariant
+    if (pureBlack) Color.White.copy(alpha = 0.08f) else MaterialTheme.colorScheme.outlineVariant
 
   val haptics = LocalHapticFeedback.current
   val viewConfiguration = LocalViewConfiguration.current
@@ -246,8 +235,7 @@ fun AppNavigationRail(
     header = {
       Box(
         modifier =
-          Modifier
-            .padding(vertical = RevengeSpacing.lg)
+          Modifier.padding(vertical = RevengeSpacing.lg)
             .size(36.dp)
             .clip(CircleShape)
             .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
@@ -321,10 +309,11 @@ fun AppNavigationRail(
         label = {
           Text(
             text = stringResource(screen.titleId),
-            style = MaterialTheme.typography.labelSmall.copy(
-              fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
-              fontSize = 11.sp,
-            ),
+            style =
+              MaterialTheme.typography.labelSmall.copy(
+                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                fontSize = 11.sp,
+              ),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
           )

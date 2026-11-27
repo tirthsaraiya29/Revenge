@@ -6,22 +6,23 @@ import androidx.media3.exoplayer.audio.AudioSink
 
 object AudioSinkSelector {
 
-    fun selectSink(
-        isBitPerfectActive: Boolean,
-        usbDacAudioSink: AudioSink?,
-        defaultAudioSink: AudioSink,
-    ): AudioSink {
-        if (!isBitPerfectActive) return defaultAudioSink
-        return usbDacAudioSink ?: defaultAudioSink
-    }
+  fun selectSink(
+    isBitPerfectActive: Boolean,
+    usbDacAudioSink: AudioSink?,
+    defaultAudioSink: AudioSink,
+  ): AudioSink {
+    if (!isBitPerfectActive) return defaultAudioSink
+    return usbDacAudioSink ?: defaultAudioSink
+  }
 
-    fun createRoutingSink(
-        defaultAudioSink: AudioSink,
-        usbDacAudioSink: AudioSink,
-        isBitPerfectActive: () -> Boolean,
-    ): AudioSink = RoutingAudioSink(
-        defaultSink = defaultAudioSink,
-        usbSink = usbDacAudioSink,
-        isBitPerfectActive = isBitPerfectActive,
+  fun createRoutingSink(
+    defaultAudioSink: AudioSink,
+    usbDacAudioSink: AudioSink,
+    isBitPerfectActive: () -> Boolean,
+  ): AudioSink =
+    RoutingAudioSink(
+      defaultSink = defaultAudioSink,
+      usbSink = usbDacAudioSink,
+      isBitPerfectActive = isBitPerfectActive,
     )
 }

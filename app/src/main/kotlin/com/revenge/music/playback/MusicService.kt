@@ -5,11 +5,9 @@ package com.revenge.music.playback
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
-import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.database.SQLException
 import android.media.AudioDeviceCallback
 import android.media.AudioDeviceInfo
@@ -64,19 +62,6 @@ import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.MoreExecutors
-import com.revenge.dsp.audio.AutomixDuckAudioProcessor
-import com.revenge.dsp.audio.CustomEqualizerAudioProcessor
-import com.revenge.dsp.audio.StereoWidenerAudioProcessor
-import com.revenge.dsp.controller.DspController
-import com.revenge.dsp.data.EQProfileRepository
-import com.revenge.innertube.YouTube
-import com.revenge.innertube.models.IpVersion
-import com.revenge.innertube.models.SongItem
-import com.revenge.innertube.models.WatchEndpoint
-import com.revenge.innertube.models.response.PlayerResponse
-import com.revenge.innertube.pages.PodcastPage
-import com.revenge.music.MainActivity
-import com.revenge.music.R
 import com.revenge.core.constants.AudioNormalizationKey
 import com.revenge.core.constants.AudioOffload
 import com.revenge.core.constants.AudioQuality
@@ -144,12 +129,44 @@ import com.revenge.core.extensions.metadata
 import com.revenge.core.extensions.setOffloadEnabled
 import com.revenge.core.extensions.toEnum
 import com.revenge.core.extensions.toMediaItem
-import com.revenge.music.generate.SongPlayStatsRepository
-import com.revenge.lyrics.lyrics.LyricsHelper
 import com.revenge.core.models.PersistPlayerState
 import com.revenge.core.models.PersistQueue
 import com.revenge.core.models.toMediaMetadata
+import com.revenge.core.utils.NetworkConnectivityObserver
+import com.revenge.core.utils.dataStore
+import com.revenge.core.utils.get
+import com.revenge.core.utils.reportException
+import com.revenge.dsp.audio.AutomixDuckAudioProcessor
+import com.revenge.dsp.audio.CustomEqualizerAudioProcessor
+import com.revenge.dsp.audio.StereoWidenerAudioProcessor
+import com.revenge.dsp.controller.DspController
+import com.revenge.dsp.data.EQProfileRepository
+import com.revenge.innertube.YouTube
+import com.revenge.innertube.models.IpVersion
+import com.revenge.innertube.models.SongItem
+import com.revenge.innertube.models.WatchEndpoint
+import com.revenge.innertube.models.response.PlayerResponse
+import com.revenge.innertube.pages.PodcastPage
+import com.revenge.lyrics.lyrics.LyricsHelper
+import com.revenge.music.MainActivity
+import com.revenge.music.R
+import com.revenge.music.generate.SongPlayStatsRepository
 import com.revenge.music.musicflow.MusicFlowQueue
+import com.revenge.music.spotify.SpotifyQueue
+import com.revenge.music.updates.updater.downloadmanager.RevengeNotificationProvider
+import com.revenge.music.utils.CoilBitmapLoader
+import com.revenge.music.utils.PodcastProgress
+import com.revenge.music.utils.ScrobbleManager
+import com.revenge.music.utils.YTPlayerUtils
+import com.revenge.music.utils.YTPlayerUtils.PlaybackData
+import com.revenge.music.utils.isLocalMediaId
+import com.revenge.music.widget.MusicWidgetReceiver
+import com.revenge.music.widget.RevengeWidgetManager
+import com.revenge.music.widget.WidgetQueueItem
+import com.revenge.playback.AudioSinkSelector
+import com.revenge.playback.CutoffDecision
+import com.revenge.playback.PlaybackCutoffGuard
+import com.revenge.playback.SleepTimer
 import com.revenge.playback.audio.BeatAnalyzer
 import com.revenge.playback.audio.SilenceDetectorAudioProcessor
 import com.revenge.playback.queues.EmptyQueue
@@ -159,28 +176,9 @@ import com.revenge.playback.queues.YouTubePlaylistQueue
 import com.revenge.playback.queues.YouTubeQueue
 import com.revenge.playback.queues.filterExplicit
 import com.revenge.playback.queues.filterVideoSongs
-import com.revenge.playback.AudioSinkSelector
-import com.revenge.playback.CutoffDecision
-import com.revenge.playback.PlaybackCutoffGuard
-import com.revenge.playback.SleepTimer
 import com.revenge.playback.shouldStopPlaybackOnTaskRemoval
 import com.revenge.playback.toPersistQueue
 import com.revenge.playback.toQueue
-import com.revenge.music.spotify.SpotifyQueue
-import com.revenge.music.updates.updater.downloadmanager.RevengeNotificationProvider
-import com.revenge.music.utils.CoilBitmapLoader
-import com.revenge.core.utils.NetworkConnectivityObserver
-import com.revenge.music.utils.PodcastProgress
-import com.revenge.music.utils.ScrobbleManager
-import com.revenge.music.utils.YTPlayerUtils
-import com.revenge.music.utils.YTPlayerUtils.PlaybackData
-import com.revenge.core.utils.dataStore
-import com.revenge.core.utils.get
-import com.revenge.music.utils.isLocalMediaId
-import com.revenge.core.utils.reportException
-import com.revenge.music.widget.MusicWidgetReceiver
-import com.revenge.music.widget.RevengeWidgetManager
-import com.revenge.music.widget.WidgetQueueItem
 import com.revenge.usbaudio.UsbAudioDriver
 import com.revenge.usbaudio.UsbDacAudioSink
 import com.revenge.usbaudio.UsbDacManager
@@ -719,7 +717,6 @@ class MusicService : MediaLibraryService(), Player.Listener, PlaybackStatsListen
 
   var castConnectionHandler: CastConnectionHandler? = null
     private set
-
 
   private val audioDeviceCallback =
     object : AudioDeviceCallback() {
@@ -4402,7 +4399,6 @@ class MusicService : MediaLibraryService(), Player.Listener, PlaybackStatsListen
       }
     }
   }
-
 
   private fun createDataSourceFactory(): DataSource.Factory {
     return ResolvingDataSource.Factory(DefaultDataSource.Factory(this, createCacheDataSource())) {

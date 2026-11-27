@@ -15,14 +15,15 @@ import kotlinx.serialization.json.Json
 
 private const val NO_LYRICS = "No lyrics found from any YouLyPlus server"
 
-private val SERVERS = listOf(
-  "https://lyricsplus.prjktla.my.id",
-  "https://lyricsplus.atomix.one",
-  "https://lyricsplus.binimum.org",
-  "https://lyricsplus.prjktla.workers.dev",
-  "https://lyricsplus-seven.vercel.app",
-  "https://lyrics-plus-backend.vercel.app",
-)
+private val SERVERS =
+  listOf(
+    "https://lyricsplus.prjktla.my.id",
+    "https://lyricsplus.atomix.one",
+    "https://lyricsplus.binimum.org",
+    "https://lyricsplus.prjktla.workers.dev",
+    "https://lyricsplus-seven.vercel.app",
+    "https://lyrics-plus-backend.vercel.app",
+  )
 
 internal fun promoteServer(last: String?, servers: List<String>): List<String> {
   if (last == null || last !in servers) return servers
@@ -35,8 +36,7 @@ object YouLyPlus {
     ignoreUnknownKeys = true
   }
 
-  @Volatile
-  private var lastWorkingServer: String? = null
+  @Volatile private var lastWorkingServer: String? = null
 
   internal var testClient: HttpClient? = null
 
@@ -141,14 +141,15 @@ object YouLyPlus {
     isrc: String?,
   ): String? {
     return try {
-      val response = client().get(server.trimEnd('/') + "/v2/lyrics/get") {
-        parameter("title", title)
-        parameter("artist", artist)
-        parameter("duration", duration)
-        if (!album.isNullOrBlank()) parameter("album", album)
-        if (!id.isNullOrBlank()) parameter("id", id)
-        if (!isrc.isNullOrBlank()) parameter("isrc", isrc)
-      }
+      val response =
+        client().get(server.trimEnd('/') + "/v2/lyrics/get") {
+          parameter("title", title)
+          parameter("artist", artist)
+          parameter("duration", duration)
+          if (!album.isNullOrBlank()) parameter("album", album)
+          if (!id.isNullOrBlank()) parameter("id", id)
+          if (!isrc.isNullOrBlank()) parameter("isrc", isrc)
+        }
       json.decodeFromString<LyricsResponse>(response.bodyAsText()).bestLyrics()
     } catch (e: CancellationException) {
       throw e

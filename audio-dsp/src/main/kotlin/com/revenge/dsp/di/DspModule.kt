@@ -11,7 +11,5 @@ import javax.inject.Singleton
 @Module
 @InstallIn(SingletonComponent::class)
 abstract class DspModule {
-    @Binds
-    @Singleton
-    abstract fun bindDspController(impl: DspControllerImpl): DspController
+  @Binds @Singleton abstract fun bindDspController(impl: DspControllerImpl): DspController
 }

@@ -81,8 +81,7 @@ class AutomotiveArtworkTest {
       )
     assertSame(metadata, metadata.withAutomotiveArtworkUri(context))
 
-    val remote =
-      metadata.copy(thumbnailUrl = "https://example.test/cover.jpg")
+    val remote = metadata.copy(thumbnailUrl = "https://example.test/cover.jpg")
     val mapped = remote.withAutomotiveArtworkUri(context)
     assertTrue(mapped.thumbnailUrl!!.startsWith("content://"))
   }

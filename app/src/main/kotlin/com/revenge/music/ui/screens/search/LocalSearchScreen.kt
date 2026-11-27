@@ -40,9 +40,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
-import com.revenge.music.LocalPlayerAwareWindowInsets
-import com.revenge.music.LocalPlayerConnection
-import com.revenge.music.R
 import com.revenge.core.constants.CONTENT_TYPE_LIST
 import com.revenge.core.constants.ListItemHeight
 import com.revenge.core.db.entities.Album
@@ -50,7 +47,9 @@ import com.revenge.core.db.entities.Artist
 import com.revenge.core.db.entities.Playlist
 import com.revenge.core.db.entities.Song
 import com.revenge.core.extensions.toMediaItem
-import com.revenge.playback.queues.ListQueue
+import com.revenge.music.LocalPlayerAwareWindowInsets
+import com.revenge.music.LocalPlayerConnection
+import com.revenge.music.R
 import com.revenge.music.ui.component.AlbumListItem
 import com.revenge.music.ui.component.ArtistListItem
 import com.revenge.music.ui.component.ChipsRow
@@ -62,6 +61,7 @@ import com.revenge.music.ui.menu.SongMenu
 import com.revenge.music.utils.listItemShape
 import com.revenge.music.viewmodels.LocalFilter
 import com.revenge.music.viewmodels.LocalSearchViewModel
+import com.revenge.playback.queues.ListQueue
 import kotlinx.coroutines.flow.drop
 
 @OptIn(ExperimentalFoundationApi::class)

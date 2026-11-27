@@ -42,8 +42,8 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Icon
 import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
@@ -66,18 +66,11 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
-import androidx.compose.ui.graphics.Outline
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.toArgb
@@ -90,7 +83,6 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -102,11 +94,6 @@ import coil3.imageLoader
 import coil3.request.ImageRequest
 import coil3.request.allowHardware
 import coil3.toBitmap
-import com.revenge.music.LocalDatabase
-import com.revenge.music.LocalListenTogetherManager
-import com.revenge.music.LocalPlayerConnection
-import com.revenge.music.R
-import com.revenge.core.constants.CropAlbumArtKey
 import com.revenge.core.constants.DarkModeKey
 import com.revenge.core.constants.MiniPlayerBackgroundStyleKey
 import com.revenge.core.constants.MiniPlayerHeight
@@ -115,11 +102,12 @@ import com.revenge.core.constants.PureBlackKey
 import com.revenge.core.constants.PureBlackMiniPlayerKey
 import com.revenge.core.constants.SwipeSensitivityKey
 import com.revenge.core.constants.SwipeThumbnailKey
-import com.revenge.core.constants.ThumbnailCornerRadius
-import com.revenge.core.constants.UseFloatingNavBarKey
-import com.revenge.core.constants.UseNewMiniPlayerDesignKey
-import com.revenge.music.listentogether.ListenTogetherManager
 import com.revenge.core.models.MediaMetadata
+import com.revenge.music.LocalDatabase
+import com.revenge.music.LocalListenTogetherManager
+import com.revenge.music.LocalPlayerConnection
+import com.revenge.music.R
+import com.revenge.music.listentogether.ListenTogetherManager
 import com.revenge.music.playback.CastConnectionHandler
 import com.revenge.music.playback.PlayerConnection
 import com.revenge.music.ui.component.GlassComponent
@@ -137,8 +125,6 @@ import com.revenge.music.updates.AudioDeviceBottomSheet
 import com.revenge.music.updates.isBluetoothHeadphoneConnected
 import com.revenge.music.utils.rememberEnumPreference
 import com.revenge.music.utils.rememberPreference
-import kotlin.math.absoluteValue
-import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlinx.coroutines.Dispatchers
@@ -487,8 +473,7 @@ private fun NewMiniPlayerThumbnail(
         ),
   ) {
     AsyncImage(
-      model =
-        ImageRequest.Builder(LocalContext.current).data(mediaMetadata?.thumbnailUrl).build(),
+      model = ImageRequest.Builder(LocalContext.current).data(mediaMetadata?.thumbnailUrl).build(),
       contentDescription = stringResource(R.string.album_artwork),
       contentScale = ContentScale.Crop,
       modifier = Modifier.fillMaxSize(),
@@ -869,8 +854,7 @@ private fun MiniPlayerControls(
         painter =
           painterResource(
             when {
-              isListenTogetherGuest ->
-                if (isMuted) R.drawable.volume_off else R.drawable.volume_up
+              isListenTogetherGuest -> if (isMuted) R.drawable.volume_off else R.drawable.volume_up
               playbackState == Player.STATE_ENDED -> R.drawable.replay
               effectiveIsPlaying -> R.drawable.pause
               else -> R.drawable.play

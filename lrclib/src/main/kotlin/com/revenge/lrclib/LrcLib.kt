@@ -36,12 +36,13 @@ private fun parseSentences(text: String): Map<Long, String> {
       val minutes = match.groupValues[1].toLongOrNull() ?: continue
       val seconds = match.groupValues[2].toLongOrNull() ?: continue
       val fraction = match.groupValues[3]
-      val millis = when (fraction.length) {
-        0 -> 0L
-        1 -> fraction.toLong() * 100
-        2 -> fraction.toLong() * 10
-        else -> fraction.take(3).toLong()
-      }
+      val millis =
+        when (fraction.length) {
+          0 -> 0L
+          1 -> fraction.toLong() * 100
+          2 -> fraction.toLong() * 10
+          else -> fraction.take(3).toLong()
+        }
       sentences[minutes * 60_000 + seconds * 1_000 + millis] = content
     }
   }
@@ -83,11 +84,12 @@ object LrcLib {
       val cleaned = MetadataCleaner.clean(title, artist)
       val (cleanTitle, cleanArtist) = cleaned.toSearchQuery()
       val tracks = findTracks(title, artist, album)
-      val track = if (duration == DURATION_UNKNOWN) {
-        tracks.bestMatchingFor(DURATION_UNKNOWN, cleanTitle, cleanArtist)
-      } else {
-        tracks.bestMatchingForRelaxed(duration)
-      }
+      val track =
+        if (duration == DURATION_UNKNOWN) {
+          tracks.bestMatchingFor(DURATION_UNKNOWN, cleanTitle, cleanArtist)
+        } else {
+          tracks.bestMatchingForRelaxed(duration)
+        }
       val lyrics = track?.syncedLyrics ?: track?.plainLyrics
       if (lyrics == null) {
         Result.failure(IllegalStateException(LYRICS_UNAVAILABLE))
@@ -123,9 +125,10 @@ object LrcLib {
         callback(synced)
       }
     } else {
-      val inRange = tracks
-        .filter { abs(it.duration.toInt() - duration) <= 5 }
-        .sortedBy { abs(it.duration.toInt() - duration) }
+      val inRange =
+        tracks
+          .filter { abs(it.duration.toInt() - duration) <= 5 }
+          .sortedBy { abs(it.duration.toInt() - duration) }
       var plainDelivered = false
       for (track in inRange) {
         if (delivered.size >= MAX_ALTERNATE_LYRICS) break
@@ -159,7 +162,8 @@ object LrcLib {
   }
 
   private fun rank(track: Track, cleanTitle: String, cleanArtist: String): Double {
-    val names = (similarity(cleanTitle, track.trackName) + similarity(cleanArtist, track.artistName)) / 2.0
+    val names =
+      (similarity(cleanTitle, track.trackName) + similarity(cleanArtist, track.artistName)) / 2.0
     return names + if (track.syncedLyrics != null) 1.0 else 0.0
   }
 
@@ -168,15 +172,33 @@ object LrcLib {
     val (searchTitle, searchArtist) = cleaned.toSearchQuery()
     val primaryArtist = cleaned.primaryArtist
 
-    usableSearch { search(searchTitle, primaryArtist, album) }?.let { return it }
+    usableSearch { search(searchTitle, primaryArtist, album) }
+      ?.let {
+        return it
+      }
     if (primaryArtist != searchArtist) {
-      usableSearch { search(searchTitle, searchArtist, album) }?.let { return it }
+      usableSearch { search(searchTitle, searchArtist, album) }
+        ?.let {
+          return it
+        }
     }
-    usableSearch { search(trackName = searchTitle) }?.let { return it }
-    usableSearch { search(query = "$searchArtist $searchTitle".trim()) }?.let { return it }
-    usableSearch { search(query = searchTitle) }?.let { return it }
+    usableSearch { search(trackName = searchTitle) }
+      ?.let {
+        return it
+      }
+    usableSearch { search(query = "$searchArtist $searchTitle".trim()) }
+      ?.let {
+        return it
+      }
+    usableSearch { search(query = searchTitle) }
+      ?.let {
+        return it
+      }
     if (searchTitle != title.trim()) {
-      usableSearch { search(trackName = title.trim(), artistName = artist.trim()) }?.let { return it }
+      usableSearch { search(trackName = title.trim(), artistName = artist.trim()) }
+        ?.let {
+          return it
+        }
     }
     return emptyList()
   }
@@ -197,22 +219,24 @@ object LrcLib {
     albumName: String? = null,
     query: String? = null,
   ): List<Track> {
-    val response = client().get("$BASE_URL$SEARCH_PATH") {
-      parameter("track_name", trackName)
-      parameter("artist_name", artistName)
-      parameter("album_name", albumName)
-      parameter("q", query)
-    }
+    val response =
+      client().get("$BASE_URL$SEARCH_PATH") {
+        parameter("track_name", trackName)
+        parameter("artist_name", artistName)
+        parameter("album_name", albumName)
+        parameter("q", query)
+      }
     return json.decodeFromString<List<Track>>(response.bodyAsText())
   }
 
   @JvmInline
   value class Lyrics(val text: String) {
     val sentences: Map<Long, String>?
-      get() = try {
-        parseSentences(text)
-      } catch (e: Exception) {
-        null
-      }
+      get() =
+        try {
+          parseSentences(text)
+        } catch (e: Exception) {
+          null
+        }
   }
 }

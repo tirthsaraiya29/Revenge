@@ -43,9 +43,10 @@ constructor(
     val url = prefs.getString(KEY_SERVER_URL, null)?.takeIf { it.isNotBlank() } ?: return null
     val user = prefs.getString(KEY_USERNAME, null)?.takeIf { it.isNotBlank() } ?: return null
     val password = prefs.getString(KEY_PASSWORD, null) ?: return null
-    val method =
-      runCatching { NavidromeAuthMethod.valueOf(prefs.getString(KEY_AUTH_METHOD, "TOKEN")!!) }
-        .getOrDefault(NavidromeAuthMethod.TOKEN)
+    val method = runCatching {
+      NavidromeAuthMethod.valueOf(prefs.getString(KEY_AUTH_METHOD, "TOKEN")!!)
+    }
+      .getOrDefault(NavidromeAuthMethod.TOKEN)
     return NavidromeCredentials(url, user, password, method)
   }
 
@@ -57,8 +58,9 @@ constructor(
         api.ping(NavidromeCredentials(url, user, password, NavidromeAuthMethod.TOKEN))
       val effective =
         tokenAttempt.getOrNull()
-          ?: api.ping(NavidromeCredentials(url, user, password, NavidromeAuthMethod.PASSWORD))
-              .getOrNull()
+          ?: api
+            .ping(NavidromeCredentials(url, user, password, NavidromeAuthMethod.PASSWORD))
+            .getOrNull()
       if (effective == null) {
         return@withContext Result.failure(
           tokenAttempt.exceptionOrNull() ?: Exception("Login failed"),
@@ -82,17 +84,19 @@ constructor(
 
   suspend fun ping(): Result<String> =
     withContext(Dispatchers.IO) {
-      val credentials = getCredentials()
-        ?: return@withContext Result.failure(Exception("Not logged in"))
-      api.ping(credentials).fold(
-        onSuccess = { updated ->
-          prefs.edit { putString(KEY_AUTH_METHOD, updated.authMethod.name) }
-          Result.success(
-            "${updated.serverUrl} - ${updated.username} (${updated.authMethod.name})",
-          )
-        },
-        onFailure = { Result.failure(it) },
-      )
+      val credentials =
+        getCredentials() ?: return@withContext Result.failure(Exception("Not logged in"))
+      api
+        .ping(credentials)
+        .fold(
+          onSuccess = { updated ->
+            prefs.edit { putString(KEY_AUTH_METHOD, updated.authMethod.name) }
+            Result.success(
+              "${updated.serverUrl} - ${updated.username} (${updated.authMethod.name})",
+            )
+          },
+          onFailure = { Result.failure(it) },
+        )
     }
 
   suspend fun getPlaylists(): Result<List<NavidromePlaylist>> = guarded {
@@ -115,8 +119,8 @@ constructor(
   suspend fun syncPlaylistsAndSongs(): Result<Int> =
     withContext(Dispatchers.IO) {
       try {
-        val credentials = getCredentials()
-          ?: return@withContext Result.failure(Exception("Not logged in"))
+        val credentials =
+          getCredentials() ?: return@withContext Result.failure(Exception("Not logged in"))
         val playlists = api.getPlaylists(credentials).getOrDefault(emptyList())
         var count = 0
         if (playlists.isEmpty()) {
@@ -142,8 +146,8 @@ constructor(
     call: suspend (NavidromeCredentials) -> Result<T>,
   ): Result<T> =
     withContext(Dispatchers.IO) {
-      val credentials = getCredentials()
-        ?: return@withContext Result.failure(Exception("Not logged in"))
+      val credentials =
+        getCredentials() ?: return@withContext Result.failure(Exception("Not logged in"))
       call(credentials)
     }
 
@@ -176,7 +180,9 @@ constructor(
     val artistId = "navidrome_artist_${song.artist.hashCode()}"
     database.insert(ArtistEntity(id = artistId, name = song.artist, lastUpdateTime = timestamp))
     database.insert(SongArtistMap(songId = entity.id, artistId = artistId, position = 0))
-    database.insert(PlaylistSongMap(playlistId = playlistId, songId = entity.id, position = position))
+    database.insert(
+      PlaylistSongMap(playlistId = playlistId, songId = entity.id, position = position),
+    )
   }
 
   private fun remotePlaylist(playlist: NavidromePlaylist) =

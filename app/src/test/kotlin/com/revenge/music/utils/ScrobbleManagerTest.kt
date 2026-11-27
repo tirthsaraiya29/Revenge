@@ -32,7 +32,9 @@ class ScrobbleManagerTest {
   fun firesAtPercentThresholdCappedByAbsoluteDelay() = runTest {
     val manager = ScrobbleManager(this)
     val scrobbles = mutableListOf<Triple<String, Long, Int>>()
-    manager.submitScrobble = { _, _, timestamp, _, duration -> scrobbles += Triple("t", timestamp, duration) }
+    manager.submitScrobble = { _, _, timestamp, _, duration ->
+      scrobbles += Triple("t", timestamp, duration)
+    }
     manager.submitNowPlaying = { _, _, _, _ -> }
     manager.enableScrobbling = true
     manager.scrobbleDelayPercent = 0.5f

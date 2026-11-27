@@ -28,9 +28,9 @@ import coil3.request.ImageRequest
 import coil3.request.allowHardware
 import coil3.request.crossfade
 import coil3.toBitmap
+import com.revenge.core.db.MusicDatabase
 import com.revenge.music.MainActivity
 import com.revenge.music.R
-import com.revenge.core.db.MusicDatabase
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton

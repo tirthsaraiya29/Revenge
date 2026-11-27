@@ -85,8 +85,9 @@ class ListenTogetherManager(
 
   val guestPlaybackRestricted: StateFlow<Boolean> =
     combine(client.roomState, client.role) { state, currentRole ->
-      state != null && currentRole != RoomRole.HOST && !state.allowParticipantControl
-    }.stateIn(scope, SharingStarted.Eagerly, false)
+        state != null && currentRole != RoomRole.HOST && !state.allowParticipantControl
+      }
+      .stateIn(scope, SharingStarted.Eagerly, false)
 
   private val _chatMessages = MutableStateFlow<List<ChatMessagePayload>>(emptyList())
   val chatMessages: StateFlow<List<ChatMessagePayload>> = _chatMessages.asStateFlow()
@@ -235,12 +236,14 @@ class ListenTogetherManager(
 
   fun sendChatMessage(message: String, replyTo: RepliedMessage? = null) {
     val marker =
-      replyTo?.let { reply ->
-        val encoded =
-          Base64.getEncoder()
-            .encodeToString("${reply.username}|${reply.message}".toByteArray(Charsets.UTF_8))
-        "​[RPLY:$encoded]​"
-      }.orEmpty()
+      replyTo
+        ?.let { reply ->
+          val encoded =
+            Base64.getEncoder()
+              .encodeToString("${reply.username}|${reply.message}".toByteArray(Charsets.UTF_8))
+          "​[RPLY:$encoded]​"
+        }
+        .orEmpty()
     client.sendChat(ChatPayload(message = marker + message))
   }
 
@@ -333,7 +336,7 @@ class ListenTogetherManager(
         queue = currentQueue(connection),
         queueTitle = connection.queueTitle.value,
         serverTime = System.currentTimeMillis(),
-      )
+      ),
     )
   }
 
@@ -343,7 +346,7 @@ class ListenTogetherManager(
         action = PlaybackAction.PLAY,
         position = position,
         serverTime = System.currentTimeMillis(),
-      )
+      ),
     )
   }
 
@@ -359,7 +362,7 @@ class ListenTogetherManager(
         action = PlaybackAction.SYNC_QUEUE,
         queue = queue,
         queueTitle = connection.queueTitle.value,
-      )
+      ),
     )
   }
 
@@ -438,7 +441,7 @@ class ListenTogetherManager(
         PlaybackActionPayload(
           action = PlaybackAction.SET_VOLUME,
           volume = volume.coerceIn(0f, 1f),
-        )
+        ),
       )
     }
   }
@@ -462,9 +465,10 @@ class ListenTogetherManager(
       is ListenTogetherEvent.RoomCreated -> {
         if (isHost) sendCurrentState()
       }
-      is ListenTogetherEvent.JoinApproved -> event.state?.let { state ->
-        scope.launch { applySyncState(state.toSyncState()) }
-      }
+      is ListenTogetherEvent.JoinApproved ->
+        event.state?.let { state ->
+          scope.launch { applySyncState(state.toSyncState()) }
+        }
       is ListenTogetherEvent.UserJoined -> {
         if (isHost) sendCurrentState()
       }
@@ -497,7 +501,9 @@ class ListenTogetherManager(
       is ListenTogetherEvent.ChatMessageReceived -> {
         val (visible, reply) = parseReply(event.payload.message)
         _chatMessages.value =
-          (_chatMessages.value + event.payload.copy(message = visible, replyTo = reply)).takeLast(500)
+          (_chatMessages.value + event.payload.copy(message = visible, replyTo = reply)).takeLast(
+            500,
+          )
       }
       is ListenTogetherEvent.LocalSuggestionApproved -> {
         event.payload.trackInfo.toMediaMetadata()?.let { metadata ->
@@ -542,8 +548,7 @@ class ListenTogetherManager(
       return
     }
     val now = System.currentTimeMillis()
-    val desiredPosition =
-      (payload.position ?: 0L) + max(0L, now - (payload.serverTime ?: now))
+    val desiredPosition = (payload.position ?: 0L) + max(0L, now - (payload.serverTime ?: now))
     val key = "${payload.action}:${payload.trackId}:${payload.position}:${payload.serverTime}"
     if (!bypassBuffer && key == lastActionKey && now - lastActionAt <= 1_000) return
     lastActionKey = key
@@ -646,10 +651,8 @@ class ListenTogetherManager(
     val track = payload.trackInfo ?: return
     val item =
       withContext(Dispatchers.IO) {
-          YouTube.queue(listOf(track.id)).getOrNull()?.firstOrNull()?.toMediaItem()
-        }
-        ?: track.toMediaMetadata()?.toMediaItem()
-        ?: return
+        YouTube.queue(listOf(track.id)).getOrNull()?.firstOrNull()?.toMediaItem()
+      } ?: track.toMediaMetadata()?.toMediaItem() ?: return
     connection.allowInternalSync = true
     try {
       if (payload.insertNext) connection.playNext(item) else connection.addToQueue(item)
@@ -700,11 +703,12 @@ class ListenTogetherManager(
       awaitPlayerReady(connection)
       if (playerConnection !== connection) return
       val desired =
-        (state.position ?: 0L) + if (state.isPlaying) {
-          max(0L, System.currentTimeMillis() - state.lastUpdate)
-        } else {
-          0L
-        }
+        (state.position ?: 0L) +
+          if (state.isPlaying) {
+            max(0L, System.currentTimeMillis() - state.lastUpdate)
+          } else {
+            0L
+          }
       val track = state.currentTrack
       if (track != null) {
         val queue = state.queue.orEmpty().mapNotNull { it.toMediaMetadata()?.toMediaItem() }
@@ -770,7 +774,8 @@ class ListenTogetherManager(
     val decoded =
       runCatching {
         String(Base64.getDecoder().decode(match.groupValues[1]), Charsets.UTF_8)
-      }.getOrNull() ?: return text to null
+      }
+        .getOrNull() ?: return text to null
     val separator = decoded.indexOf('|')
     if (separator <= 0) return text to null
     return match.groupValues[2] to

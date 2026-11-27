@@ -19,9 +19,9 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.dialog
 import androidx.navigation.navArgument
-import com.revenge.innertube.pages.PodcastPage
 import com.revenge.core.constants.DarkModeKey
 import com.revenge.core.constants.PureBlackKey
+import com.revenge.innertube.pages.PodcastPage
 import com.revenge.music.ui.screens.ambient.AmbientModeScreen
 import com.revenge.music.ui.screens.artist.ArtistAlbumsScreen
 import com.revenge.music.ui.screens.artist.ArtistItemsScreen

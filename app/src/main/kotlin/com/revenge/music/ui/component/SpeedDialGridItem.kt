@@ -15,6 +15,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
+import com.revenge.core.constants.ThumbnailCornerRadius
+import com.revenge.core.utils.reportException
 import com.revenge.innertube.YouTube
 import com.revenge.innertube.models.AlbumItem
 import com.revenge.innertube.models.SongItem
@@ -22,9 +24,7 @@ import com.revenge.innertube.models.YTItem
 import com.revenge.music.LocalDatabase
 import com.revenge.music.LocalPlayerConnection
 import com.revenge.music.R
-import com.revenge.core.constants.ThumbnailCornerRadius
 import com.revenge.playback.queues.LocalAlbumRadio
-import com.revenge.core.utils.reportException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch

@@ -21,11 +21,11 @@ import coil3.request.ImageRequest
 import coil3.request.allowHardware
 import coil3.request.crossfade
 import coil3.toBitmap
-import com.revenge.music.MainActivity
-import com.revenge.music.R
 import com.revenge.core.db.MusicDatabase
 import com.revenge.core.db.entities.Playlist
 import com.revenge.core.di.ApplicationScope
+import com.revenge.music.MainActivity
+import com.revenge.music.R
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject

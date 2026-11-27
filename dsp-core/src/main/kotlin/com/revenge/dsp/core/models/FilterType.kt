@@ -4,9 +4,9 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 enum class FilterType {
-    PK,
-    LSC,
-    HSC,
-    LPQ,
-    HPQ,
+  PK,
+  LSC,
+  HSC,
+  LPQ,
+  HPQ,
 }

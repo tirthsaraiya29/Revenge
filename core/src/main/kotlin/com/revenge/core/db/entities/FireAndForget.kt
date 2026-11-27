@@ -8,5 +8,5 @@ import kotlinx.coroutines.launch
 internal val entityWorkScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
 internal fun launchBestEffort(block: suspend () -> Unit) {
-    entityWorkScope.launch { runCatching { block() } }
+  entityWorkScope.launch { runCatching { block() } }
 }

@@ -21,8 +21,8 @@ class YouTubeUrlParserTest {
   @Test
   fun `extracts artist ids only from music links`() {
     val artist =
-      YouTubeUrlParser.parse("https://music.youtube.com/browse/MPREb_abcdef") as
-        YouTubeUrlParser.Artist
+      YouTubeUrlParser.parse("https://music.youtube.com/browse/MPREb_abcdef")
+        as YouTubeUrlParser.Artist
     assertEquals("MPREb_abcdef", artist.id)
     assertNull(YouTubeUrlParser.parse("https://www.youtube.com/channel/UCabc"))
   }

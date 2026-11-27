@@ -24,13 +24,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import com.revenge.core.ui.utils.resize
 import com.revenge.innertube.models.YTItem
 import com.revenge.music.R
 import com.revenge.music.ui.theme.RevengeColor
 import com.revenge.music.ui.theme.RevengeRadius
-import com.revenge.music.ui.theme.RevengeSize
 import com.revenge.music.ui.theme.RevengeSpacing
-import com.revenge.core.ui.utils.resize
 
 /** Compact tile for the shortcut grid at the top of Home: cover on the left, title on the right. */
 @Composable
@@ -64,20 +63,19 @@ fun HomeShortcutTile(
       contentDescription = null,
       contentScale = ContentScale.Crop,
       modifier =
-        Modifier
-          .size(56.dp)
+        Modifier.size(56.dp)
           .clip(RoundedCornerShape(topStart = RevengeRadius.sm, bottomStart = RevengeRadius.sm))
           .background(MaterialTheme.colorScheme.surfaceVariant),
     )
     Text(
       text = item.title,
-      style = MaterialTheme.typography.bodyMedium.copy(
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 13.sp,
-      ),
+      style =
+        MaterialTheme.typography.bodyMedium.copy(
+          fontWeight = FontWeight.SemiBold,
+          fontSize = 13.sp,
+        ),
       color =
-        if (isActive) MaterialTheme.colorScheme.primary
-        else MaterialTheme.colorScheme.onSurface,
+        if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
       maxLines = 2,
       overflow = TextOverflow.Ellipsis,
       modifier = Modifier.weight(1f).padding(vertical = RevengeSpacing.xs),

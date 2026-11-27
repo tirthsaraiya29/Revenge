@@ -5,15 +5,15 @@ import android.content.Intent
 import androidx.datastore.preferences.core.edit
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.revenge.music.App
 import com.revenge.core.constants.AccountChannelHandleKey
 import com.revenge.core.constants.AccountEmailKey
 import com.revenge.core.constants.AccountNameKey
 import com.revenge.core.constants.DataSyncIdKey
 import com.revenge.core.constants.InnerTubeCookieKey
 import com.revenge.core.constants.VisitorDataKey
-import com.revenge.music.utils.SyncUtils
 import com.revenge.core.utils.dataStore
+import com.revenge.music.App
+import com.revenge.music.utils.SyncUtils
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers

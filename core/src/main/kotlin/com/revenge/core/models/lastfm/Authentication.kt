@@ -1,6 +1,5 @@
 package com.revenge.core.models.lastfm
 
-import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 @Serializable

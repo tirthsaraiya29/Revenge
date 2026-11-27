@@ -19,7 +19,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.mediarouter.media.MediaControlIntent
 import androidx.mediarouter.media.MediaRouteSelector
 import androidx.mediarouter.media.MediaRouter
 import com.google.android.gms.cast.CastMediaControlIntent
@@ -33,16 +32,15 @@ fun CastDevicePickerSheet(
 ) {
   val context = LocalContext.current
   val router = remember { MediaRouter.getInstance(context) }
-  val selector =
-    remember {
-      MediaRouteSelector.Builder()
-        .addControlCategory(
-          CastMediaControlIntent.categoryForCast(
-            CastMediaControlIntent.DEFAULT_MEDIA_RECEIVER_APPLICATION_ID,
-          ),
-        )
-        .build()
-    }
+  val selector = remember {
+    MediaRouteSelector.Builder()
+      .addControlCategory(
+        CastMediaControlIntent.categoryForCast(
+          CastMediaControlIntent.DEFAULT_MEDIA_RECEIVER_APPLICATION_ID,
+        ),
+      )
+      .build()
+  }
   var routes by remember { mutableStateOf<List<MediaRouter.RouteInfo>>(emptyList()) }
   var loading by remember { mutableStateOf(true) }
   var error by remember { mutableStateOf<String?>(null) }
@@ -74,7 +72,8 @@ fun CastDevicePickerSheet(
         MediaRouter.CALLBACK_FLAG_REQUEST_DISCOVERY,
       )
       refresh()
-    }.onFailure { error = it.message }
+    }
+      .onFailure { error = it.message }
     onDispose {
       runCatching { router.removeCallback(callback) }
     }
@@ -91,13 +90,15 @@ fun CastDevicePickerSheet(
             modifier = Modifier.padding(vertical = 16.dp),
           )
         loading -> Text("Searching for devices...", modifier = Modifier.padding(vertical = 16.dp))
-        routes.isEmpty() -> Text("No Cast devices found", modifier = Modifier.padding(vertical = 16.dp))
+        routes.isEmpty() ->
+          Text("No Cast devices found", modifier = Modifier.padding(vertical = 16.dp))
         else ->
           routes.forEach { route ->
             val kind = CastDeviceKind.fromName(route.name?.toString().orEmpty(), route.description)
             Row(
               modifier =
-                Modifier.fillMaxWidth().clickable {
+                Modifier.fillMaxWidth()
+                  .clickable {
                     val fresh = router.routes.firstOrNull { it.id == route.id }
                     if (fresh != null) {
                       router.selectRoute(fresh)

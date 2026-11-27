@@ -2,18 +2,15 @@ package com.revenge.music.playback
 
 import android.content.Context
 import androidx.media3.common.MediaItem
-import com.google.android.gms.cast.CastDevice
 import com.google.android.gms.cast.MediaInfo
 import com.google.android.gms.cast.MediaQueueItem
 import com.google.android.gms.cast.framework.CastContext
 import com.google.android.gms.cast.framework.CastSession
-import com.google.android.gms.cast.framework.Session
 import com.google.android.gms.cast.framework.SessionManagerListener
 import com.google.android.gms.cast.framework.media.RemoteMediaClient
 import com.revenge.core.extensions.metadata
-import com.revenge.core.playback.CastDeviceKind
 import com.revenge.core.models.MediaMetadata as AppMediaMetadata
-import com.revenge.music.playback.MusicService
+import com.revenge.core.playback.CastDeviceKind
 import com.revenge.core.ui.utils.resize
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -62,7 +59,8 @@ class CastConnectionHandler(
   private val _autoReconnecting = MutableStateFlow(false)
   val autoReconnecting: StateFlow<Boolean> = _autoReconnecting.asStateFlow()
 
-  @Volatile var isSyncingFromCast: Boolean = false
+  @Volatile
+  var isSyncingFromCast: Boolean = false
     private set
 
   private var pollJob: Job? = null
@@ -115,7 +113,9 @@ class CastConnectionHandler(
     try {
       castContext = CastContext.getSharedInstance(context)
       if (!registered) {
-        castContext?.sessionManager?.addSessionManagerListener(sessionListener, CastSession::class.java)
+        castContext
+          ?.sessionManager
+          ?.addSessionManagerListener(sessionListener, CastSession::class.java)
         registered = true
       }
       true
@@ -140,10 +140,12 @@ class CastConnectionHandler(
     stopPolling()
     runCatching {
       if (registered) {
-        castContext?.sessionManager?.removeSessionManagerListener(
-          sessionListener,
-          CastSession::class.java,
-        )
+        castContext
+          ?.sessionManager
+          ?.removeSessionManagerListener(
+            sessionListener,
+            CastSession::class.java,
+          )
       }
       castContext?.sessionManager?.endCurrentSession(true)
     }
@@ -189,8 +191,7 @@ class CastConnectionHandler(
       try {
         val startPosition =
           if (metadata.id == player.currentMediaItem?.mediaId) player.currentPosition else 0L
-        val result =
-          client.queueLoad(items.toTypedArray(), startIndex, 0, startPosition, null)
+        val result = client.queueLoad(items.toTypedArray(), startIndex, 0, startPosition, null)
         if (result != null) {
           _isCasting.value = true
           _autoReconnecting.value = false
@@ -209,11 +210,10 @@ class CastConnectionHandler(
 
   suspend fun insertItemsAfterCurrent(items: List<MediaItem>) {
     val client = remoteClient() ?: return
-    val queueItems =
-      items.mapNotNull { item ->
-        val metadata = item.metadata ?: return@mapNotNull null
-        buildMediaInfo(metadata)?.let { MediaQueueItem.Builder(it).build() }
-      }
+    val queueItems = items.mapNotNull { item ->
+      val metadata = item.metadata ?: return@mapNotNull null
+      buildMediaInfo(metadata)?.let { MediaQueueItem.Builder(it).build() }
+    }
     if (queueItems.isEmpty()) return
     val ids = runCatching { client.mediaQueue.itemIds }.getOrDefault(intArrayOf())
     val currentItemId = client.currentItem?.itemId ?: MediaQueueItem.INVALID_ITEM_ID
@@ -226,11 +226,10 @@ class CastConnectionHandler(
 
   suspend fun appendItemsToCastQueue(items: List<MediaItem>) {
     val client = remoteClient() ?: return
-    val queueItems =
-      items.mapNotNull { item ->
-        val metadata = item.metadata ?: return@mapNotNull null
-        buildMediaInfo(metadata)?.let { MediaQueueItem.Builder(it).build() }
-      }
+    val queueItems = items.mapNotNull { item ->
+      val metadata = item.metadata ?: return@mapNotNull null
+      buildMediaInfo(metadata)?.let { MediaQueueItem.Builder(it).build() }
+    }
     if (queueItems.isEmpty()) return
     runCatching { client.queueAppendItem(queueItems.first(), null) }
     queueItems.drop(1).forEach { runCatching { client.queueAppendItem(it, null) } }
@@ -299,7 +298,8 @@ class CastConnectionHandler(
     val artists = metadata.artists.joinToString(", ") { it.name }
     val streamUrl = musicService.getStreamUrl(metadata.id, metadata.title, artists) ?: return null
     val castMetadata =
-      com.google.android.gms.cast.MediaMetadata(com.google.android.gms.cast.MediaMetadata.MEDIA_TYPE_MUSIC_TRACK)
+      com.google.android.gms.cast
+        .MediaMetadata(com.google.android.gms.cast.MediaMetadata.MEDIA_TYPE_MUSIC_TRACK)
         .apply {
           putString(com.google.android.gms.cast.MediaMetadata.KEY_TITLE, metadata.title)
           putString(com.google.android.gms.cast.MediaMetadata.KEY_ARTIST, artists)
@@ -352,13 +352,12 @@ class CastConnectionHandler(
 
   private fun startPolling() {
     if (pollJob?.isActive == true) return
-    pollJob =
-      scope.launch {
-        while (isActive && _isCasting.value) {
-          refreshStatus()
-          delay(1_000)
-        }
+    pollJob = scope.launch {
+      while (isActive && _isCasting.value) {
+        refreshStatus()
+        delay(1_000)
       }
+    }
   }
 
   private fun stopPolling() {
@@ -378,10 +377,10 @@ class CastConnectionHandler(
     session?.volume?.let { _castVolume.value = it.toFloat().coerceIn(0f, 1f) }
   }
 
-  private fun remoteClient(): RemoteMediaClient? =
-    runCatching {
-      castContext?.sessionManager?.currentCastSession?.remoteMediaClient
-    }.getOrNull()
+  private fun remoteClient(): RemoteMediaClient? = runCatching {
+    castContext?.sessionManager?.currentCastSession?.remoteMediaClient
+  }
+    .getOrNull()
 
   private companion object {
     const val TAG = "CastConnectionHandler"

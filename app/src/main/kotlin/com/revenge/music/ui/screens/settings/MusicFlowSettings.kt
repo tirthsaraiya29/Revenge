@@ -22,8 +22,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.datastore.preferences.core.Preferences
 import androidx.navigation.NavController
-import com.revenge.music.LocalPlayerAwareWindowInsets
-import com.revenge.music.R
 import com.revenge.core.constants.CanvasThumbnailAnimationKey
 import com.revenge.core.constants.MusicFlowAnimatedBackgroundKey
 import com.revenge.core.constants.MusicFlowAutoNextKey
@@ -32,6 +30,8 @@ import com.revenge.core.constants.MusicFlowCellularPrefetchKey
 import com.revenge.core.constants.MusicFlowEnabledKey
 import com.revenge.core.constants.MusicFlowHideRecentKey
 import com.revenge.core.constants.MusicFlowLyricsKey
+import com.revenge.music.LocalPlayerAwareWindowInsets
+import com.revenge.music.R
 import com.revenge.music.ui.component.IconButton
 import com.revenge.music.ui.component.Material3SettingsGroup
 import com.revenge.music.ui.component.Material3SettingsItem

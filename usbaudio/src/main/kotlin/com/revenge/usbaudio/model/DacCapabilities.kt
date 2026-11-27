@@ -1,13 +1,13 @@
 package com.revenge.usbaudio.model
 
 data class DacCapabilities(
-    val uacVersion: Int,
-    val supportedFormats: List<DacFormat> = emptyList(),
-    val supportedSampleRates: List<Int> = emptyList(),
-    val clockSourceId: Int? = null,
-    val hasHardwareVolume: Boolean = false,
-    val volumeFeatureUnitId: Int? = null,
-    val minVolumeDb: Float = 0.0f,
-    val maxVolumeDb: Float = 0.0f,
-    val volumeResDb: Float = 0.0f,
+  val uacVersion: Int,
+  val supportedFormats: List<DacFormat> = emptyList(),
+  val supportedSampleRates: List<Int> = emptyList(),
+  val clockSourceId: Int? = null,
+  val hasHardwareVolume: Boolean = false,
+  val volumeFeatureUnitId: Int? = null,
+  val minVolumeDb: Float = 0.0f,
+  val maxVolumeDb: Float = 0.0f,
+  val volumeResDb: Float = 0.0f,
 )
