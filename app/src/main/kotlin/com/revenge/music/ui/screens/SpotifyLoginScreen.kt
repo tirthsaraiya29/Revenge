@@ -31,8 +31,14 @@ import com.revenge.music.spotify.SpotifyAuth
 private fun isTrustedSpotifyLoginUri(uri: Uri): Boolean {
   if (!uri.scheme.equals("https", ignoreCase = true)) return false
   val host = uri.host?.lowercase() ?: return false
-  return listOf("spotify.com", "scdn.co", "google.com", "gstatic.com", "googleapis.com", "recaptcha.net")
-    .any { host == it || host.endsWith(".$it") }
+  return listOf(
+    "spotify.com",
+    "scdn.co",
+    "google.com",
+    "gstatic.com",
+    "googleapis.com",
+    "recaptcha.net",
+  ).any { host == it || host.endsWith(".$it") }
 }
 
 @SuppressLint("SetJavaScriptEnabled")
@@ -109,8 +115,9 @@ fun SpotifyLoginScreen(
                 ): Boolean {
                   val uri = request?.url ?: return true
                   if (isTrustedSpotifyLoginUri(uri)) return false
-                  if (uri.scheme.equals("https", ignoreCase = true) ||
-                    uri.scheme.equals("http", ignoreCase = true)
+                  if (
+                    uri.scheme.equals("https", ignoreCase = true) ||
+                      uri.scheme.equals("http", ignoreCase = true)
                   ) {
                     runCatching {
                       view?.context?.startActivity(Intent(Intent.ACTION_VIEW, uri))
