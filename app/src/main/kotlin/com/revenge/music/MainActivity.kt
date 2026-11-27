@@ -44,6 +44,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -1022,6 +1023,7 @@ internal fun revengeApp(activity: MainActivity, initialRoute: String) {
       LocalAppBackdrop provides emptyBackdrop(),
       LocalShimmerTheme provides getShimmerTheme(),
       LocalHapticFeedback provides hapticFeedback,
+      LocalContentColor provides MaterialTheme.colorScheme.onBackground,
     ) {
       Box(
         modifier =
