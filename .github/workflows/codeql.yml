@@ -16,6 +16,8 @@ on:
       - "**/*.hpp"
       - "**/*.js"
       - "**/*.toml"
+      - "gradle.properties"
+      - "gradle/**"
   pull_request:
     branches: [main]
     paths: *code-paths
