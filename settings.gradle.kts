@@ -3,6 +3,8 @@
 pluginManagement {
     repositories {
         google()
+        maven { url = uri("https://maven-central.storage-download.googleapis.com/maven2/") }
+        maven { url = uri("https://maven.aliyun.com/repository/public") }
         mavenCentral()
         gradlePluginPortal()
     }
@@ -13,9 +15,10 @@ dependencyResolutionManagement {
 
     repositories {
         google()
+        maven { url = uri("https://maven-central.storage-download.googleapis.com/maven2/") }
+        maven { url = uri("https://maven.aliyun.com/repository/public") }
         mavenCentral()
         maven { setUrl("https://jitpack.io") }
-        maven { setUrl("https://maven.aliyun.com/repository/public") }
     }
 }
 
